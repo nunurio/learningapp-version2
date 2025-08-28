@@ -14,7 +14,20 @@ import {
   saveDraft,
 } from "@/lib/localdb";
 import type { Course, Lesson, LessonCards } from "@/lib/types";
-import { generateLessonCards } from "@/lib/ai/mock";
+import { Header } from "@/components/ui/header";
+import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetClose } from "@/components/ui/sheet";
+import { SSEConsole } from "@/components/ui/SSEConsole";
+import { useSSE } from "@/components/ai/useSSE";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogTrigger, DialogContent, DialogHeader as DlgHeader, DialogTitle as DlgTitle, DialogDescription as DlgDesc } from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { toast } from "@/components/ui/toaster";
+function SSERunner({ url, body, onUpdate, onDone, onError }: any) {
+  useSSE(url, body, { onUpdate, onDone, onError });
+  return null;
+}
 
 export default function CourseDetailPage() {
   const router = useRouter();
@@ -26,6 +39,8 @@ export default function CourseDetailPage() {
 
   // Preview state per lesson
   const [previews, setPreviews] = useState<Record<string, { draftId: string; payload: LessonCards }>>({});
+  const [logsByLesson, setLogsByLesson] = useState<Record<string, { ts: number; text: string }[]>>({});
+  const [runningLesson, setRunningLesson] = useState<Lesson | null>(null);
 
   function refresh() {
     const c = getCourse(courseId);
@@ -72,10 +87,9 @@ export default function CourseDetailPage() {
     refresh();
   }
 
-  function onGenerateCards(lesson: Lesson) {
-    const payload = generateLessonCards({ lessonTitle: lesson.title, desiredCount: 6 });
-    const draft = saveDraft("lesson-cards", payload);
-    setPreviews((prev) => ({ ...prev, [lesson.id]: { draftId: draft.id, payload } }));
+  function runSSEForLesson(lesson: Lesson) {
+    setRunningLesson(lesson);
+    setLogsByLesson((m) => ({ ...m, [lesson.id]: [] }));
   }
 
   function onCommitCards(lesson: Lesson) {
@@ -83,6 +97,7 @@ export default function CourseDetailPage() {
     if (!p) return;
     const res = commitLessonCards({ draftId: p.draftId, lessonId: lesson.id });
     if (!res) return alert("保存に失敗しました");
+    toast({ title: "保存しました", description: `${res.count} 件のカードを反映しました。` });
     setPreviews((prev) => {
       const copy = { ...prev };
       delete copy[lesson.id];
@@ -100,104 +115,153 @@ export default function CourseDetailPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
-      <header className="mb-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">{course.title}</h1>
-          <Link href={`/learn/${course.id}`} className="px-3 py-2 rounded border hover:bg-black/5">
-            学習する
-          </Link>
-        </div>
-        {course.description && (
-          <p className="text-sm text-gray-600 mt-1">{course.description}</p>
+    <div className="min-h-screen">
+      <Header />
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+        {runningLesson && (
+          <SSERunner
+            url="/api/ai/lesson-cards"
+            body={{ lessonTitle: runningLesson.title, desiredCount: 6 }}
+            onUpdate={(d: any) =>
+              setLogsByLesson((m) => ({
+                ...m,
+                [runningLesson.id]: [...(m[runningLesson.id] ?? []), { ts: Date.now(), text: `${d?.node ?? d?.status}` }],
+              }))
+            }
+            onDone={(d: any) => {
+              const payload = d?.payload as LessonCards;
+              if (payload) {
+                const draft = saveDraft("lesson-cards", payload);
+                setPreviews((prev) => ({ ...prev, [runningLesson.id]: { draftId: draft.id, payload } }));
+                setLogsByLesson((m) => ({
+                  ...m,
+                  [runningLesson.id]: [...(m[runningLesson.id] ?? []), { ts: Date.now(), text: `下書きを保存しました（ID: ${draft.id}）` }],
+                }));
+              }
+              setRunningLesson(null);
+            }}
+            onError={(d: any) => {
+              setLogsByLesson((m) => ({
+                ...m,
+                [runningLesson.id]: [...(m[runningLesson.id] ?? []), { ts: Date.now(), text: `エラー: ${d?.message ?? "unknown"}` }],
+              }));
+              setRunningLesson(null);
+            }}
+          />
         )}
-      </header>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold">{course.title}</h1>
+            {course.description && (
+              <p className="text-sm text-gray-600 mt-1">{course.description}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Sheet>
+              <SheetTrigger asChild><Button>レッスン一覧</Button></SheetTrigger>
+              <SheetContent side="right">
+                <SheetHeader>
+                  <div className="font-medium">レッスン一覧</div>
+                  <SheetClose asChild><Button aria-label="閉じる">✕</Button></SheetClose>
+                </SheetHeader>
+                <ul className="space-y-2">
+                  {lessons.map((l, i) => (
+                    <li key={l.id} className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-6">{i + 1}</span>
+                      <Link href={`#lesson-${l.id}`} className="truncate flex-1">{l.title}</Link>
+                    </li>
+                  ))}
+                </ul>
+              </SheetContent>
+            </Sheet>
+            <Button asChild><Link href={`/learn/${course.id}`}>学習する</Link></Button>
+          </div>
+        </div>
 
       <section className="mb-4">
         <h2 className="font-medium mb-2">レッスン</h2>
         <div className="flex gap-2 mb-3">
-          <input
+          <Input
             value={newLessonTitle}
             onChange={(e) => setNewLessonTitle(e.target.value)}
             placeholder="レッスン名"
-            className="flex-1 border rounded px-3 py-2"
+            className="flex-1"
           />
-          <button onClick={onAddLesson} className="px-3 py-2 rounded bg-black text-white">
-            追加
-          </button>
+          <Button onClick={onAddLesson} variant="default">追加</Button>
         </div>
         <ul className="space-y-2">
           {lessons.map((l) => (
             <li
               key={l.id}
-              className="border rounded p-3"
+              className=""
               draggable
               onDragStart={(e) => onDragStart(e, l.id)}
               onDragOver={onDragOver}
               onDrop={(e) => onDrop(e, l.id)}
+              id={`lesson-${l.id}`}
             >
-              <div className="flex items-center gap-2">
-                <span className="cursor-move select-none text-gray-500">≡</span>
-                <span className="font-medium flex-1">{l.title}</span>
-                <Link
-                  href={`/courses/${courseId}/lessons/${l.id}`}
-                  className="text-sm px-2 py-1 rounded border hover:bg-black/5"
-                >
-                  カード管理
-                </Link>
-                <button
-                  onClick={() => onGenerateCards(l)}
-                  className="text-sm px-2 py-1 rounded border hover:bg-black/5"
-                >
-                  AIでカード生成
-                </button>
-                <button
-                  onClick={() => onDeleteLesson(l.id)}
-                  className="text-sm px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50"
-                >
-                  削除
-                </button>
-              </div>
-              {previews[l.id] && (
-                <div className="mt-3 border-t pt-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-sm text-gray-600">プレビュー: {previews[l.id].payload.cards.length} 件</div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => onCommitCards(l)}
-                        className="text-sm px-2 py-1 rounded bg-black text-white"
-                      >
-                        保存
-                      </button>
-                      <button
-                        onClick={() =>
-                          setPreviews((prev) => {
-                            const copy = { ...prev };
-                            delete copy[l.id];
-                            return copy;
-                          })
-                        }
-                        className="text-sm px-2 py-1 rounded border"
-                      >
-                        破棄
-                      </button>
+              <Card className="p-3">
+                <div className="flex items-center gap-2">
+                  <span className="cursor-move select-none text-gray-500">≡</span>
+                  <span className="font-medium flex-1">{l.title}</span>
+                  <TooltipProvider><Tooltip>
+                    <TooltipTrigger asChild><Button asChild className="text-sm"><Link href={`/courses/${courseId}/lessons/${l.id}`}>カード管理</Link></Button></TooltipTrigger>
+                    <TooltipContent>このレッスンのカードを編集</TooltipContent>
+                  </Tooltip></TooltipProvider>
+                  <TooltipProvider><Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button onClick={() => runSSEForLesson(l)} disabled={runningLesson?.id === l.id} className="text-sm">
+                        {runningLesson?.id === l.id ? "生成中…" : "AIでカード生成"}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>AIでこのレッスンのカード案を生成</TooltipContent>
+                  </Tooltip></TooltipProvider>
+                  <TooltipProvider><Tooltip>
+                    <TooltipTrigger asChild><Button variant="destructive" onClick={() => onDeleteLesson(l.id)} className="text-sm">削除</Button></TooltipTrigger>
+                    <TooltipContent>レッスンを削除</TooltipContent>
+                  </Tooltip></TooltipProvider>
+                </div>
+                {previews[l.id] && (
+                  <div className="mt-3 border-t pt-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm text-gray-600">プレビュー: {previews[l.id].payload.cards.length} 件</div>
+                      <div className="flex gap-2">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button className="text-sm">差分プレビュー</Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DlgHeader>
+                              <DlgTitle>差分プレビュー</DlgTitle>
+                              <DlgDesc>生成されたカードの一覧です。保存で反映されます。</DlgDesc>
+                            </DlgHeader>
+                            <ol className="text-sm space-y-1 list-decimal list-inside">
+                              {previews[l.id].payload.cards.map((c, idx) => (
+                                <li key={idx}>
+                                  <span className="px-1 py-0.5 rounded bg-black/5 mr-2">{c.type}</span>
+                                  {"title" in c && c.title ? c.title : c.type === "text" ? "テキスト" : "カード"}
+                                </li>
+                              ))}
+                            </ol>
+                            <div className="mt-4 flex justify-end gap-2">
+                              <Button onClick={() => onCommitCards(l)} variant="default">保存</Button>
+                              <Button onClick={() => setPreviews((prev) => { const copy = { ...prev }; delete copy[l.id]; return copy; })}>破棄</Button>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                    <div className="mb-2">
+                      <SSEConsole logs={logsByLesson[l.id] ?? []} />
                     </div>
                   </div>
-                  <ol className="text-sm space-y-1 list-decimal list-inside">
-                    {previews[l.id].payload.cards.map((c, idx) => (
-                      <li key={idx}>
-                        <span className="px-1 py-0.5 rounded bg-black/5 mr-2">{c.type}</span>
-                        {"title" in c && c.title ? c.title : c.type === "text" ? "テキスト" : "カード"}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
+                )}
+              </Card>
             </li>
           ))}
         </ul>
       </section>
+      </main>
     </div>
   );
 }
-

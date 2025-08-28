@@ -1,10 +1,23 @@
 "use client";
-
-import { useState } from "react";
-import { generateCoursePlan } from "@/lib/ai/mock";
 import { commitCoursePlan, saveDraft } from "@/lib/localdb";
 import type { CoursePlan } from "@/lib/types";
 import { useRouter } from "next/navigation";
+import { Header } from "@/components/ui/header";
+import { SSEConsole } from "@/components/ui/SSEConsole";
+import { useSSE } from "@/components/ai/useSSE";
+import { useEffect, useState } from "react";
+import { DiffList, type DiffItem } from "@/components/ui/DiffList";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+
+function SSERunner({ url, body, onUpdate, onDone, onError }: any) {
+  useSSE(url, body, { onUpdate, onDone, onError });
+  return null;
+}
 
 export default function PlanCoursePage() {
   const router = useRouter();
@@ -14,108 +27,185 @@ export default function PlanCoursePage() {
   const [lessonCount, setLessonCount] = useState(6);
   const [plan, setPlan] = useState<CoursePlan | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [logs, setLogs] = useState<{ ts: number; text: string }[]>([]);
 
-  function onGenerate(e: React.FormEvent) {
-    e.preventDefault();
+  function startGenerate(e?: React.FormEvent) {
+    if (e) e.preventDefault();
     if (!theme.trim()) return alert("テーマは必須です");
-    setLoading(true);
-    // Mock generation
-    const p = generateCoursePlan({ theme, level, goal, lessonCount });
-    const draft = saveDraft("outline", p);
-    setPlan(p);
-    setDraftId(draft.id);
-    setLoading(false);
+    setPlan(null);
+    setDraftId(null);
+    setLogs([]);
+    setGenerating(true);
   }
 
   function onCommit() {
     if (!draftId) return;
     const res = commitCoursePlan(draftId);
     if (!res) return alert("保存に失敗しました");
+    // show toast on success
+    try {
+      const { toast } = require("@/components/ui/toaster");
+      toast({ title: "保存しました", description: "コース案を反映しました。" });
+    } catch {}
     router.replace(`/courses/${res.courseId}`);
   }
 
-  return (
-    <div className="max-w-3xl mx-auto p-6">
-      <h1 className="text-xl font-semibold mb-4">AI コース設計（モック）</h1>
-      <form onSubmit={onGenerate} className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <div className="sm:col-span-2">
-          <label className="block text-sm font-medium mb-1">テーマ</label>
-          <input
-            value={theme}
-            onChange={(e) => setTheme(e.target.value)}
-            className="w-full border rounded px-3 py-2"
-            placeholder="例: 機械学習 入門"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">レベル（任意）</label>
-          <input
-            value={level}
-            onChange={(e) => setLevel(e.target.value)}
-            className="w-full border rounded px-3 py-2"
-            placeholder="初級/中級/上級 など"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">目標（任意）</label>
-          <input
-            value={goal}
-            onChange={(e) => setGoal(e.target.value)}
-            className="w-full border rounded px-3 py-2"
-            placeholder="例: 3週間で基礎を習得"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">レッスン数</label>
-          <input
-            type="number"
-            min={3}
-            max={30}
-            value={lessonCount}
-            onChange={(e) => setLessonCount(Number(e.target.value))}
-            className="w-full border rounded px-3 py-2"
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 rounded bg-black text-white disabled:opacity-60"
-          >
-            {loading ? "生成中..." : "コース案を生成"}
-          </button>
-        </div>
-      </form>
+  const diffs: DiffItem[] = plan
+    ? plan.lessons.map((l) => ({ kind: "add", label: l.title }))
+    : [];
 
-      {plan && (
-        <section className="border rounded-md p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-medium text-lg">{plan.course.title}</h2>
-              {plan.course.description && (
-                <p className="text-sm text-gray-600">{plan.course.description}</p>
-              )}
-            </div>
-            <button onClick={onCommit} className="px-3 py-2 rounded bg-black text-white">
-              保存して作成
-            </button>
-          </div>
-          <ol className="mt-4 space-y-2 list-decimal list-inside">
-            {plan.lessons.map((l, idx) => (
-              <li key={idx}>
-                <div>
-                  <div className="font-medium">{l.title}</div>
-                  {l.summary && (
-                    <div className="text-sm text-gray-600">{l.summary}</div>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ol>
+  return (
+    <div className="min-h-screen">
+      <Header />
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+        {generating && (
+          <SSERunner
+            url="/api/ai/outline"
+            body={{ theme, level, goal, lessonCount }}
+            onUpdate={(d: any) => setLogs((s) => [...s, { ts: Date.now(), text: `${d?.node ?? d?.status}` }])}
+            onDone={(d: any) => {
+              const p = d?.plan as CoursePlan;
+              if (p) {
+                const draft = saveDraft("outline", p);
+                setPlan(p);
+                setDraftId(draft.id);
+                setLogs((s) => [...s, { ts: Date.now(), text: `下書きを保存しました（ID: ${draft.id}）` }]);
+              }
+              setGenerating(false);
+            }}
+            onError={(d: any) => {
+              setLogs((s) => [...s, { ts: Date.now(), text: `エラー: ${d?.message ?? "unknown"}` }]);
+              setGenerating(false);
+            }}
+          />
+        )}
+        <section className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>AI コース設計</CardTitle>
+              <CardDescription>入力 → ストリーミング → 差分プレビュー → 保存</CardDescription>
+              <ol className="flex items-center gap-2 text-xs">
+                <Badge variant="secondary">テーマ</Badge>
+                <span>→</span>
+                <Badge variant="secondary">レベル/目標</Badge>
+                <span>→</span>
+                <Badge variant="secondary">レッスン数</Badge>
+                <span>→</span>
+                <Badge variant="secondary">生成プレビュー</Badge>
+              </ol>
+            </CardHeader>
+            <CardContent>
+            <form onSubmit={startGenerate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium mb-1">テーマ</label>
+                <Input
+                  value={theme}
+                  onChange={(e) => setTheme(e.target.value)}
+                  placeholder="例: 機械学習 入門"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">レベル（任意）</label>
+                <Input
+                  value={level}
+                  onChange={(e) => setLevel(e.target.value)}
+                  placeholder="初級/中級/上級 など"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">目標（任意）</label>
+                <Input
+                  value={goal}
+                  onChange={(e) => setGoal(e.target.value)}
+                  placeholder="例: 3週間で基礎を習得"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">レッスン数</label>
+                <Input
+                  type="number"
+                  min={3}
+                  max={30}
+                  value={lessonCount}
+                  onChange={(e) => setLessonCount(Number(e.target.value))}
+                />
+              </div>
+              <div className="sm:col-span-2 flex items-center gap-2">
+                <Button type="submit" disabled={generating} variant="default">
+                  {generating ? "生成中…" : "コース案を生成"}
+                </Button>
+                {plan && (
+                  <>
+                    <Button type="button" onClick={startGenerate}>再生成</Button>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button type="button">差分プレビュー</Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>差分プレビュー</DialogTitle>
+                          <DialogDescription>追加されるレッスンの一覧です。保存で反映されます。</DialogDescription>
+                        </DialogHeader>
+                        <DiffList items={diffs} />
+                        <div className="mt-4 flex justify-end gap-2">
+                          <Button onClick={onCommit} variant="default">保存して反映</Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </>
+                )}
+              </div>
+            </form>
+            </CardContent>
+          </Card>
+
+          {plan && (
+            <Card>
+              <CardHeader>
+                <CardTitle>{plan.course.title}</CardTitle>
+                {plan.course.description && (
+                  <CardDescription>{plan.course.description}</CardDescription>
+                )}
+              </CardHeader>
+              <CardContent>
+                <DiffList items={diffs} />
+                <ol className="mt-3 space-y-2 list-decimal list-inside">
+                  {plan.lessons.map((l, idx) => (
+                    <li key={idx}>
+                      <div>
+                        <div className="font-medium">{l.title}</div>
+                        {l.summary && (
+                          <div className="text-sm text-gray-600">{l.summary}</div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
+          )}
         </section>
-      )}
+
+        <aside className="space-y-3">
+          <h3 className="text-sm font-medium">進行状況</h3>
+          <Tabs defaultValue="log">
+            <TabsList>
+              <TabsTrigger value="log">ログ</TabsTrigger>
+              <TabsTrigger value="diff">差分</TabsTrigger>
+            </TabsList>
+            <TabsContent value="log">
+              <SSEConsole logs={logs} />
+            </TabsContent>
+            <TabsContent value="diff">
+              <Card className="p-3">
+                <DiffList items={diffs} />
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </aside>
+      </main>
     </div>
   );
 }
-

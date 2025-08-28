@@ -1,26 +1,56 @@
 @import "tailwindcss";
 
+/* Design tokens (HSL for easy theming) */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* light */
+  --bg: 0 0% 100%;
+  --fg: 240 10% 3.9%;
+  --muted: 240 4.8% 95.9%;
+  --card: 0 0% 100%;
+  --border: 240 5.9% 90%;
+  --primary: 240 5.9% 10%;
+  --primary-fg: 0 0% 98%;
+  --destructive: 0 84.2% 60.2%;
+  --accent: 240 4.8% 95.9%;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* dark */
+    --bg: 240 10% 3.9%;
+    --fg: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --card: 240 10% 3.9%;
+    --border: 240 3.7% 18%;
+    --primary: 0 0% 98%;
+    --primary-fg: 240 10% 3.9%;
+    --destructive: 0 62.8% 30.6%;
+    --accent: 240 3.7% 15.9%;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
+
+/* Base */
+html, body {
+  height: 100%;
+}
+
+body {
+  background-color: hsl(var(--bg));
+  color: hsl(var(--fg));
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    Segoe UI, Roboto, Noto Sans, Ubuntu, Cantarell, Helvetica Neue, Arial,
+    "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+/* Focus ring */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
+/* Removed legacy utility classes (.btn/.input/.badge/.card/legacy drawer) in favor of shadcn components */

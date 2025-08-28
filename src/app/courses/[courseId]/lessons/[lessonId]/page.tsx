@@ -12,6 +12,10 @@ import {
   reorderCards,
 } from "@/lib/localdb";
 import type { Card, CardType, Course, Lesson, FillBlankCardContent, QuizCardContent, TextCardContent } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select } from "@/components/ui/select";
 
 type NewCardState =
   | { type: "text"; title: string; body: string }
@@ -113,18 +117,17 @@ export default function LessonCardsPage() {
             <div className="text-xs text-gray-500">{course.title}</div>
             <h1 className="text-xl font-semibold">{lesson.title} のカード</h1>
           </div>
-          <Link href={`/courses/${courseId}`} className="px-3 py-2 rounded border hover:bg-black/5">
-            戻る
-          </Link>
+          <Button asChild><Link href={`/courses/${courseId}`}>戻る</Link></Button>
         </div>
       </header>
 
       <section className="mb-6">
         <h2 className="font-medium mb-2">新規カード</h2>
-        <form onSubmit={onAddCard} className="border rounded-md p-4 space-y-3">
+        <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4">
+        <form onSubmit={onAddCard} className="space-y-3">
           <div className="flex gap-3 items-center">
             <label className="text-sm">タイプ</label>
-            <select
+            <Select
               value={newCard.type}
               onChange={(e) => {
                 const t = e.target.value as CardType;
@@ -141,27 +144,26 @@ export default function LessonCardsPage() {
                 if (t === "fill-blank")
                   setNewCard({ type: "fill-blank", title: "", text: "", answers: "1:answer", caseSensitive: false });
               }}
-              className="border rounded px-2 py-1"
             >
               <option value="text">Text</option>
               <option value="quiz">Quiz</option>
               <option value="fill-blank">Fill‑blank</option>
-            </select>
-            <input
+            </Select>
+            <Input
               value={(newCard as any).title ?? ""}
               onChange={(e) => setNewCard({ ...(newCard as any), title: e.target.value })}
               placeholder="タイトル（任意）"
-              className="flex-1 border rounded px-3 py-2"
+              className="flex-1"
             />
           </div>
 
           {newCard.type === "text" && (
             <div>
               <label className="block text-sm font-medium mb-1">本文</label>
-              <textarea
+              <Textarea
                 value={newCard.body}
                 onChange={(e) => setNewCard({ ...newCard, body: e.target.value })}
-                className="w-full border rounded px-3 py-2 min-h-24"
+                className=""
               />
             </div>
           )}
@@ -170,35 +172,35 @@ export default function LessonCardsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium mb-1">設問</label>
-                <input
+                <Input
                   value={newCard.question}
                   onChange={(e) => setNewCard({ ...newCard, question: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
+                  className=""
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">選択肢（改行区切り）</label>
-                <textarea
+                <Textarea
                   value={newCard.options}
                   onChange={(e) => setNewCard({ ...newCard, options: e.target.value })}
-                  className="w-full border rounded px-3 py-2 min-h-24"
+                  className=""
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">正解インデックス（0開始）</label>
-                <input
+                <Input
                   type="number"
                   value={newCard.answerIndex}
                   onChange={(e) => setNewCard({ ...newCard, answerIndex: Number(e.target.value) })}
-                  className="w-full border rounded px-3 py-2"
+                  className=""
                 />
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium mb-1">解説（任意）</label>
-                <input
+                <Input
                   value={newCard.explanation}
                   onChange={(e) => setNewCard({ ...newCard, explanation: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
+                  className=""
                 />
               </div>
             </div>
@@ -208,18 +210,18 @@ export default function LessonCardsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium mb-1">テキスト（[[1]] の形式で空所）</label>
-                <textarea
+                <Textarea
                   value={newCard.text}
                   onChange={(e) => setNewCard({ ...newCard, text: e.target.value })}
-                  className="w-full border rounded px-3 py-2 min-h-24"
+                  className=""
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">回答（例: 1:answer 改行区切り）</label>
-                <textarea
+                <Textarea
                   value={newCard.answers}
                   onChange={(e) => setNewCard({ ...newCard, answers: e.target.value })}
-                  className="w-full border rounded px-3 py-2 min-h-24"
+                  className=""
                 />
               </div>
               <div className="flex items-center gap-2">
@@ -235,11 +237,10 @@ export default function LessonCardsPage() {
           )}
 
           <div>
-            <button type="submit" className="px-3 py-2 rounded bg-black text-white">
-              追加
-            </button>
+            <Button type="submit" variant="default">追加</Button>
           </div>
         </form>
+        </div>
       </section>
 
       <section>
@@ -249,34 +250,35 @@ export default function LessonCardsPage() {
         ) : (
           <ul className="space-y-2">
             {cards.map((c, idx) => (
-              <li key={c.id} className="border rounded p-3">
+              <li key={c.id} className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3">
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500 select-none">#{idx + 1}</span>
                   <span className="px-1 py-0.5 rounded bg-black/5 text-xs">{c.cardType}</span>
                   <span className="flex-1 truncate">{c.title || labelForCard(c)}</span>
-                  <button
+                  <Button
                     onClick={() => move(idx, -1)}
-                    className="text-xs px-2 py-1 rounded border hover:bg-black/5"
+                    className="text-xs"
                   >
                     ↑
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={() => move(idx, +1)}
-                    className="text-xs px-2 py-1 rounded border hover:bg-black/5"
+                    className="text-xs"
                   >
                     ↓
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="destructive"
                     onClick={() => {
                       if (confirm("削除しますか？")) {
                         deleteCard(c.id);
                         refresh();
                       }
                     }}
-                    className="text-xs px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50"
+                    className="text-xs"
                   >
                     削除
-                  </button>
+                  </Button>
                 </div>
                 <CardPreview card={c} />
               </li>
@@ -319,4 +321,3 @@ function CardPreview({ card }: { card: Card }) {
     </div>
   );
 }
-
