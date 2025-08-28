@@ -1,9 +1,9 @@
 "use client";
-import { commitCoursePlan, saveDraft } from "@/lib/localdb";
+import { commitCoursePlan, commitCoursePlanPartial, saveDraft, deleteCourse } from "@/lib/localdb";
 import type { CoursePlan } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/ui/header";
-import { SSEConsole } from "@/components/ui/SSEConsole";
+import { SSETimeline } from "@/components/ui/SSETimeline";
 import { useSSE } from "@/components/ai/useSSE";
 import { useEffect, useState } from "react";
 import { DiffList, type DiffItem } from "@/components/ui/DiffList";
@@ -29,6 +29,7 @@ export default function PlanCoursePage() {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [logs, setLogs] = useState<{ ts: number; text: string }[]>([]);
+  const [selected, setSelected] = useState<Record<number, boolean>>({});
 
   function startGenerate(e?: React.FormEvent) {
     if (e) e.preventDefault();
@@ -41,19 +42,25 @@ export default function PlanCoursePage() {
 
   function onCommit() {
     if (!draftId) return;
-    const res = commitCoursePlan(draftId);
+    const idxs = Object.entries(selected)
+      .filter(([, v]) => v)
+      .map(([k]) => Number(k));
+    const res = idxs.length > 0 ? commitCoursePlanPartial(draftId, idxs) : commitCoursePlan(draftId);
     if (!res) return alert("保存に失敗しました");
-    // show toast on success
     try {
       const { toast } = require("@/components/ui/toaster");
-      toast({ title: "保存しました", description: "コース案を反映しました。" });
+      toast({
+        title: "保存しました",
+        description: "コース案を反映しました。",
+        actionLabel: "取り消す (60秒)",
+        durationMs: 60000,
+        onAction: () => deleteCourse(res.courseId),
+      });
     } catch {}
     router.replace(`/courses/${res.courseId}`);
   }
 
-  const diffs: DiffItem[] = plan
-    ? plan.lessons.map((l) => ({ kind: "add", label: l.title }))
-    : [];
+  const diffs: DiffItem[] = plan ? plan.lessons.map((l) => ({ kind: "add", label: l.title })) : [];
 
   return (
     <div className="min-h-screen">
@@ -170,15 +177,19 @@ export default function PlanCoursePage() {
                 )}
               </CardHeader>
               <CardContent>
-                <DiffList items={diffs} />
-                <ol className="mt-3 space-y-2 list-decimal list-inside">
+                <div className="text-sm text-gray-700 mb-2">反映するレッスンを選択（未選択なら全件）</div>
+                <ol className="mt-1 space-y-2 list-decimal list-inside">
                   {plan.lessons.map((l, idx) => (
-                    <li key={idx}>
+                    <li key={idx} className="flex items-start gap-2">
+                      <input
+                        aria-label={`${l.title} を選択`}
+                        type="checkbox"
+                        checked={!!selected[idx]}
+                        onChange={(e) => setSelected((s) => ({ ...s, [idx]: e.target.checked }))}
+                      />
                       <div>
                         <div className="font-medium">{l.title}</div>
-                        {l.summary && (
-                          <div className="text-sm text-gray-600">{l.summary}</div>
-                        )}
+                        {l.summary && <div className="text-sm text-gray-600">{l.summary}</div>}
                       </div>
                     </li>
                   ))}
@@ -190,20 +201,20 @@ export default function PlanCoursePage() {
 
         <aside className="space-y-3">
           <h3 className="text-sm font-medium">進行状況</h3>
-          <Tabs defaultValue="log">
-            <TabsList>
-              <TabsTrigger value="log">ログ</TabsTrigger>
-              <TabsTrigger value="diff">差分</TabsTrigger>
-            </TabsList>
-            <TabsContent value="log">
-              <SSEConsole logs={logs} />
-            </TabsContent>
-            <TabsContent value="diff">
-              <Card className="p-3">
-                <DiffList items={diffs} />
-              </Card>
-            </TabsContent>
-          </Tabs>
+            <Tabs defaultValue="log">
+              <TabsList>
+                <TabsTrigger value="log">ログ</TabsTrigger>
+                <TabsTrigger value="diff">差分</TabsTrigger>
+              </TabsList>
+              <TabsContent value="log">
+                <SSETimeline logs={logs} />
+              </TabsContent>
+              <TabsContent value="diff">
+                <Card className="p-3">
+                  <DiffList items={diffs} />
+                </Card>
+              </TabsContent>
+            </Tabs>
         </aside>
       </main>
     </div>

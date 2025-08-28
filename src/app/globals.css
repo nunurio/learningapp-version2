@@ -12,6 +12,7 @@
   --primary-fg: 0 0% 98%;
   --destructive: 0 84.2% 60.2%;
   --accent: 240 4.8% 95.9%;
+  --focus: 217 92% 50%; /* high-contrast blue for focus ring */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -26,6 +27,7 @@
     --primary-fg: 240 10% 3.9%;
     --destructive: 0 62.8% 30.6%;
     --accent: 240 3.7% 15.9%;
+    --focus: 210 100% 65%;
   }
 }
 
@@ -47,10 +49,26 @@ body {
     "Apple Color Emoji", "Segoe UI Emoji";
 }
 
-/* Focus ring */
+/* Focus ring (WCAG 2.2: 2.4.13) */
 :where(a, button, input, textarea, select, [tabindex]):focus-visible {
-  outline: 2px solid hsl(var(--primary));
+  outline: 2px solid hsl(var(--focus));
   outline-offset: 2px;
+}
+
+/* Reduced motion respect */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Target size minimum (2.5.8 – soft) */
+:where(button, [role="button"]) {
+  min-height: 24px;
+  min-width: 24px;
 }
 
 /* Removed legacy utility classes (.btn/.input/.badge/.card/legacy drawer) in favor of shadcn components */

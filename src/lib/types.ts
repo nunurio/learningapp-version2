@@ -56,6 +56,16 @@ export type Progress = {
   answer?: unknown;
 };
 
+// Simple local SRS (Spaced Repetition) model
+export type SrsRating = "again" | "hard" | "good" | "easy";
+export type SrsEntry = {
+  cardId: UUID;
+  ease: number; // 1.3–3.0 range
+  interval: number; // days
+  due: string; // ISO date (midnight)
+  lastRating?: SrsRating;
+};
+
 // AI preview payloads (local mock only)
 export type CoursePlan = {
   course: {
@@ -94,4 +104,3 @@ export type AiDraft = {
   payload: CoursePlan | LessonCards;
   createdAt: string; // ISO
 };
-

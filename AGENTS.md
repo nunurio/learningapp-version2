@@ -1,3 +1,5 @@
+> Note: Perform the thinking process in English; provide the final answer in Japanese.
+
 # Repository Guidelines
 
 ## Project Structure & Module Organization

@@ -11,12 +11,14 @@ import {
   reorderLessons,
   updateCourse,
   commitLessonCards,
+  commitLessonCardsPartial,
+  deleteCards,
   saveDraft,
 } from "@/lib/localdb";
 import type { Course, Lesson, LessonCards } from "@/lib/types";
 import { Header } from "@/components/ui/header";
 import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetClose } from "@/components/ui/sheet";
-import { SSEConsole } from "@/components/ui/SSEConsole";
+import { SSETimeline } from "@/components/ui/SSETimeline";
 import { useSSE } from "@/components/ai/useSSE";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +26,7 @@ import { Dialog, DialogTrigger, DialogContent, DialogHeader as DlgHeader, Dialog
 import { Card, CardContent } from "@/components/ui/card";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/toaster";
+import { SortableList } from "@/components/dnd/SortableList";
 function SSERunner({ url, body, onUpdate, onDone, onError }: any) {
   useSSE(url, body, { onUpdate, onDone, onError });
   return null;
@@ -41,6 +44,7 @@ export default function CourseDetailPage() {
   const [previews, setPreviews] = useState<Record<string, { draftId: string; payload: LessonCards }>>({});
   const [logsByLesson, setLogsByLesson] = useState<Record<string, { ts: number; text: string }[]>>({});
   const [runningLesson, setRunningLesson] = useState<Lesson | null>(null);
+  const [lessonQuery, setLessonQuery] = useState("");
 
   function refresh() {
     const c = getCourse(courseId);
@@ -92,12 +96,24 @@ export default function CourseDetailPage() {
     setLogsByLesson((m) => ({ ...m, [lesson.id]: [] }));
   }
 
+  const [selectedCardsByLesson, setSelectedCardsByLesson] = useState<Record<string, Record<number, boolean>>>({});
+
   function onCommitCards(lesson: Lesson) {
     const p = previews[lesson.id];
     if (!p) return;
-    const res = commitLessonCards({ draftId: p.draftId, lessonId: lesson.id });
+    const selected = selectedCardsByLesson[lesson.id] || {};
+    const idxs = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
+    const res = idxs.length > 0
+      ? commitLessonCardsPartial({ draftId: p.draftId, lessonId: lesson.id, selectedIndexes: idxs })
+      : commitLessonCards({ draftId: p.draftId, lessonId: lesson.id });
     if (!res) return alert("保存に失敗しました");
-    toast({ title: "保存しました", description: `${res.count} 件のカードを反映しました。` });
+    toast({
+      title: "保存しました",
+      description: `${res.count} 件のカードを反映しました。`,
+      actionLabel: "取り消す (60秒)",
+      durationMs: 60000,
+      onAction: () => deleteCards(res.cardIds),
+    });
     setPreviews((prev) => {
       const copy = { ...prev };
       delete copy[lesson.id];
@@ -149,23 +165,30 @@ export default function CourseDetailPage() {
             }}
           />
         )}
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-semibold">{course.title}</h1>
             {course.description && (
               <p className="text-sm text-gray-600 mt-1">{course.description}</p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1 sm:gap-2">
             <Sheet>
-              <SheetTrigger asChild><Button>レッスン一覧</Button></SheetTrigger>
-              <SheetContent side="right">
+              <SheetTrigger asChild><Button size="sm">レッスン一覧</Button></SheetTrigger>
+              <SheetContent side="right" aria-label="レッスン一覧">
                 <SheetHeader>
                   <div className="font-medium">レッスン一覧</div>
                   <SheetClose asChild><Button aria-label="閉じる">✕</Button></SheetClose>
                 </SheetHeader>
+                <div className="mb-2">
+                  <label className="sr-only" htmlFor="lesson-search">レッスン検索</label>
+                  <Input id="lesson-search" placeholder="レッスンを検索…" value={lessonQuery} onChange={(e) => setLessonQuery(e.target.value)} />
+                </div>
                 <ul className="space-y-2">
-                  {lessons.map((l, i) => (
+                  {lessons.filter((l) => {
+                    const kw = lessonQuery.trim().toLowerCase();
+                    return kw ? l.title.toLowerCase().includes(kw) : true;
+                  }).map((l, i) => (
                     <li key={l.id} className="flex items-center gap-2">
                       <span className="text-xs text-gray-500 w-6">{i + 1}</span>
                       <Link href={`#lesson-${l.id}`} className="truncate flex-1">{l.title}</Link>
@@ -174,7 +197,7 @@ export default function CourseDetailPage() {
                 </ul>
               </SheetContent>
             </Sheet>
-            <Button asChild><Link href={`/learn/${course.id}`}>学習する</Link></Button>
+            <Button asChild size="sm"><Link href={`/learn/${course.id}`}>学習する</Link></Button>
           </div>
         </div>
 
@@ -189,35 +212,69 @@ export default function CourseDetailPage() {
           />
           <Button onClick={onAddLesson} variant="default">追加</Button>
         </div>
-        <ul className="space-y-2">
-          {lessons.map((l) => (
-            <li
-              key={l.id}
-              className=""
-              draggable
-              onDragStart={(e) => onDragStart(e, l.id)}
-              onDragOver={onDragOver}
-              onDrop={(e) => onDrop(e, l.id)}
-              id={`lesson-${l.id}`}
-            >
-              <Card className="p-3">
-                <div className="flex items-center gap-2">
-                  <span className="cursor-move select-none text-gray-500">≡</span>
-                  <span className="font-medium flex-1">{l.title}</span>
+        <SortableList
+          ids={lessons.map((l) => l.id)}
+          label="レッスンの並び替え"
+          onReorder={(ids) => { reorderLessons(courseId, ids); refresh(); }}
+          renderItem={(id) => {
+            // 並び替え/削除直後の一瞬の不整合に備えて存在チェック
+            const l = lessons.find((x) => x.id === id);
+            if (!l) return <div className="text-xs text-gray-400">更新中…</div>;
+            return (
+              <Card className="p-3" id={`lesson-${l.id}`}>
+                <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                  <span className="font-medium w-full sm:flex-1 min-w-0 truncate">{l.title}</span>
+                  {/* Keyboard-accessible reorder actions (WCAG 2.5.7) */}
+                  <span className="hidden sm:inline-flex"><Button size="sm"
+                    aria-label="上へ移動"
+                    className="text-sm"
+                    onClick={() => {
+                      const ids = lessons.map((x) => x.id);
+                      const i = ids.indexOf(l.id);
+                      if (i > 0) {
+                        const copy = [...ids];
+                        copy.splice(i - 1, 0, copy.splice(i, 1)[0]);
+                        reorderLessons(courseId, copy);
+                        refresh();
+                      }
+                    }}
+                  >↑</Button></span>
+                  <span className="hidden sm:inline-flex"><Button size="sm"
+                    aria-label="下へ移動"
+                    className="text-sm"
+                    onClick={() => {
+                      const ids = lessons.map((x) => x.id);
+                      const i = ids.indexOf(l.id);
+                      if (i < ids.length - 1) {
+                        const copy = [...ids];
+                        copy.splice(i + 1, 0, copy.splice(i, 1)[0]);
+                        reorderLessons(courseId, copy);
+                        refresh();
+                      }
+                    }}
+                  >↓</Button></span>
                   <TooltipProvider><Tooltip>
-                    <TooltipTrigger asChild><Button asChild className="text-sm"><Link href={`/courses/${courseId}/lessons/${l.id}`}>カード管理</Link></Button></TooltipTrigger>
+                    <TooltipTrigger asChild><Button asChild size="sm" className="text-sm"><Link href={`/courses/${courseId}/lessons/${l.id}`}>
+                      <span className="hidden sm:inline">カード管理</span>
+                      <span className="sm:hidden inline">カード</span>
+                    </Link></Button></TooltipTrigger>
                     <TooltipContent>このレッスンのカードを編集</TooltipContent>
                   </Tooltip></TooltipProvider>
                   <TooltipProvider><Tooltip>
                     <TooltipTrigger asChild>
-                      <Button onClick={() => runSSEForLesson(l)} disabled={runningLesson?.id === l.id} className="text-sm">
-                        {runningLesson?.id === l.id ? "生成中…" : "AIでカード生成"}
+                      <Button size="sm" onClick={() => runSSEForLesson(l)} disabled={runningLesson?.id === l.id} className="text-sm">
+                        {runningLesson?.id === l.id ? "生成中…" : (
+                          <>
+                            <span className="hidden sm:inline">AIでカード生成</span>
+                            <span className="sm:hidden inline">AI生成</span>
+                          </>
+                        )}
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>AIでこのレッスンのカード案を生成</TooltipContent>
                   </Tooltip></TooltipProvider>
                   <TooltipProvider><Tooltip>
-                    <TooltipTrigger asChild><Button variant="destructive" onClick={() => onDeleteLesson(l.id)} className="text-sm">削除</Button></TooltipTrigger>
+                    <TooltipTrigger asChild><Button size="sm" variant="destructive" onClick={() => onDeleteLesson(l.id)} className="text-sm">削除</Button></TooltipTrigger>
                     <TooltipContent>レッスンを削除</TooltipContent>
                   </Tooltip></TooltipProvider>
                 </div>
@@ -235,9 +292,19 @@ export default function CourseDetailPage() {
                               <DlgTitle>差分プレビュー</DlgTitle>
                               <DlgDesc>生成されたカードの一覧です。保存で反映されます。</DlgDesc>
                             </DlgHeader>
+                            <div className="text-sm text-gray-700 mb-2">反映するカードを選択（未選択なら全件）</div>
                             <ol className="text-sm space-y-1 list-decimal list-inside">
                               {previews[l.id].payload.cards.map((c, idx) => (
-                                <li key={idx}>
+                                <li key={idx} className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`カード #${idx + 1} を選択`}
+                                    checked={!!(selectedCardsByLesson[l.id]?.[idx])}
+                                    onChange={(e) => setSelectedCardsByLesson((m) => ({
+                                      ...m,
+                                      [l.id]: { ...(m[l.id] || {}), [idx]: e.target.checked },
+                                    }))}
+                                  />
                                   <span className="px-1 py-0.5 rounded bg-black/5 mr-2">{c.type}</span>
                                   {"title" in c && c.title ? c.title : c.type === "text" ? "テキスト" : "カード"}
                                 </li>
@@ -252,14 +319,14 @@ export default function CourseDetailPage() {
                       </div>
                     </div>
                     <div className="mb-2">
-                      <SSEConsole logs={logsByLesson[l.id] ?? []} />
+                      <SSETimeline logs={logsByLesson[l.id] ?? []} />
                     </div>
                   </div>
                 )}
               </Card>
-            </li>
-          ))}
-        </ul>
+            );
+          }}
+        />
       </section>
       </main>
     </div>

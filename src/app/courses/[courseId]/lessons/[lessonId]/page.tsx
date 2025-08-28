@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
+import { SortableList } from "@/components/dnd/SortableList";
 
 type NewCardState =
   | { type: "text"; title: string; body: string }
@@ -248,25 +249,21 @@ export default function LessonCardsPage() {
         {cards.length === 0 ? (
           <p className="text-sm text-gray-600">カードがありません。</p>
         ) : (
-          <ul className="space-y-2">
-            {cards.map((c, idx) => (
-              <li key={c.id} className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3">
+          <SortableList
+            ids={cards.map((c) => c.id)}
+            label="カードの並び替え"
+            onReorder={(ids) => { reorderCards(lessonId, ids); refresh(); }}
+            renderItem={(id, idx) => {
+              // 並び替えや削除直後の短い間、SortableList の内部 state と
+              // 親の cards state が一時的にズレることがある。その場合は安全にスキップ。
+              const c = cards.find((x) => x.id === id);
+              if (!c) {
+                return <div className="text-xs text-gray-400">更新中…</div>;
+              }
+              return (
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-500 select-none">#{idx + 1}</span>
                   <span className="px-1 py-0.5 rounded bg-black/5 text-xs">{c.cardType}</span>
                   <span className="flex-1 truncate">{c.title || labelForCard(c)}</span>
-                  <Button
-                    onClick={() => move(idx, -1)}
-                    className="text-xs"
-                  >
-                    ↑
-                  </Button>
-                  <Button
-                    onClick={() => move(idx, +1)}
-                    className="text-xs"
-                  >
-                    ↓
-                  </Button>
                   <Button
                     variant="destructive"
                     onClick={() => {
@@ -280,10 +277,9 @@ export default function LessonCardsPage() {
                     削除
                   </Button>
                 </div>
-                <CardPreview card={c} />
-              </li>
-            ))}
-          </ul>
+              );
+            }}
+          />
         )}
       </section>
     </div>

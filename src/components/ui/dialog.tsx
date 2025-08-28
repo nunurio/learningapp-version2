@@ -26,21 +26,45 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 shadow-lg outline-none",
-        className
-      )}
-      {...props}
-    >
-      {children}
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+>(({ className, children, ...props }, ref) => {
+  const hasAriaLabel = typeof (props as any)["aria-label"] === "string" && (props as any)["aria-label"]; // truthy
+  const containsDialogTitle = (node: React.ReactNode): boolean => {
+    let found = false;
+    React.Children.forEach(node as React.ReactNode, (child) => {
+      if (found) return;
+      if (!React.isValidElement(child)) return;
+      if (child.type === (DialogPrimitive as any).Title) {
+        found = true;
+        return;
+      }
+      if (child.props?.children) {
+        if (containsDialogTitle(child.props.children)) found = true;
+      }
+    });
+    return found;
+  };
+  const hasTitle = containsDialogTitle(children);
+  const ariaLabel = (props as any)["aria-label"] as string | undefined;
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 shadow-lg outline-none",
+          className
+        )}
+        {...props}
+        aria-label={ariaLabel ?? (!hasTitle ? "Dialog" : undefined)}
+      >
+        {!hasTitle ? (
+          <DialogPrimitive.Title className="sr-only">{ariaLabel ?? "Dialog"}</DialogPrimitive.Title>
+        ) : null}
+        {children}
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 export const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
@@ -64,4 +88,3 @@ export const DialogDescription = React.forwardRef<
   <DialogPrimitive.Description ref={ref} className={cn("text-sm text-gray-600", className)} {...props} />
 ));
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
-

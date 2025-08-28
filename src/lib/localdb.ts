@@ -9,6 +9,8 @@ import type {
   Progress,
   UUID,
   CoursePlan,
+  SrsEntry,
+  SrsRating,
 } from "./types";
 
 const STORAGE_KEY = "learnify_v1";
@@ -19,10 +21,13 @@ type DB = {
   cards: Card[];
   progress: Progress[];
   drafts: AiDraft[];
+  srs: SrsEntry[];
+  flags: { cardId: UUID; flaggedAt: string }[];
+  notes: { cardId: UUID; text: string; updatedAt: string }[];
 };
 
 function emptyDb(): DB {
-  return { courses: [], lessons: [], cards: [], progress: [], drafts: [] };
+  return { courses: [], lessons: [], cards: [], progress: [], drafts: [], srs: [], flags: [], notes: [] };
 }
 
 function nowIso() {
@@ -50,6 +55,9 @@ function load(): DB {
       cards: parsed.cards ?? [],
       progress: parsed.progress ?? [],
       drafts: parsed.drafts ?? [],
+      srs: parsed.srs ?? [],
+      flags: (parsed as any).flags ?? [],
+      notes: (parsed as any).notes ?? [],
     };
   } catch {
     return emptyDb();
@@ -208,6 +216,91 @@ export function getProgress(cardId: UUID): Progress | undefined {
   return load().progress.find((p) => p.cardId === cardId);
 }
 
+// --- SRS helpers -----------------------------------------------------------
+function startOfDayISO(date = new Date()) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+export function getSrs(cardId: UUID): SrsEntry | undefined {
+  return load().srs.find((s) => s.cardId === cardId);
+}
+
+export function rateSrs(cardId: UUID, rating: SrsRating): SrsEntry {
+  const db = load();
+  const now = new Date();
+  const prev = db.srs.find((s) => s.cardId === cardId);
+  let ease = prev?.ease ?? 2.5;
+  let interval = prev?.interval ?? 0;
+
+  switch (rating) {
+    case "again":
+      ease = Math.max(1.3, ease - 0.2);
+      interval = 0;
+      break;
+    case "hard":
+      ease = Math.max(1.3, ease - 0.15);
+      interval = interval > 0 ? Math.max(1, Math.round(interval * 1.2)) : 0;
+      break;
+    case "good":
+      interval = interval > 0 ? Math.max(1, Math.round(interval * ease)) : 1;
+      ease = Math.max(1.3, Math.min(3.0, ease));
+      break;
+    case "easy":
+      interval = interval > 0 ? Math.max(1, Math.round(interval * ease * 1.3)) : 3;
+      ease = Math.min(3.0, ease + 0.1);
+      break;
+  }
+
+  const due = startOfDayISO(new Date(now.getTime() + interval * 24 * 60 * 60 * 1000));
+  const next: SrsEntry = { cardId, ease, interval, due, lastRating: rating };
+  if (!prev) db.srs.push(next);
+  else db.srs[db.srs.indexOf(prev)] = next;
+  save(db);
+  return next;
+}
+
+// --- Flags & Notes ---------------------------------------------------------
+export function isFlagged(cardId: UUID): boolean {
+  return load().flags.some((f) => f.cardId === cardId);
+}
+
+export function toggleFlag(cardId: UUID): boolean {
+  const db = load();
+  const idx = db.flags.findIndex((f) => f.cardId === cardId);
+  if (idx === -1) {
+    db.flags.push({ cardId, flaggedAt: nowIso() });
+    save(db);
+    return true;
+  } else {
+    db.flags.splice(idx, 1);
+    save(db);
+    return false;
+  }
+}
+
+export function saveNote(cardId: UUID, text: string) {
+  const db = load();
+  const idx = db.notes.findIndex((n) => n.cardId === cardId);
+  const row = { cardId, text, updatedAt: nowIso() };
+  if (idx === -1) db.notes.push(row);
+  else db.notes[idx] = row;
+  save(db);
+}
+
+export function getNote(cardId: UUID): string | undefined {
+  return load().notes.find((n) => n.cardId === cardId)?.text;
+}
+
+export function listFlaggedByCourse(courseId: UUID): UUID[] {
+  const db = load();
+  const lessonIds = db.lessons.filter((l) => l.courseId === courseId).map((l) => l.id);
+  const cardIds = db.cards.filter((c) => lessonIds.includes(c.lessonId)).map((c) => c.id);
+  const set = new Set(cardIds);
+  return db.flags.filter((f) => set.has(f.cardId)).map((f) => f.cardId);
+}
+
 // AI drafts (mock only)
 export function saveDraft(kind: AiDraft["kind"], payload: CoursePlan | LessonCards): AiDraft {
   const db = load();
@@ -240,26 +333,47 @@ export function commitCoursePlan(draftId: string): { courseId: UUID } | undefine
   return { courseId };
 }
 
+export function commitCoursePlanPartial(draftId: string, selectedIndexes: number[]): { courseId: UUID } | undefined {
+  const db = load();
+  const draft = db.drafts.find((d) => d.id === draftId && d.kind === "outline");
+  if (!draft) return undefined;
+  const plan = draft.payload as CoursePlan;
+  const { courseId } = createCourse({
+    title: plan.course.title,
+    description: plan.course.description,
+    category: plan.course.category,
+  });
+  const set = new Set(selectedIndexes);
+  plan.lessons.forEach((l, idx) => {
+    if (set.has(idx)) addLesson(courseId, l.title);
+  });
+  const latest = load();
+  latest.drafts = latest.drafts.filter((d) => d.id !== draftId);
+  save(latest);
+  return { courseId };
+}
+
 export function commitLessonCards(opts: {
   draftId: string;
   lessonId: UUID;
-}): { count: number } | undefined {
+}): { count: number; cardIds: UUID[] } | undefined {
   const db = load();
   const draft = db.drafts.find((d) => d.id === opts.draftId && d.kind === "lesson-cards");
   if (!draft) return undefined;
   const payload = draft.payload as LessonCards;
   const items = payload.cards;
   let count = 0;
+  const cardIds: UUID[] = [];
   for (const item of items) {
     if (item.type === "text") {
-      addCard(opts.lessonId, {
+      const id = addCard(opts.lessonId, {
         cardType: "text",
         title: item.title ?? null,
         content: { body: item.body },
       });
-      count++;
+      cardIds.push(id); count++;
     } else if (item.type === "quiz") {
-      addCard(opts.lessonId, {
+      const id = addCard(opts.lessonId, {
         cardType: "quiz",
         title: item.title ?? null,
         content: {
@@ -269,9 +383,9 @@ export function commitLessonCards(opts: {
           explanation: item.explanation ?? undefined,
         },
       });
-      count++;
+      cardIds.push(id); count++;
     } else if (item.type === "fill-blank") {
-      addCard(opts.lessonId, {
+      const id = addCard(opts.lessonId, {
         cardType: "fill-blank",
         title: item.title ?? null,
         content: {
@@ -280,11 +394,72 @@ export function commitLessonCards(opts: {
           caseSensitive: item.caseSensitive ?? false,
         },
       });
-      count++;
+      cardIds.push(id); count++;
     }
   }
   const latest = load();
   latest.drafts = latest.drafts.filter((d) => d.id !== opts.draftId);
   save(latest);
-  return { count };
+  return { count, cardIds };
+}
+
+export function commitLessonCardsPartial(opts: {
+  draftId: string;
+  lessonId: UUID;
+  selectedIndexes: number[];
+}): { count: number; cardIds: UUID[] } | undefined {
+  const db = load();
+  const draft = db.drafts.find((d) => d.id === opts.draftId && d.kind === "lesson-cards");
+  if (!draft) return undefined;
+  const payload = draft.payload as LessonCards;
+  const items = payload.cards;
+  const set = new Set(opts.selectedIndexes);
+  let count = 0;
+  const cardIds: UUID[] = [];
+  items.forEach((item, idx) => {
+    if (!set.has(idx)) return;
+    if (item.type === "text") {
+      const id = addCard(opts.lessonId, {
+        cardType: "text",
+        title: item.title ?? null,
+        content: { body: item.body },
+      });
+      cardIds.push(id); count++;
+    } else if (item.type === "quiz") {
+      const id = addCard(opts.lessonId, {
+        cardType: "quiz",
+        title: item.title ?? null,
+        content: {
+          question: item.question,
+          options: item.options,
+          answerIndex: item.answerIndex,
+          explanation: item.explanation ?? undefined,
+        },
+      });
+      cardIds.push(id); count++;
+    } else if (item.type === "fill-blank") {
+      const id = addCard(opts.lessonId, {
+        cardType: "fill-blank",
+        title: item.title ?? null,
+        content: {
+          text: item.text,
+          answers: item.answers,
+          caseSensitive: item.caseSensitive ?? false,
+        },
+      });
+      cardIds.push(id); count++;
+    }
+  });
+  const latest = load();
+  latest.drafts = latest.drafts.filter((d) => d.id !== opts.draftId);
+  save(latest);
+  return { count, cardIds };
+}
+
+export function deleteCards(ids: UUID[]) {
+  const db = load();
+  const set = new Set(ids);
+  db.cards = db.cards.filter((c) => !set.has(c.id));
+  db.progress = db.progress.filter((p) => !set.has(p.cardId));
+  save(db);
 }
