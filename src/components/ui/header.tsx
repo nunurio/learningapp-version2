@@ -21,10 +21,10 @@ export function Header({
   const showCtas = !minimal;
 
   return (
-    <header className="sticky top-0 z-30 bg-[hsl(var(--bg))]/80 backdrop-blur supports-[backdrop-filter]:bg-[hsl(var(--bg))]/70 border-b border-[hsl(var(--border))]">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+    <header className="sticky top-0 z-30 bg-white/80 dark:bg-[hsl(var(--bg))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-[hsl(var(--bg))]/70 border-b border-[hsl(var(--border))] shadow-sm">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
         <div className="flex items-center justify-between">
-          <Link href="/" className="font-semibold tracking-tight">Learnify</Link>
+          <Link href="/" className="font-bold text-xl tracking-tight bg-gradient-to-r from-[hsl(var(--primary-600))] to-[hsl(var(--primary-400))] bg-clip-text text-transparent hover:from-[hsl(var(--primary-700))] hover:to-[hsl(var(--primary-500))] transition-all duration-300">Learnify</Link>
           {/* モバイル1段目はロゴのみ。操作は下段の共通ナビに集約 */}
         </div>
         {!minimal && (

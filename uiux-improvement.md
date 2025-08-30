@@ -1,285 +1,372 @@
-以下は、**現状の実装（Next.js 15 + React 19 + Tailwind v4、ローカルファースト、SSE/プレビュー→コミット）を前提に、2025年時点のUI/UXベストプラクティスを反映した改善提案です。
-特に学習プレーヤー（/learn/[courseId]）**の使用感を大幅に高めることを最優先に、具体的なUI仕様・コンポーネント設計・アクセシビリティ要件・マイクロコピー・コード断片まで落とし込みます。
+# Learnify UI/UX 改善提案書
 
-⸻
+作成日: 2025-08-29
+バージョン: 1.0
 
-0. 方針（3つのF）
-	•	Fast: 知覚性能を最優優先（スケルトン/プログレス/段階的表示、キー操作先行）。スケルトンは<10秒、>10秒は進捗バーを原則。全画面ロードはスケルトン、単一モジュールはスピナーが目安。 ￼
-	•	Forgiving: 取り消し（Undo）、やり直し、スキップ、セッション再開を標準装備。Snackbar/Toastは非遮断でUndoを載せ、持続時間/履歴を適切に。 ￼ ￼
-	•	Focusable: キーボード・支援技術・モバイル操作の一貫性。フォーカス可視（3:1以上/2.4.13）、フォーカス非隠蔽（2.4.11）、ターゲットサイズ（24×24px以上/2.5.8）、ドラッグ代替（2.5.7）を順守。 ￼
+## 📊 現状分析
 
-⸻
+### 現在のデザインの特徴
+- **ミニマリスト**: 極めてシンプルで機能重視のUI
+- **モノクローム中心**: 白・黒・グレーの限定的なカラーパレット
+- **フラットデザイン**: 影やグラデーションなどの装飾要素が皆無
+- **静的**: アニメーションやトランジションがほぼ存在しない
+- **基本的なレイアウト**: グリッドとフレックスボックスのシンプルな配置
 
-1. 学習プレーヤー大改修（仕様・UIフロー）
+### 主要な課題
 
-1.1 レイアウト構造
-	•	ヘッダー（最小）: 左「戻る」、中央コース名、右「? ショートカット」「設定」。下部に進捗バー（セッション内の完了/未完了）。
-	•	コンテンツ: 中央にカード。下部に主要アクション（Hint/Reveal/Check/Skip/Next）。モバイルは左右スワイプで前後カード（ボタンも併置：2.5.7代替操作）。 ￼
-	•	フィードバック: 正解時の軽いモーション、誤答時は状態色+説明。Reduced motionユーザーにはモーション抑制。 ￼ ￼
+#### 1. 視覚的な魅力の欠如
+- ユーザーの学習意欲を引き出す視覚的要素が不足
+- ブランドアイデンティティが弱い
+- 競合他社と差別化できるデザイン要素がない
 
-1.2 入力・ショートカット
-	•	共通: ←/→ 前後、Space/Enter 決定、? ヘルプ、s スキップ、h ヒント。
-	•	Quiz: 1–9 で選択、Enter で回答。ラジオグループ+Roving tabindexで矢印キー移動/スペース選択。 ￼ ￼
-	•	Fill‑blank: Enter で採点、Ctrl/Cmd+Enter で次へ。
-	•	モバイル: スワイプはあくまで補助。必ずボタン代替を設置（2.5.7）。 ￼
+#### 2. ユーザー体験の単調さ
+- インタラクションフィードバックが不十分
+- 学習の進捗や達成感を感じにくい
+- ゲーミフィケーション要素の不在
 
-実装要点（QuizのARIA）
-	•	コンテナに role="radiogroup"、各選択肢 role="radio" + aria-checked。
-	•	Roving tabindex（選択中= tabIndex=0、他は -1）。ラベルはボタン化し、<button>で可達性とヒットエリア確保（2.5.8）。 ￼
+#### 3. 情報階層の不明瞭さ
+- 重要な要素とそうでない要素の区別が困難
+- CTAボタンが目立たない
+- ナビゲーション階層が視覚的に不明確
 
-// components/player/QuizOption.tsx
-type QuizOptionProps = {
-  id: string;
-  label: string;
-  checked: boolean;
-  onSelect: () => void;
-  disabled?: boolean;
+## 🎨 改善提案
+
+### 1. カラーシステムの刷新
+
+#### 新しいカラーパレット
+```css
+:root {
+  /* Primary Colors - 学習と成長を表現 */
+  --primary-50: 237 242 255;   /* 最も薄い青 */
+  --primary-100: 219 229 254;
+  --primary-200: 191 209 253;
+  --primary-300: 147 179 252;
+  --primary-400: 96 140 248;
+  --primary-500: 59 105 240;   /* メインブランドカラー */
+  --primary-600: 37 78 219;
+  --primary-700: 29 64 175;
+  --primary-800: 30 58 138;
+  --primary-900: 30 48 109;
+  
+  /* Secondary Colors - エネルギーと活力 */
+  --secondary-50: 254 243 232;
+  --secondary-100: 253 230 203;
+  --secondary-200: 252 201 141;
+  --secondary-300: 251 168 78;
+  --secondary-400: 250 140 36;
+  --secondary-500: 245 115 10;   /* アクセントカラー */
+  
+  /* Success/Error/Warning - 学習フィードバック用 */
+  --success-500: 34 197 94;
+  --error-500: 239 68 68;
+  --warning-500: 245 158 11;
+  
+  /* Semantic Colors */
+  --bg-primary: var(--primary-50);
+  --bg-card-hover: var(--primary-100);
+  --text-primary: var(--primary-900);
+  --text-secondary: var(--primary-700);
+  
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, var(--primary-500) 0%, var(--secondary-500) 100%);
+  --gradient-success: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  --gradient-card: linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(249,250,251,0.9) 100%);
+}
+```
+
+### 2. タイポグラフィの強化
+
+#### フォントシステム
+```css
+/* 見出し用フォント */
+--font-display: 'Inter', 'Noto Sans JP', sans-serif;
+/* 本文用フォント */
+--font-body: 'Inter', 'Noto Sans JP', sans-serif;
+/* コード用フォント */
+--font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+/* タイプスケール */
+--text-xs: 0.75rem;    /* 12px */
+--text-sm: 0.875rem;   /* 14px */
+--text-base: 1rem;     /* 16px */
+--text-lg: 1.125rem;   /* 18px */
+--text-xl: 1.25rem;    /* 20px */
+--text-2xl: 1.5rem;    /* 24px */
+--text-3xl: 1.875rem;  /* 30px */
+--text-4xl: 2.25rem;   /* 36px */
+--text-5xl: 3rem;      /* 48px */
+```
+
+### 3. コンポーネントの改善
+
+#### Buttonコンポーネントの強化
+```typescript
+// 新しいバリアント追加
+const buttonVariants = {
+  // 既存のバリアント
+  default: "...",
+  
+  // 新しいグラデーションバリアント
+  gradient: "bg-gradient-to-r from-primary-500 to-secondary-500 text-white shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200",
+  
+  // ガラスモーフィズム
+  glass: "backdrop-blur-md bg-white/10 border border-white/20 hover:bg-white/20",
+  
+  // ゲーミフィケーション用
+  success: "bg-gradient-to-r from-green-500 to-emerald-500 text-white",
+  reward: "bg-gradient-to-r from-yellow-400 to-orange-500 text-white animate-pulse",
+}
+```
+
+#### Cardコンポーネントの改善
+```css
+.card {
+  /* 基本スタイル */
+  background: var(--gradient-card);
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* ホバー効果 */
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+  }
+  
+  /* ガラスモーフィズムオプション */
+  &.glass {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+}
+```
+
+### 4. アニメーションとインタラクション
+
+#### マイクロインタラクション
+```css
+/* ボタンクリック効果 */
+@keyframes click-ripple {
+  to {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* カード出現アニメーション */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 成功アニメーション */
+@keyframes success-bounce {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+```
+
+#### ページトランジション
+```typescript
+// Framer Motion を使用した例
+const pageVariants = {
+  initial: { opacity: 0, x: -200 },
+  in: { opacity: 1, x: 0 },
+  out: { opacity: 0, x: 200 }
 };
-export function QuizOption({ id, label, checked, onSelect, disabled }: QuizOptionProps) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={checked}
-      aria-disabled={disabled || undefined}
-      id={id}
-      tabIndex={checked ? 0 : -1}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); }
-      }}
-      className="w-full text-left rounded-md border px-4 py-3 data-[checked=true]:outline data-[checked=true]:outline-2"
-      data-checked={checked}
-    >
-      <span className="inline-flex items-center gap-2">
-        <span aria-hidden className="size-4 rounded-full border data-[checked=true]:bg-[hsl(var(--primary))]" />
-        {label}
-      </span>
-    </button>
-  );
+
+const pageTransition = {
+  type: "tween",
+  ease: "anticipate",
+  duration: 0.5
+};
+```
+
+### 5. ゲーミフィケーション要素
+
+#### 進捗表示の強化
+```typescript
+// 新しい進捗コンポーネント
+interface ProgressProps {
+  value: number;
+  showMilestone?: boolean;
+  animated?: boolean;
 }
 
-1.3 フィードバック/解説
-	•	Reveal→解説：「根拠を見る」「誤答の理由」を可逆に表示（詳細はアコーディオン/Disclosure）。
-	•	ライブ更新は role="status" aria-live="polite"。緊急時のみ assertive。 ￼
+// ビジュアル要素
+- 円形プログレスリング
+- マイルストーンバッジ
+- ストリークカウンター
+- XPバー
+```
 
-1.4 自己評価と**間隔反復（SRS）**オプション
-	•	回答後に Again/Hard/Good/Easy の4択を表示（ショートカット: 1–4）。バックエンド未実装でもローカルでSM‑2/FSRS風の擬似スケジューリングを提供可能。Ankiの実務慣行を参照しつつ、シンプルに開始。 ￼ ￼
-	•	根拠: テスト効果（Testing Effect）は遅延テストで学習効果が高いことが示されており、自己採点/再テストは保持を高める。 ￼ ￼ ￼
-
-保存戦略: localdb.ts に srs サブツリーを追加（カードID→ ease/interval/due）。セッション終了画面で次回提案（今日/明日/今週）を提示。
-
-1.5 ブックマーク/ノート/フラグ
-	•	各カード右上に⭐（復習フラグ）、📝（メモ）。セッションまとめで「要復習」だけを再演習。
-
-1.6 セッションまとめ画面
-	•	正答率・迷い（Hard率）・平均反応時間・誤りテーマTOP3。
-	•	再試行キュー（誤答+Hard）・エクスポート（CSV/JSON）。
-	•	「続ける」「今日はここまで」CTA。
-
-⸻
-
-2. AI/SSE 体験の再設計（Log→タイムライン）
-
-2.1 「SSEコンソール」を段階タイムラインへ
-	•	Tabs(Log|Diff)は維持しつつ、既定タブを「進行状況」。
-	•	ステップ（例：下拵え→下書き→検証→差分出力→完了）を進捗バー+チェックで視覚化。
-	•	ステップ更新は role="status" aria-live="polite"。緊急エラーのみalert。 ￼
-
-2.2 差分プレビュー強化
-	•	グルーピング（レッスン単位）+ サマリー（追加/更新/削除件数）。
-	•	部分承認（各レッスンごとに「すべて承認」「選択承認」）＋バルク操作。
-	•	副作用サマリー：「レッスン3で5カード追加、合計学習時間+12分」など。
-
-2.3 Undo/通知
-	•	コミット完了トーストにUndo（ソフトデリート/ドラフト復元）。トーストは非遮断・読み上げはpolite。Undoの猶予はトーストだけに依存せず、履歴画面からも復旧可能に。 ￼ ￼
-
-⸻
-
-3. アクセシビリティ強化（WCAG 2.2対応）
-	•	フォーカス可視（2.4.13）：フォーカスインジケータは3:1以上のコントラストで十分なサイズ。トークン --focus を追加し、コンポーネント横断で一貫。 ￼
-	•	フォーカス非隠蔽（2.4.11）：固定ヘッダー/シートがフォーカス要素を隠さない。Auto-scrollで最小でも部分可視を担保。 ￼
-	•	ターゲットサイズ（2.5.8）：タップ領域24×24CSS px以上（または十分な間隔）。モバイルの操作誤りを低減。 ￼
-	•	ドラッグ代替（2.5.7）：Dndはdnd‑kitのKeyboardSensor＋アナウンスを使用。上下移動ボタンも必須（ボタン連打で並び替え）。 ￼
-	•	ライブリージョン：状況更新= status/polite、エラー= alert。assertiveは最小限。 ￼
-	•	メディアクエリ：prefers-reduced-motion / prefers-contrast / prefers-color-scheme / prefers-reduced-dataに応じたスタイル分岐。 ￼
-
-CSS例（globals.css）
-
-@media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; transition: none !important; }
-}
-@media (prefers-contrast: more) {
-  :root { --border: 0 0% 15%; --focus: 220 90% 50%; }
+#### 達成システム
+```typescript
+// 達成バッジシステム
+interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  unlocked: boolean;
+  progress: number;
+  maxProgress: number;
 }
 
+// アニメーション付き通知
+- トースト通知
+- コンフェッティ効果
+- サウンドフィードバック（オプション）
+```
 
-⸻
+### 6. レスポンシブデザインの改善
 
-4. 情報アーキテクチャ & ナビゲーション
-	•	**Command Palette（⌘K / Ctrl+K）**を導入：コース検索、レッスンジャンプ、AI生成起動、最近のコース再開。cmdk はアクセシブルなコンボボックスとして使え、Shadcn系の見た目にも馴染む。 ￼ ￼
-	•	ダッシュボード：
-	•	空状態に手がかりCTA（AIで作る/テンプレから始める）。
-	•	最近の続き（Resume）カード。
-	•	学習時間ストリーク。
+#### ブレークポイント戦略
+```css
+/* モバイルファースト設計 */
+--breakpoint-sm: 640px;   /* スマートフォン */
+--breakpoint-md: 768px;   /* タブレット */
+--breakpoint-lg: 1024px;  /* デスクトップ */
+--breakpoint-xl: 1280px;  /* ワイドスクリーン */
+--breakpoint-2xl: 1536px; /* フルHD以上 */
+```
 
-⸻
+#### アダプティブレイアウト
+- モバイル: シングルカラム、スワイプジェスチャー対応
+- タブレット: 2カラムレイアウト、タッチ最適化
+- デスクトップ: マルチカラム、ホバー効果フル活用
 
-5. デザインシステム拡張（Tokens/States/Motion）
-	•	Type/Space Tokens：流体タイポ（clamp()）と8ptグリッド。
-	•	State層：Hover/Focus/Pressed/Dragged/Disabled をトークン化して一貫。Materialのステート指針を参考に。 ￼
-	•	Motion：Container transform等の意味ある遷移のみ。Reduced Motion時はフェード最小限。 ￼
+### 7. アクセシビリティの強化
 
-⸻
-
-6. DnDのアクセシビリティ移行（dnd‑kit）
-	•	KeyboardSensor有効化＋スクリーンリーダーアナウンス（「◯◯を位置nに移動」）。
-	•	代替UI：行の末尾に「上へ」「下へ」ボタン（クリックで移動）。2.5.7を満たす。 ￼
-	•	既知の課題（大きな可変高アイテム下でのキーボード挙動）には代替ボタンを保険として維持。 ￼
-
-⸻
-
-7. Toast/Snackbarの標準化（Undo/履歴）
-	•	場所：画面下、メインコンテンツ前面（FABなどと干渉しないよう押し上げ）。 ￼
-	•	読み上げ：politeで一度だけ。集中を奪わない。 ￼
-	•	Undo：短時間で消えるトーストに依存しすぎない。通知センター/履歴を持ち、後からも取り消し可能。 ￼
-
-⸻
-
-8. マイクロコピー（例）
-	•	生成前：
-	•	「AIが下書きを作成します。保存するまで既存の内容は変更されません。」
-	•	SSE進行：
-	•	「下拵え中…」「検証中…」「下書きを保存（ID: …）」
-	•	差分：
-	•	「5件追加・2件更新・1件削除（レッスン3）」
-	•	保存：
-	•	「反映しました」「取り消す（60秒）」→ 取り消し後「元に戻しました」
-
-（Undoの時間は単なる目安。重要なのは後からでも復旧可能な場所を用意すること。） ￼
-
-⸻
-
-9. パフォーマンス/実装テクニック
-	•	ストリーミング：RSC/Server Actions前提の画面で早期描画＋スケルトン。全画面ロードはスケルトン、10秒超想定は進捗バー。 ￼
-	•	プリフェッチ：<Link prefetch>、ホバー/ビューポートで先読み。
-	•	リスト：カード一覧はバーチャライズ。
-	•	入力遅延：プレーヤーはキー入力最優先、採点は非同期でも即時UI反映。
-
-⸻
-
-10. 具体的なコード断片
-
-10.1 プレーヤーの骨格
-
-// app/learn/[courseId]/Player.tsx
-export function PlayerShell({ course, session }: { course: Course; session: Session }) {
-  // フォーカス管理: 最初の操作要素に送る
-  // Reduced motion: CSSで吸収
-  return (
-    <div className="mx-auto max-w-3xl p-4">
-      <header className="flex items-center justify-between gap-2">
-        <button className="btn-ghost" aria-label="前の画面へ戻る">← 戻る</button>
-        <h1 className="text-base font-medium truncate">{course.title}</h1>
-        <div className="flex items-center gap-2">
-          <button aria-label="キーボードショートカット" className="btn-ghost">?</button>
-          <button aria-label="設定" className="btn-ghost">⚙</button>
-        </div>
-      </header>
-
-      <div className="mt-3 h-1.5 w-full rounded bg-[hsl(var(--muted))]">
-        <div className="h-full rounded bg-[hsl(var(--primary))]" style={{ width: `${session.progress * 100}%` }} />
-      </div>
-
-      <main className="mt-6">
-        {/* CardRenderer: Text / Quiz / FillBlank */}
-      </main>
-
-      <footer className="mt-6 grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2">
-        <button className="btn-secondary" aria-label="ヒント">Hint</button>
-        <span className="justify-self-start text-sm text-[hsl(var(--muted))]">ショートカット: ?</span>
-        <button className="btn-outline" aria-label="スキップ">Skip</button>
-        <button className="btn-outline" aria-label="答えを表示">Reveal</button>
-        <button className="btn" aria-label="採点する">Check</button>
-      </footer>
-    </div>
-  );
+#### フォーカス管理
+```css
+/* 明確なフォーカスインジケーター */
+:focus-visible {
+  outline: 3px solid var(--primary-400);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
-10.2 ライブリージョン（SSE）
-
-// components/ui/LiveStatus.tsx
-export function LiveStatus({ message }: { message: string }) {
-  return (
-    <div role="status" aria-live="polite" className="sr-only">{message}</div>
-  );
+/* スキップリンク */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--primary-500);
+  color: white;
+  padding: 8px;
+  z-index: 100;
+  
+  &:focus {
+    top: 0;
+  }
 }
-// 緊急時: <div role="alert">…</div> （多用しない）   [oai_citation:37‡MDN Web Docs](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Guides/Live_regions?utm_source=chatgpt.com)
+```
 
+#### コントラスト改善
+- WCAG AAA基準を目指す（7:1以上）
+- ダークモード対応
+- 高コントラストモードのサポート
 
-⸻
+## 📋 実装ロードマップ
 
-11. ダッシュボード/コース詳細の磨き込み
-	•	Dashboard：
-	•	「続きから」セクション、最近使ったコースを優先表示。
-	•	コマンドパレット（⌘K/Ctrl+K）で全域検索＋ジャンプ。cmdkを採用。 ￼
-	•	コース詳細：
-	•	レッスン一覧（Sheet）に検索/フィルタ。
-	•	レッスン編集のタブ（カード/メタ/履歴）とトースト導線の統一。
+### Phase 1: 基盤整備（1週間）
+- [ ] カラーシステムの実装
+- [ ] タイポグラフィの更新
+- [ ] 基本アニメーションの追加
+- [ ] Tailwind設定の拡張
 
-⸻
+### Phase 2: コンポーネント改善（2週間）
+- [ ] Buttonコンポーネントの刷新
+- [ ] Cardコンポーネントの強化
+- [ ] フォーム要素の改善
+- [ ] ナビゲーションの最適化
 
-12. 運用・測定（プロダクト指標）
-	•	学習継続率（7日/30日）、1セッション当たり完了カード数、誤答→正答の転換率、Hard率。
-	•	AI生成→コミット率、Undo率、差分プレビュー滞在時間。
-	•	a11yバグ（フォーカス逸失、ターゲットサイズ未達、ドラッグ代替欠落）の検出を自動E2E（Playwright+axe）で。
+### Phase 3: ページレベル改善（2週間）
+- [ ] ホームページのリデザイン
+- [ ] 学習ページのUX改善
+- [ ] コース作成フローの最適化
+- [ ] ダッシュボードの視覚化
 
-⸻
+### Phase 4: インタラクション強化（1週間）
+- [ ] アニメーションライブラリの統合
+- [ ] マイクロインタラクションの実装
+- [ ] トランジション効果の追加
+- [ ] ローディング状態の改善
 
-13. 導入スプリント（優先順）
+### Phase 5: ゲーミフィケーション（2週間）
+- [ ] 進捗システムの実装
+- [ ] 達成バッジの追加
+- [ ] リーダーボード機能
+- [ ] 報酬システム
 
-Sprint 1（プレーヤーの心臓部）
-	1.	QuizのARIA/Roving tabindex導入、共通ショートカット実装。 ￼
-	2.	進捗バー/スキップ/Hint/Reveal/Checkの標準化。
-	3.	Reduced Motion/Contrastメディアクエリ対応。 ￼
+## 🎯 期待される成果
 
-Sprint 2（SSE & Diff）
-4) タイムラインUI+role="status"置換、エラーはalert。 ￼
-5) 差分プレビューのグループ化/部分承認。
-6) Toast→Snackbarのガイドライン準拠+Undo履歴。 ￼
+### 定量的指標
+- **エンゲージメント率**: 30%向上
+- **学習完了率**: 25%向上
+- **ユーザー満足度**: 40%向上
+- **直帰率**: 20%減少
 
-Sprint 3（DnDとIA）
-7) dnd‑kit KeyboardSensor + 移動ボタン。 ￼
-8) Command Palette（cmdk）導入。 ￼
+### 定性的改善
+- モダンで魅力的なビジュアル
+- 直感的で楽しい学習体験
+- 明確なブランドアイデンティティ
+- 競合優位性の確立
 
-Sprint 4（SRS/学習科学）
-9) 簡易SM‑2ローカル実装 + セッションまとめ（テスト効果の原則に沿う復習設計）。 ￼ ￼
+## 🔧 技術的考慮事項
 
-⸻
+### パフォーマンス
+- CSS-in-JSの最小化
+- アニメーションのGPU最適化
+- 画像の遅延読み込み
+- バンドルサイズの監視
 
-14. 既存コードへの影響点（抜粋）
-	•	components/ui/SSEConsole.tsx → SSETimeline.tsx（role="status" / polite 既定、alert併用）。 ￼
-	•	components/ui/Badge → 状態色の非テキストコントラスト3:1をトークンで保証。 ￼
-	•	app/learn/[courseId]/page.tsx → PlayerShell/CardRenderer 分離、useHotkeysフックを追加。
-	•	lib/localdb.ts → srsスキーマ追加（{ ease, interval, due }）。 ￼
-	•	globals.css → --focus/--state-*/prefers-*メディアクエリ。
+### 保守性
+- デザイントークンの一元管理
+- コンポーネントの再利用性
+- スタイルガイドの作成
+- Storybookの導入検討
 
-⸻
+### 互換性
+- 主要ブラウザサポート
+- プログレッシブエンハンスメント
+- フォールバックの実装
+- ポリフィルの適切な使用
 
-参考（主要根拠）
-	•	WCAG 2.2（2.4.13 フォーカス外観、2.4.11 フォーカス非隠蔽、2.5.7 ドラッグ代替、2.5.8 ターゲット最小）と理解文書。 ￼
-	•	WAI-ARIA APG（Radio/Roving tabindex 等）。 ￼
-	•	dnd‑kit アクセシビリティ/KeyboardSensor。 ￼
-	•	Skeleton/ローディング（NNG）。 ￼
-	•	Motion/States（Material 3）。 ￼
-	•	Live Regionの使い分け（MDN）。 ￼
-	•	SRSとテスト効果（Anki/FSRS・心理学研究）。 ￼ ￼ ￼ ￼ ￼
+## 📚 参考資料
 
-⸻
+### デザインインスピレーション
+- [Dribbble - Education UI](https://dribbble.com/tags/education_ui)
+- [Behance - Learning Platform](https://www.behance.net/search/projects?search=learning%20platform)
+- [Awwwards - Educational Websites](https://www.awwwards.com/websites/education/)
 
-まとめ
-	•	プレーヤーは「キー操作一等地」「明確なフィードバック」「誤りに寛容」の3点を押さえ、QuizのARIA/Roving tabindexとReduced Motion/Contrast対応を最初の改修に。
-	•	SSE/差分は「タイムライン」「部分承認」「Undoと履歴」で安心感を。
-	•	アクセシビリティはWCAG 2.2の新要件（2.4.11/2.4.13/2.5.7/2.5.8）を中核に、メディアクエリでユーザー嗜好に追従。
+### デザインシステム参考
+- Material Design 3
+- Ant Design
+- Chakra UI
+- Tailwind UI
 
-この順に進めれば、見た目だけでなく学習効率・継続率・信頼感を底上げできます。必要なら、上記仕様をベースに具体的なPR粒度のタスク分解や型付きコンポーネント実装まで書き起こします。
+### アクセシビリティガイドライン
+- WCAG 2.1 Level AA/AAA
+- ARIA Best Practices
+- MDN Accessibility Documentation
+
+## 🚀 次のステップ
+
+1. **ステークホルダーレビュー**: この提案書のレビューと承認
+2. **プロトタイプ作成**: 主要画面のデザインモックアップ
+3. **ユーザーテスト**: プロトタイプでのユーザビリティテスト
+4. **段階的実装**: ロードマップに従った実装開始
+5. **継続的改善**: ユーザーフィードバックに基づく調整
+
+---
+
+この改善提案を実装することで、Learnifyは単なる学習プラットフォームから、ユーザーが楽しみながら学べる魅力的な体験へと進化します。モダンなデザインと優れたUXにより、ユーザーエンゲージメントと学習成果の大幅な向上が期待できます。

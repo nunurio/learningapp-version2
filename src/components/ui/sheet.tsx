@@ -12,7 +12,7 @@ export function SheetContent({
   side = "right",
   children,
   ...props
-}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { side?: "left" | "right" }) {
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { side?: "left" | "right"; children?: React.ReactNode }) {
   // Ensure Dialog.Content always has an accessible name.
   // Radix logs a console error if there is neither a Dialog.Title descendant
   // nor an explicit `aria-label` on Content. We add a visually hidden title
@@ -24,14 +24,15 @@ export function SheetContent({
     React.Children.forEach(node as React.ReactNode, (child) => {
       if (found) return;
       if (!React.isValidElement(child)) return;
+      const el = child as React.ReactElement<any>;
       // Direct Title
-      if (child.type === (DialogPrimitive as any).Title) {
+      if (el.type === (DialogPrimitive as any).Title) {
         found = true;
         return;
       }
       // Recurse into children (e.g., inside SheetHeader)
-      if (child.props?.children) {
-        if (containsDialogTitle(child.props.children)) found = true;
+      if (el.props?.children) {
+        if (containsDialogTitle(el.props.children)) found = true;
       }
     });
     return found;

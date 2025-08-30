@@ -198,6 +198,7 @@ export default function CourseDetailPage() {
               </SheetContent>
             </Sheet>
             <Button asChild size="sm"><Link href={`/learn/${course.id}`}>学習する</Link></Button>
+            <Button asChild size="sm"><Link href={`/courses/${course.id}/workspace`}>ワークスペース</Link></Button>
           </div>
         </div>
 

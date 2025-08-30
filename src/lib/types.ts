@@ -44,6 +44,7 @@ export type Card = {
   lessonId: UUID;
   cardType: CardType;
   title?: string | null;
+  tags?: string[]; // optional labels for filtering/UX
   content: TextCardContent | QuizCardContent | FillBlankCardContent;
   orderIndex: number;
   createdAt: string; // ISO

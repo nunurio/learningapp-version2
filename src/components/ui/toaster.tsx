@@ -28,7 +28,7 @@ export function getToastHistory() {
 
 export function subscribeToastHistory(cb: () => void) {
   historyListeners.add(cb);
-  return () => historyListeners.delete(cb);
+  return () => { historyListeners.delete(cb); };
 }
 export function toast(t: ToastItem) {
   listeners.forEach((fn) => fn(t));

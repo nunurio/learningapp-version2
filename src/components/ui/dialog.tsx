@@ -25,7 +25,7 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { children?: React.ReactNode }
 >(({ className, children, ...props }, ref) => {
   const hasAriaLabel = typeof (props as any)["aria-label"] === "string" && (props as any)["aria-label"]; // truthy
   const containsDialogTitle = (node: React.ReactNode): boolean => {
@@ -33,12 +33,13 @@ export const DialogContent = React.forwardRef<
     React.Children.forEach(node as React.ReactNode, (child) => {
       if (found) return;
       if (!React.isValidElement(child)) return;
-      if (child.type === (DialogPrimitive as any).Title) {
+      const el = child as React.ReactElement<any>;
+      if (el.type === (DialogPrimitive as any).Title) {
         found = true;
         return;
       }
-      if (child.props?.children) {
-        if (containsDialogTitle(child.props.children)) found = true;
+      if (el.props?.children) {
+        if (containsDialogTitle(el.props.children)) found = true;
       }
     });
     return found;

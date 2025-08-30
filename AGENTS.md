@@ -99,7 +99,7 @@ These rules apply to this repo (App Router, strict TypeScript) and should be fol
 - **Type-safe I/O:** Treat external input as `unknown` and validate with Zod (or similar). Derive types via `z.infer` for a single source of truth.
 - **Props design:** Do not use `React.FC`. Type the function signature. Declare `children?: React.ReactNode`. Pass only JSON-serializable values across the RSC↔Client boundary.
 - **API (Route Handlers):** `app/api/**/route.ts` runs on the server. Define input/output schemas. Return with `NextResponse.json()`. For errors, return `new Response(body, { status })`.
-- **Styling:** Keep global CSS minimal. Prefer CSS Modules or small utility classes. Co-locate styles with components.
+- **Styling:** Keep global CSS minimal. Prefer shadcn/ui components wherever possible (under `src/components/ui`). Use CSS Modules or small utility classes when needed. Co-locate styles with components. If a required shadcn/ui component or dependency is missing, proactively install it with `pnpm add`.
 - **Performance:** Use `next/image` and `next/font`. Use `Suspense` for streaming/skeletons. Consider `dynamic(() => import(...), { ssr: false })` for heavy client-only deps.
 - **Navigation:** Use `Link` for internal navigation. Respect `prefetch` defaults and tune when necessary.
 - **Accessibility/SEO:** Provide `export const metadata`. Use semantic HTML, alt text, and proper labels.
