@@ -1,16 +1,18 @@
 "use client";
 import { useEffect, useRef } from "react";
 
-type Handlers = {
-  onUpdate?: (data: any) => void;
-  onDone?: (data: any) => void;
-  onError?: (data: any) => void;
+type DefaultUpdate = { node?: string; status?: string };
+
+type Handlers<TDone, TUpdate = DefaultUpdate> = {
+  onUpdate?: (data: TUpdate) => void;
+  onDone?: (data: TDone) => void;
+  onError?: (data: { message?: string }) => void;
 };
 
-export function useSSE(
+export function useSSE<TDone, TUpdate = DefaultUpdate>(
   url: string,
-  body: Record<string, any>,
-  { onUpdate, onDone, onError }: Handlers
+  body: Record<string, unknown>,
+  { onUpdate, onDone, onError }: Handlers<TDone, TUpdate>
 ) {
   const abortRef = useRef<AbortController | null>(null);
 
@@ -75,10 +77,10 @@ export function useSSE(
                 if (line.startsWith("data:")) data += line.slice(5).trim();
               }
               try {
-                const json = data ? JSON.parse(data) : undefined;
-                if (event === "update") onUpdate?.(json);
-                else if (event === "done") { sawDone = true; onDone?.(json); }
-                else if (event === "error") onError?.(json);
+                const json = (data ? JSON.parse(data) : undefined) as unknown;
+                if (event === "update") onUpdate?.(json as TUpdate);
+                else if (event === "done") { sawDone = true; onDone?.(json as TDone); }
+                else if (event === "error") onError?.(json as { message?: string });
               } catch {
                 // ignore JSON parse errors
               }
@@ -103,10 +105,10 @@ export function useSSE(
                 if (line.startsWith("data:")) data += line.slice(5).trim();
               }
               try {
-                const json = data ? JSON.parse(data) : undefined;
-                if (event === "update") onUpdate?.(json);
-                else if (event === "done") { sawDone = true; onDone?.(json); }
-                else if (event === "error") onError?.(json);
+                const json = (data ? JSON.parse(data) : undefined) as unknown;
+                if (event === "update") onUpdate?.(json as TUpdate);
+                else if (event === "done") { sawDone = true; onDone?.(json as TDone); }
+                else if (event === "error") onError?.(json as { message?: string });
               } catch {}
             }
           } catch {}

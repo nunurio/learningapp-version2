@@ -20,6 +20,22 @@ const eslintConfig = [
       "next-env.d.ts",
     ],
   },
+  {
+    rules: {
+      // 過度なエラー化は避け、まずは警告から始める
+      "@typescript-eslint/no-explicit-any": "warn",
+      // 今後の事故防止: 削除済みユーティリティの誤インポートを禁止
+      "no-restricted-imports": [
+        "error",
+        { patterns: [
+          {
+            group: ["@/components/ui/utils"],
+            message: "cnは '@/lib/utils/cn' からインポートしてください。",
+          },
+        ] },
+      ],
+    },
+  },
 ];
 
 export default eslintConfig;

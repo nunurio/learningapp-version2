@@ -11,7 +11,7 @@ type DraftRow = {
   cardId: string;
   cardType: "text" | "quiz" | "fill-blank";
   title?: string | null;
-  data: any;
+  data: unknown;
   updatedAt: string; // ISO
 };
 
@@ -61,4 +61,3 @@ export async function draftsDelete(key: string): Promise<void> {
     tx.objectStore("drafts").delete(key);
   });
 }
-

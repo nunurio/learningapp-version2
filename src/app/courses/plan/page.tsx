@@ -7,6 +7,7 @@ import { SSETimeline } from "@/components/ui/SSETimeline";
 import { useSSE } from "@/components/ai/useSSE";
 import { useEffect, useState } from "react";
 import { DiffList, type DiffItem } from "@/components/ui/DiffList";
+import { toast } from "@/components/ui/toaster";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +15,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
-function SSERunner({ url, body, onUpdate, onDone, onError }: any) {
-  useSSE(url, body, { onUpdate, onDone, onError });
+type PlanUpdate = { node?: string; status?: string };
+type PlanDone = { plan: CoursePlan; draftId: string };
+
+function SSERunner({ url, body, onUpdate, onDone, onError }: {
+  url: string;
+  body: Record<string, unknown>;
+  onUpdate: (d: PlanUpdate) => void;
+  onDone: (d: PlanDone) => void;
+  onError: (d: { message?: string }) => void;
+}) {
+  useSSE<PlanDone, PlanUpdate>(url, body, { onUpdate, onDone, onError });
   return null;
 }
 
@@ -48,7 +58,6 @@ export default function PlanCoursePage() {
     const res = idxs.length > 0 ? commitCoursePlanPartial(draftId, idxs) : commitCoursePlan(draftId);
     if (!res) return alert("保存に失敗しました");
     try {
-      const { toast } = require("@/components/ui/toaster");
       toast({
         title: "保存しました",
         description: "コース案を反映しました。",
@@ -70,8 +79,8 @@ export default function PlanCoursePage() {
           <SSERunner
             url="/api/ai/outline"
             body={{ theme, level, goal, lessonCount }}
-            onUpdate={(d: any) => setLogs((s) => [...s, { ts: Date.now(), text: `${d?.node ?? d?.status}` }])}
-            onDone={(d: any) => {
+            onUpdate={(d) => setLogs((s) => [...s, { ts: Date.now(), text: `${d?.node ?? d?.status}` }])}
+            onDone={(d) => {
               const p = d?.plan as CoursePlan;
               if (p) {
                 const draft = saveDraft("outline", p);
@@ -81,7 +90,7 @@ export default function PlanCoursePage() {
               }
               setGenerating(false);
             }}
-            onError={(d: any) => {
+            onError={(d) => {
               setLogs((s) => [...s, { ts: Date.now(), text: `エラー: ${d?.message ?? "unknown"}` }]);
               setGenerating(false);
             }}

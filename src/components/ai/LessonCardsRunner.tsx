@@ -12,9 +12,12 @@ type Props = {
 };
 
 export function LessonCardsRunner({ lessonId, lessonTitle, onLog, onPreview, onFinish }: Props) {
-  useSSE("/api/ai/lesson-cards", { lessonTitle, desiredCount: 6 }, {
-    onUpdate: (d: any) => onLog(lessonId, `${d?.node ?? d?.status}`),
-    onDone: (d: any) => {
+  type CardsUpdate = { node?: string; status?: string };
+  type CardsDone = { payload: LessonCards; draftId: string };
+
+  useSSE<CardsDone, CardsUpdate>("/api/ai/lesson-cards", { lessonTitle, desiredCount: 6 }, {
+    onUpdate: (d) => onLog(lessonId, `${d?.node ?? d?.status}`),
+    onDone: (d) => {
       const payload = d?.payload as LessonCards;
       if (payload) {
         const draft = saveDraft("lesson-cards", payload);
@@ -23,11 +26,10 @@ export function LessonCardsRunner({ lessonId, lessonTitle, onLog, onPreview, onF
       }
       onFinish();
     },
-    onError: (d: any) => {
+    onError: (d) => {
       onLog(lessonId, `エラー: ${d?.message ?? "unknown"}`);
       onFinish();
     },
   });
   return null;
 }
-

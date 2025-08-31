@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
+import { generateCoursePlan } from "@/lib/ai/mock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Update = { event: "update" | "done" | "error"; data?: any };
+type Update = { event: "update" | "done" | "error"; data?: unknown };
 
 function sseEncode(msg: Update) {
   const lines = [`event: ${msg.event}`];
@@ -12,25 +13,7 @@ function sseEncode(msg: Update) {
   return lines.join("\n") + "\n\n";
 }
 
-function generatePlan(params: {
-  theme: string;
-  level?: string;
-  goal?: string;
-  lessonCount?: number;
-}) {
-  const count = Math.min(Math.max(params.lessonCount ?? 6, 3), 30);
-  const courseTitle = `${params.theme.trim()} 入門${params.level ? `（${params.level}）` : ""}`;
-  const describe = params.goal?.trim()
-    ? `${params.goal.trim()} を達成するためのコース`
-    : "基礎から実践まで短期間で学べるコース";
-  return {
-    course: { title: courseTitle, description: describe, category: "General" },
-    lessons: Array.from({ length: count }, (_, i) => ({
-      title: `${params.theme.trim()} 第${i + 1}回: 基礎トピック ${i + 1}`,
-      summary: `${params.theme.trim()} のポイントを理解する`,
-    })),
-  };
-}
+// 生成処理は lib/ai/mock に集約
 
 export async function POST(req: NextRequest) {
   // 入力の堅牢化（JSONが空/壊れていてもフォールバック）
@@ -76,7 +59,7 @@ export async function POST(req: NextRequest) {
           send({ event: "update", data: s });
         }
 
-        const plan = generatePlan({ theme, level, goal, lessonCount });
+        const plan = generateCoursePlan({ theme, level, goal, lessonCount });
         await new Promise((r) => setTimeout(r, 200));
         send({ event: "done", data: { plan, draftId: "local-client-will-save" } });
       } catch (e: any) {

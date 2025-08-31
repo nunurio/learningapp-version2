@@ -6,7 +6,7 @@ import {
   PanelResizeHandle as ResizableHandlePrimitive,
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
-import { cn } from "@/components/ui/utils";
+import { cn } from "@/lib/utils/cn";
 
 type GroupProps = React.ComponentProps<typeof ResizablePanelGroupPrimitive> & {
   className?: string;

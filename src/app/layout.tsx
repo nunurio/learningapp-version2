@@ -15,7 +15,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Learnify",
+  title: {
+    default: "Learnify",
+    template: "%s | Learnify",
+  },
   description: "Local-first learning app (mock AI)",
 };
 
