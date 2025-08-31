@@ -11,6 +11,10 @@ export function NotificationCenterButton() {
   return (
     <>
       <Button onClick={() => setOpen(true)} aria-label="通知センター" variant="ghost">🔔 {count > 0 ? count : ""}</Button>
+      {/* SR向けライブリージョンでカウント変化を告知 */}
+      <span className="sr-only" aria-live="polite">
+        {count > 0 ? `新しい通知が${count}件あります` : "通知はありません"}
+      </span>
       <NotificationCenter open={open} onOpenChange={setOpen} />
     </>
   );
@@ -45,4 +49,3 @@ export function NotificationCenter({ open, onOpenChange }: { open: boolean; onOp
     </Dialog>
   );
 }
-

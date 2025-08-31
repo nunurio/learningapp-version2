@@ -1,4 +1,5 @@
 "use client";
+import * as React from "react";
 
 import type {
   AiDraft,
@@ -14,6 +15,49 @@ import type {
 } from "./types";
 
 const STORAGE_KEY = "learnify_v1";
+const POKE_KEY = "__learnify_poke__";
+
+// --- Lightweight pub/sub for UI reactivity ---------------------------------
+let __dbVersion = 0;
+const __listeners = new Set<() => void>();
+let __bc: BroadcastChannel | null = null;
+
+function __notifyDbChange() {
+  __dbVersion++;
+  __listeners.forEach((l) => {
+    try { l(); } catch {}
+  });
+  try { window.dispatchEvent(new Event("learnify:db-change")); } catch {}
+  try { localStorage.setItem(POKE_KEY, String(Date.now())); } catch {}
+  try { __bc?.postMessage({ type: "db-change", v: __dbVersion }); } catch {}
+}
+
+if (typeof window !== "undefined") {
+  try { __bc = new BroadcastChannel("learnify_sync"); } catch {}
+  if (__bc) {
+    __bc.onmessage = (ev) => {
+      if (ev?.data?.type === "db-change") {
+        // keep monotonic, then notify
+        __dbVersion = Math.max(__dbVersion, Number(ev.data.v) || 0);
+        __listeners.forEach((l) => { try { l(); } catch {} });
+      }
+    };
+  }
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === POKE_KEY) {
+      __notifyDbChange();
+    }
+  });
+}
+
+export function subscribeLocalDb(listener: () => void): () => void {
+  __listeners.add(listener);
+  return () => { __listeners.delete(listener); };
+}
+
+export function useLocalDbVersion(): number {
+  return React.useSyncExternalStore(subscribeLocalDb, () => __dbVersion, () => __dbVersion);
+}
 
 type DB = {
   courses: Course[];
@@ -67,6 +111,7 @@ function load(): DB {
 function save(db: DB) {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+  __notifyDbChange();
 }
 
 // Public API

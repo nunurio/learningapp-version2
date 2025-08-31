@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
 import { listCourses, listLessons } from "@/lib/localdb";
 
 type Cmd = { id: string; label: string; hint?: string; action: () => void };
@@ -50,15 +49,14 @@ export function CommandPalette() {
   ];
 
   const courseCmds: Cmd[] = courses.flatMap((c) => [
-    { id: `open-${c.id}` , label: `コースを開く: ${c.title}`, hint: "編集", action: () => router.push(`/courses/${c.id}`) },
-    { id: `learn-${c.id}`, label: `学習する: ${c.title}`, hint: "学習", action: () => router.push(`/learn/${c.id}`) },
+    { id: `open-${c.id}` , label: `ワークスペースを開く: ${c.title}`, hint: "/courses/[id]/workspace", action: () => router.push(`/courses/${c.id}/workspace`) },
   ]);
 
   const lessonCmds: Cmd[] = lessons.map((l) => ({
     id: `cards-${l.lessonId}`,
-    label: `カード管理: ${l.title}`,
-    hint: "/courses/[id]/lessons/[lessonId]",
-    action: () => router.push(`/courses/${l.courseId}/lessons/${l.lessonId}`),
+    label: `ワークスペースで開く: ${l.title}`,
+    hint: "/courses/[id]/workspace",
+    action: () => router.push(`/courses/${l.courseId}/workspace`),
   }));
 
   const cmds = useMemo(() => {

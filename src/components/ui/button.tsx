@@ -13,7 +13,12 @@ const buttonVariants = cva(
         secondary:
           "bg-[hsl(var(--accent))] text-[hsl(var(--fg))] border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] shadow-sm hover:shadow-md",
         outline:
-          "bg-[hsl(var(--card))] text-[hsl(var(--fg))] border border-[hsl(var(--border))] hover:bg-[hsl(var(--accent))] hover:border-[hsl(var(--primary-300))] shadow-sm hover:shadow-md",
+          [
+            "bg-[hsl(var(--card))] text-[hsl(var(--fg))] border border-[hsl(var(--border))]",
+            "hover:bg-[hsl(var(--accent))] hover:border-[hsl(var(--primary-300))] shadow-sm hover:shadow-md",
+            // Disabled state visually clearer
+            "disabled:bg-[hsl(var(--muted))] disabled:text-gray-400 disabled:border-gray-300 disabled:opacity-100 disabled:cursor-not-allowed disabled:shadow-none",
+          ].join(" "),
         ghost: "bg-transparent text-[hsl(var(--fg))] hover:bg-[hsl(var(--accent))]",
         destructive:
           "bg-[hsla(0,84%,60%,.12)] text-[hsl(var(--destructive))] border border-[hsl(var(--destructive))]/40 hover:bg-[hsl(var(--destructive))] hover:text-white hover:border-[hsl(var(--destructive))]",
@@ -57,4 +62,3 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = "Button";
 
 export { buttonVariants };
-

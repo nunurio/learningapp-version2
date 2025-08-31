@@ -1,10 +1,9 @@
 "use client";
 import * as React from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import type { UUID } from "@/lib/types";
 import { Header } from "@/components/ui/header";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import dynamic from "next/dynamic";
 import { SkeletonNavTree, SkeletonInspector, SkeletonPlayer } from "@/components/workspace/Skeletons";
@@ -17,7 +16,6 @@ import { listCards } from "@/lib/localdb";
 type Props = { courseId: UUID; defaultLayout?: number[]; cookieKey?: string };
 
 export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
-  const sp = useSearchParams();
   const router = useRouter();
   const [selId, setSelId] = React.useState<string | undefined>(undefined);
   const [selKind, setSelKind] = React.useState<"lesson" | "card" | undefined>(undefined);
@@ -44,6 +42,9 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
                   if (kind === "course") {
                     if (id !== courseId) {
                       router.push(`/courses/${id}/workspace`);
+                    } else {
+                      setSelId(undefined);
+                      setSelKind(undefined);
                     }
                     return;
                   }
@@ -60,7 +61,12 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
             </ResizablePanel>
             <ResizableHandle withHandle aria-label="ナビをリサイズ" />
             <ResizablePanel defaultSize={defaultLayout?.[1] ?? 48} minSize={40} className="">
-              <CenterPanel courseId={courseId} selId={selId} selKind={selKind} />
+              <CenterPanel
+                courseId={courseId}
+                selId={selId}
+                selKind={selKind}
+                onNavigate={(id) => { setSelId(id); setSelKind("card"); }}
+              />
             </ResizablePanel>
             <ResizableHandle withHandle aria-label="エディタをリサイズ" />
             <ResizablePanel defaultSize={defaultLayout?.[2] ?? 28} minSize={18} className="border-l">
@@ -90,6 +96,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
                         if (kind === "course") {
                           setOpenNav(false);
                           if (id !== courseId) router.push(`/courses/${id}/workspace`);
+                          else { setSelId(undefined); setSelKind(undefined); }
                           return;
                         }
                         if (kind === "lesson") {
@@ -126,7 +133,12 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
             {!selId ? (
               <p className="text-sm text-gray-700">メニューからカードを選択してください。</p>
             ) : (
-              <CardPlayer courseId={courseId} selectedId={selId as any} selectedKind={selKind} />
+              <CardPlayer
+                courseId={courseId}
+                selectedId={selId as any}
+                selectedKind={selKind}
+                onNavigate={(id) => { setSelId(id); setSelKind("card"); }}
+              />
             )}
           </div>
         </div>
@@ -135,17 +147,17 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
   );
 }
 
-function CenterPanel({ courseId, selId, selKind }: { courseId: UUID; selId?: string; selKind?: "lesson"|"card" }) {
+function CenterPanel({ courseId, selId, selKind, onNavigate }: { courseId: UUID; selId?: string; selKind?: "lesson"|"card"; onNavigate: (id: UUID) => void }) {
   return (
     <div className="h-full p-4 overflow-auto">
       <div className="flex items-center justify-between mb-3">
         <h1 className="text-lg font-semibold">学習ワークスペース</h1>
-        <Button asChild variant="outline"><Link href={`/learn/${courseId}`}>学習のみ表示</Link></Button>
+        <div />
       </div>
       {!selId ? (
         <p className="text-sm text-gray-700">左のナビからカードを選択すると、ここで学習できます。</p>
       ) : (
-        <CardPlayer courseId={courseId} selectedId={selId as any} selectedKind={selKind} />
+        <CardPlayer courseId={courseId} selectedId={selId as any} selectedKind={selKind} onNavigate={onNavigate} />
       )}
     </div>
   );

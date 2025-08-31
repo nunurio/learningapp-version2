@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { listLessons, listCards, listFlaggedByCourse, getProgress, listCourses } from "@/lib/localdb";
+import { listLessons, listCards, listFlaggedByCourse, getProgress, listCourses, useLocalDbVersion } from "@/lib/localdb";
 import type { UUID, Card, Lesson, CardType, Course } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -15,6 +15,8 @@ type Props = {
 };
 
 export function NavTree({ courseId, selectedId, onSelect }: Props) {
+  // DB変更に追従
+  const dbv = useLocalDbVersion();
   const [q, setQ] = React.useState("");
   const [courses, setCourses] = React.useState<Course[]>([]);
   const [lessons, setLessons] = React.useState<Lesson[]>([]);
@@ -23,7 +25,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
   const [typeFilter, setTypeFilter] = React.useState<"all" | CardType>("all");
   const [onlyFlagged, setOnlyFlagged] = React.useState(false);
   const [onlyUnlearned, setOnlyUnlearned] = React.useState(false);
-  const flaggedSet = React.useMemo(() => new Set(listFlaggedByCourse(courseId)), [courseId]);
+  const flaggedSet = React.useMemo(() => new Set(listFlaggedByCourse(courseId)), [courseId, dbv]);
 
   // ロービング tabindex 用の"アクティブ"項目管理
   const [activeId, setActiveId] = React.useState<string | undefined>(undefined);
@@ -33,7 +35,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
     setLessons(listLessons(courseId));
     // 初期表示では現在のコースを展開
     setExpanded((m) => (m[`co:${courseId}`] ? m : { ...m, [`co:${courseId}`]: true }));
-  }, [courseId]);
+  }, [courseId, dbv]);
 
   // 可視行をフラット化
   type Row = { key: string; type: "course" | "lesson" | "card"; id: string; level: number; title: string; tags?: string[]; completed?: boolean; expanded?: boolean };
@@ -86,7 +88,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
       }
     });
     return out;
-  }, [courses, expanded, q, typeFilter, onlyFlagged, onlyUnlearned, flaggedSet]);
+  }, [courses, expanded, q, typeFilter, onlyFlagged, onlyUnlearned, flaggedSet, dbv]);
 
   // レッスン単位の進捗率
   const lessonProgress = React.useMemo(() => {
@@ -98,7 +100,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
       map.set(l.id, Math.round((done / cs.length) * 100));
     }
     return map;
-  }, [lessons]);
+  }, [lessons, dbv]);
 
   // バーチャルリスト（@tanstack/react-virtual）
   const COURSE_H = 40; // px

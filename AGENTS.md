@@ -7,6 +7,9 @@
 - Libraries: `src/lib` contains domain types (`types.ts`), local storage data layer (`localdb.ts`, key: `learnify_v1`), and mock AI generators (`ai/mock.ts`).
 - Assets: `public/` for static files. Config lives in `next.config.ts`, `tsconfig.json` (alias `@/*` → `src/*`), `eslint.config.mjs`, and `postcss.config.mjs`.
 
+
+**REQUIRED: Always prioritize shadcn/ui components. Use custom UI only when no shadcn/ui equivalent exists. Proactively add missing components with `pnpm add`.**
+
 ## Build, Test, and Development Commands
 - `pnpm i`: install dependencies.
 - `pnpm dev`: start dev server with Turbopack at `http://localhost:3000`.

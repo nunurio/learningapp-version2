@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Confirm } from "@/components/ui/confirm";
 
 type StatusFilter = "all" | "draft" | "published";
 
@@ -138,28 +139,26 @@ export default function Home() {
                   </div>
                   <div className="flex gap-2">
                     <Button asChild variant="default" size="sm" className="flex-1">
-                      <Link href={`/learn/${c.id}`}>
-                        学習開始
+                      <Link href={`/courses/${c.id}/workspace`}>
+                        ワークスペースを開く
                       </Link>
                     </Button>
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={`/courses/${c.id}`}>
-                        編集
-                      </Link>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (confirm("本当に削除しますか？ この操作は元に戻せません。")) {
-                          deleteCourse(c.id);
-                          refresh();
-                        }
-                      }}
-                      aria-label="削除"
+                    <Confirm
+                      title="このコースを削除しますか？"
+                      description="この操作は元に戻せません。関連するレッスンとカードも削除されます。"
+                      confirmLabel="削除する"
+                      cancelLabel="キャンセル"
+                      onConfirm={() => { deleteCourse(c.id); refresh(); }}
                     >
-                      🗑️
-                    </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label="削除"
+                        title="削除"
+                      >
+                        🗑️
+                      </Button>
+                    </Confirm>
                   </div>
                 </div>
               </Card>

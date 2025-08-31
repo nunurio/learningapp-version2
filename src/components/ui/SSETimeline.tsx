@@ -84,6 +84,11 @@ export function SSETimeline({ logs }: { logs: SseLog[] }) {
   return (
     <Card className="p-3 text-xs text-gray-800 h-48 sm:h-64 overflow-auto" role="status" aria-live="polite">
       {lastError && <div role="alert" className="sr-only">{lastError.label}</div>}
+      {lastError && (
+        <div className="sticky top-0 z-10 mb-2 rounded border border-[hsl(var(--destructive))]/40 bg-[hsla(0,84%,60%,.08)] px-2 py-1 text-[11px] text-[hsl(var(--destructive))]">
+          ⚠︎ エラーが発生しました: <span className="font-mono">{lastError.label}</span>
+        </div>
+      )}
       {!anyStarted ? (
         <p className="text-gray-500">待機中…</p>
       ) : (
