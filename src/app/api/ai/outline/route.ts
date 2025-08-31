@@ -8,8 +8,8 @@ type Update = { event: "update" | "done" | "error"; data?: any };
 function sseEncode(msg: Update) {
   const lines = [`event: ${msg.event}`];
   if (msg.data !== undefined) lines.push(`data: ${JSON.stringify(msg.data)}`);
-  lines.push("", "");
-  return lines.join("\n");
+  // SSE requires one blank line between events
+  return lines.join("\n") + "\n\n";
 }
 
 function generatePlan(params: {
@@ -33,7 +33,29 @@ function generatePlan(params: {
 }
 
 export async function POST(req: NextRequest) {
-  const { theme, level, goal, lessonCount } = await req.json();
+  // 入力の堅牢化（JSONが空/壊れていてもフォールバック）
+  let theme: string | undefined;
+  let level: string | undefined;
+  let goal: string | undefined;
+  let lessonCount: number | undefined;
+  try {
+    if (req.headers.get("content-type")?.includes("application/json")) {
+      const j = await req.json().catch(() => ({} as any));
+      theme = j?.theme ?? undefined;
+      level = j?.level ?? undefined;
+      goal = j?.goal ?? undefined;
+      lessonCount = typeof j?.lessonCount === "number" ? j.lessonCount : undefined;
+    }
+  } catch {}
+  try {
+    const url = new URL(req.url);
+    theme = theme ?? url.searchParams.get("theme") ?? undefined;
+    level = level ?? url.searchParams.get("level") ?? undefined;
+    goal = goal ?? url.searchParams.get("goal") ?? undefined;
+    const lc = url.searchParams.get("lessonCount");
+    if (lc != null) lessonCount = Number(lc);
+  } catch {}
+  if (!theme || typeof theme !== "string") theme = "コース";
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -73,4 +95,3 @@ export async function POST(req: NextRequest) {
     },
   });
 }
-

@@ -7,11 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ProgressRing } from "@/components/ui/progress-ring";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
 type Props = {
   courseId: UUID;
   selectedId?: UUID;
-  onSelect: (id: UUID, kind: "course" | "lesson" | "card") => void;
+  onSelect: (id: UUID, kind: "course" | "lesson" | "card" | "lesson-edit") => void;
 };
 
 export function NavTree({ courseId, selectedId, onSelect }: Props) {
@@ -279,6 +285,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
                     onClick={() => onSelect(r.id as UUID, "lesson")}
                     onToggle={() => setExpanded((m) => ({ ...m, [`le:${r.id}`]: !m[`le:${r.id}`] }))}
                     onActive={() => setActiveId(r.id)}
+                    onEdit={() => onSelect(r.id as UUID, "lesson-edit")}
                   />
                 ) : (
                   <TreeCardRow
@@ -358,7 +365,7 @@ function TreeCourseRow({ id, title, level, expanded, selected, active, onClick, 
   );
 }
 
-function TreeLessonRow({ id, title, level, expanded, selected, active, progressPct, onClick, onToggle, onActive }:{
+function TreeLessonRow({ id, title, level, expanded, selected, active, progressPct, onClick, onToggle, onActive, onEdit }:{
   id: string;
   title: string;
   level: number;
@@ -369,6 +376,7 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
   onClick: () => void;
   onToggle: () => void;
   onActive: () => void;
+  onEdit: () => void;
 }) {
   return (
     <div className="px-2" style={{ paddingLeft: (level - 1) * 14 }}>
@@ -394,7 +402,26 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
           <Chevron open={expanded} />
         </button>
         <ProgressRing value={progressPct} size={14} stroke={2} title={`完了 ${progressPct}%`} />
-        <span className="truncate font-medium">{title}</span>
+        <span className="truncate font-medium flex-1">{title}</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              aria-label="レッスンメニュー"
+              className="inline-flex items-center justify-center size-6 rounded hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span aria-hidden>⋯</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onSelect={() => onEdit()}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(); }}
+            >
+              レッスンを編集（AI生成）
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

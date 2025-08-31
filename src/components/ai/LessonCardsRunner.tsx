@@ -1,0 +1,33 @@
+"use client";
+import { useSSE } from "@/components/ai/useSSE";
+import { saveDraft } from "@/lib/localdb";
+import type { LessonCards, UUID } from "@/lib/types";
+
+type Props = {
+  lessonId: UUID;
+  lessonTitle: string;
+  onLog: (lessonId: UUID, text: string) => void;
+  onPreview: (lessonId: UUID, draftId: string, payload: LessonCards) => void;
+  onFinish: () => void; // called on done or error
+};
+
+export function LessonCardsRunner({ lessonId, lessonTitle, onLog, onPreview, onFinish }: Props) {
+  useSSE("/api/ai/lesson-cards", { lessonTitle, desiredCount: 6 }, {
+    onUpdate: (d: any) => onLog(lessonId, `${d?.node ?? d?.status}`),
+    onDone: (d: any) => {
+      const payload = d?.payload as LessonCards;
+      if (payload) {
+        const draft = saveDraft("lesson-cards", payload);
+        onPreview(lessonId, draft.id, payload);
+        onLog(lessonId, `下書きを保存しました（ID: ${draft.id}）`);
+      }
+      onFinish();
+    },
+    onError: (d: any) => {
+      onLog(lessonId, `エラー: ${d?.message ?? "unknown"}`);
+      onFinish();
+    },
+  });
+  return null;
+}
+

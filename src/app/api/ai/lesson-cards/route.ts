@@ -8,8 +8,8 @@ type Update = { event: "update" | "done" | "error"; data?: any };
 function sseEncode(msg: Update) {
   const lines = [`event: ${msg.event}`];
   if (msg.data !== undefined) lines.push(`data: ${JSON.stringify(msg.data)}`);
-  lines.push("", "");
-  return lines.join("\n");
+  // SSE requires a blank line between events -> terminate with \n\n
+  return lines.join("\n") + "\n\n";
 }
 
 function generateCards(params: { lessonTitle: string; desiredCount?: number }) {
@@ -41,7 +41,23 @@ function generateCards(params: { lessonTitle: string; desiredCount?: number }) {
 }
 
 export async function POST(req: NextRequest) {
-  const { lessonTitle, desiredCount } = await req.json();
+  // 入力の堅牢化: JSON が空/壊れていても動くようにフォールバック
+  let lessonTitle: string | undefined;
+  let desiredCount: number | undefined;
+  try {
+    if (req.headers.get("content-type")?.includes("application/json")) {
+      const j = await req.json().catch(() => ({} as any));
+      lessonTitle = j?.lessonTitle ?? undefined;
+      desiredCount = typeof j?.desiredCount === "number" ? j.desiredCount : undefined;
+    }
+  } catch {}
+  try {
+    const url = new URL(req.url);
+    lessonTitle = lessonTitle ?? url.searchParams.get("lessonTitle") ?? undefined;
+    const dc = url.searchParams.get("desiredCount");
+    if (dc != null) desiredCount = Number(dc);
+  } catch {}
+  if (!lessonTitle || typeof lessonTitle !== "string") lessonTitle = "レッスン";
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -81,4 +97,3 @@ export async function POST(req: NextRequest) {
     },
   });
 }
-

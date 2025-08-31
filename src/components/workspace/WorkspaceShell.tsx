@@ -48,6 +48,11 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
                     }
                     return;
                   }
+                  if (kind === "lesson-edit") {
+                    setSelId(id);
+                    setSelKind("lesson");
+                    return;
+                  }
                   if (kind === "lesson") {
                     const first = listCards(id)[0];
                     if (first) { setSelId(first.id); setSelKind("card"); }
@@ -97,6 +102,13 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
                           setOpenNav(false);
                           if (id !== courseId) router.push(`/courses/${id}/workspace`);
                           else { setSelId(undefined); setSelKind(undefined); }
+                          return;
+                        }
+                        if (kind === "lesson-edit") {
+                          setSelId(id);
+                          setSelKind("lesson");
+                          setOpenNav(false);
+                          setOpenInspector(true);
                           return;
                         }
                         if (kind === "lesson") {

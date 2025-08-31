@@ -10,7 +10,6 @@ import {
   addCard,
   deleteCard,
   reorderCards,
-  saveDraft,
   commitLessonCards,
   commitLessonCardsPartial,
   useLocalDbVersion,
@@ -20,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { SSETimeline } from "@/components/ui/SSETimeline";
-import { useSSE } from "@/components/ai/useSSE";
+import { LessonCardsRunner } from "@/components/ai/LessonCardsRunner";
 import { Confirm } from "@/components/ui/confirm";
 import { Select } from "@/components/ui/select";
 import { SortableList } from "@/components/dnd/SortableList";
@@ -111,9 +110,60 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
     };
   }, [JSON.stringify(form)]);
 
+  // 現在のレッスン（カード選択時も親レッスンを解決）
+  const currentLesson: Lesson | null = React.useMemo(() => {
+    if (selectedKind === "lesson" && selectedId) {
+      return (listLessons(courseId).find((x) => x.id === selectedId) ?? null);
+    }
+    if (selectedKind === "card" && selectedId) {
+      const ls = listLessons(courseId);
+      const l = ls.find((x) => listCards(x.id).some((c) => c.id === selectedId)) ?? null;
+      return l ?? null;
+    }
+    return null;
+  }, [courseId, selectedKind, selectedId, dbv]);
+
+  // レッスン上部ツールはファイルスコープの安定コンポーネントに移動（下方で定義）
+
   return (
     <aside className="h-full overflow-auto p-3">
       <div className="text-xs text-gray-500 mb-2">インスペクタ</div>
+      {currentLesson && (
+        <LessonTools
+          lesson={currentLesson}
+          runningLesson={runningLesson}
+          setRunningLesson={setRunningLesson}
+          logsByLesson={logsByLesson}
+          setLogsByLesson={setLogsByLesson}
+          previews={previews}
+          setPreviews={setPreviews}
+          selectedIndexes={selectedIndexes}
+          setSelectedIndexes={setSelectedIndexes}
+          onSaveAll={(lessonId, payload, selected) => {
+            const idxs = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
+            let ok = false;
+            const res = idxs.length > 0
+              ? commitLessonCardsPartial({ draftId: payload.draftId, lessonId, selectedIndexes: idxs })
+              : commitLessonCards({ draftId: payload.draftId, lessonId });
+            ok = !!res;
+            if (!ok) {
+              const items = idxs.length > 0 ? payload.payload.cards.filter((_, i) => idxs.includes(i)) : payload.payload.cards;
+              for (const item of items) {
+                if (item.type === "text") {
+                  addCard(lessonId, { cardType: "text", title: item.title ?? null, content: { body: item.body } });
+                } else if (item.type === "quiz") {
+                  addCard(lessonId, { cardType: "quiz", title: item.title ?? null, content: { question: item.question, options: item.options, answerIndex: item.answerIndex, explanation: item.explanation ?? undefined } });
+                } else {
+                  addCard(lessonId, { cardType: "fill-blank", title: item.title ?? null, content: { text: item.text, answers: item.answers, caseSensitive: item.caseSensitive ?? false } });
+                }
+              }
+              ok = items.length > 0;
+            }
+            if (ok) refreshLists();
+            setPreviews((prev) => { const copy = { ...prev }; delete copy[lessonId]; return copy; });
+          }}
+        />
+      )}
       {!selectedId && (
         <p className="text-sm text-gray-700">コースやレッスン/カードを選択してください。</p>
       )}
@@ -137,6 +187,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
           setPreviews={setPreviews}
           selectedIndexes={selectedIndexes}
           setSelectedIndexes={setSelectedIndexes}
+          hideAiSection
           onRefresh={refreshLists}
         />
       )}
@@ -220,6 +271,69 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   );
 }
 
+type LessonToolsProps = {
+  lesson: Lesson;
+  runningLesson: Lesson | null;
+  setRunningLesson: (l: Lesson | null) => void;
+  logsByLesson: Record<string, { ts: number; text: string }[]>;
+  setLogsByLesson: React.Dispatch<React.SetStateAction<Record<string, { ts: number; text: string }[]>>>;
+  previews: Record<string, { draftId: string; payload: LessonCards }>;
+  setPreviews: React.Dispatch<React.SetStateAction<Record<string, { draftId: string; payload: LessonCards }>>>;
+  selectedIndexes: Record<string, Record<number, boolean>>;
+  setSelectedIndexes: React.Dispatch<React.SetStateAction<Record<string, Record<number, boolean>>>>;
+  onSaveAll: (lessonId: UUID, payload: { draftId: string; payload: LessonCards }, selected: Record<number, boolean>) => void;
+};
+
+function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, onSaveAll }: LessonToolsProps) {
+  return (
+    <section className="mb-3 rounded-md border border-[hsl(var(--border))] p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-medium">レッスンツール</div>
+        <div className="text-xs text-gray-600 truncate max-w-[60%]" title={lesson.title}>{lesson.title}</div>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm text-gray-700">AIでこのレッスンのカードを生成</div>
+        <Button size="sm" onClick={() => setRunningLesson(lesson)} disabled={!!runningLesson && runningLesson.id === lesson.id}>
+          {runningLesson?.id === lesson.id ? "生成中…" : "AIで生成"}
+        </Button>
+      </div>
+      {runningLesson?.id === lesson.id && (
+        <LessonCardsRunner
+          lessonId={lesson.id}
+          lessonTitle={lesson.title}
+          onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
+          onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
+          onFinish={() => setRunningLesson(null)}
+        />
+      )}
+      <SSETimeline logs={logsByLesson[lesson.id] ?? []} />
+      {previews[lesson.id] && (
+        <div className="mt-3">
+          <div className="text-sm text-gray-600 mb-2">プレビュー: {previews[lesson.id].payload.cards.length} 件（反映するカードを選択、未選択なら全件）</div>
+          <ol className="text-sm space-y-1 list-decimal list-inside">
+            {previews[lesson.id].payload.cards.map((c, idx) => (
+              <li key={idx} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  aria-label={`カード #${idx + 1} を選択`}
+                  checked={!!(selectedIndexes[lesson.id]?.[idx])}
+                  onChange={(e) => setSelectedIndexes((m) => ({ ...m, [lesson.id]: { ...(m[lesson.id] || {}), [idx]: e.target.checked } }))}
+                />
+                <span className="px-1 py-0.5 rounded bg-black/5 mr-2">{c.type}</span>
+                {"title" in c && c.title ? c.title : c.type === "text" ? "テキスト" : "カード"}
+              </li>
+            ))}
+          </ol>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button onClick={() => onSaveAll(lesson.id, previews[lesson.id], selectedIndexes[lesson.id] || {})}>保存</Button>
+            <Button onClick={() => setPreviews((prev) => { const copy = { ...prev }; delete copy[lesson.id]; return copy; })}>破棄</Button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function summary(c: Card): string {
   if (c.cardType === "text") return (c.content as any).body?.slice(0, 30) ?? "テキスト";
   if (c.cardType === "quiz") return (c.content as any).question ?? "クイズ";
@@ -280,36 +394,20 @@ function LessonInspector(props: {
   setPreviews: React.Dispatch<React.SetStateAction<Record<string, { draftId: string; payload: LessonCards }>>>;
   selectedIndexes: Record<string, Record<number, boolean>>;
   setSelectedIndexes: React.Dispatch<React.SetStateAction<Record<string, Record<number, boolean>>>>;
+  hideAiSection?: boolean;
   onRefresh: () => void;
 }) {
-  const { courseId, lesson, cards, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, onRefresh } = props;
+  const { courseId, lesson, cards, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, hideAiSection, onRefresh } = props;
 
   // AI SSE runner
-  function SSERunner({ lessonTitle }: { lessonTitle: string }) {
-    useSSE("/api/ai/lesson-cards", { lessonTitle, desiredCount: 6 }, {
-      onUpdate: (d: any) => setLogsByLesson((m) => ({ ...m, [lesson.id]: [...(m[lesson.id] ?? []), { ts: Date.now(), text: `${d?.node ?? d?.status}` }] })),
-      onDone: (d: any) => {
-        const payload = d?.payload as LessonCards;
-        if (payload) {
-          const draft = saveDraft("lesson-cards", payload);
-          setPreviews((prev) => ({ ...prev, [lesson.id]: { draftId: draft.id, payload } }));
-          setLogsByLesson((m) => ({ ...m, [lesson.id]: [...(m[lesson.id] ?? []), { ts: Date.now(), text: `下書きを保存しました（ID: ${draft.id}）` }] }));
-        }
-        setRunningLesson(null);
-      },
-      onError: (d: any) => {
-        setLogsByLesson((m) => ({ ...m, [lesson.id]: [...(m[lesson.id] ?? []), { ts: Date.now(), text: `エラー: ${d?.message ?? "unknown"}` }] }));
-        setRunningLesson(null);
-      },
-    });
-    return null;
-  }
+  // Note: do NOT define inline components here to avoid remount loops.
 
   return (
     <section className="space-y-4">
       <h3 className="font-medium">レッスン: {lesson.title}</h3>
 
-      {/* AI 生成 */}
+      {/* AI 生成（上部 LessonTools と重複させないオプション） */}
+      {!hideAiSection && (
       <div className="rounded-md border border-[hsl(var(--border))] p-3">
         <div className="flex items-center justify-between mb-2">
           <div className="text-sm text-gray-700">AIでこのレッスンのカードを生成</div>
@@ -317,7 +415,15 @@ function LessonInspector(props: {
             {runningLesson?.id === lesson.id ? "生成中…" : "AIで生成"}
           </Button>
         </div>
-        {runningLesson?.id === lesson.id && <SSERunner lessonTitle={lesson.title} />}
+        {runningLesson?.id === lesson.id && (
+          <LessonCardsRunner
+            lessonId={lesson.id}
+            lessonTitle={lesson.title}
+            onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
+            onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
+            onFinish={() => setRunningLesson(null)}
+          />
+        )}
         <SSETimeline logs={logsByLesson[lesson.id] ?? []} />
         {previews[lesson.id] && (
           <div className="mt-3">
@@ -343,10 +449,25 @@ function LessonInspector(props: {
                   if (!p) return;
                   const selected = selectedIndexes[lesson.id] || {};
                   const idxs = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
+                  let ok = false;
                   const res = idxs.length > 0
                     ? commitLessonCardsPartial({ draftId: p.draftId, lessonId: lesson.id, selectedIndexes: idxs })
                     : commitLessonCards({ draftId: p.draftId, lessonId: lesson.id });
-                  if (res) { onRefresh(); }
+                  ok = !!res;
+                  if (!ok) {
+                    const items = idxs.length > 0 ? p.payload.cards.filter((_, i) => idxs.includes(i)) : p.payload.cards;
+                    for (const item of items) {
+                      if (item.type === "text") {
+                        addCard(lesson.id, { cardType: "text", title: item.title ?? null, content: { body: item.body } });
+                      } else if (item.type === "quiz") {
+                        addCard(lesson.id, { cardType: "quiz", title: item.title ?? null, content: { question: item.question, options: item.options, answerIndex: item.answerIndex, explanation: item.explanation ?? undefined } });
+                      } else {
+                        addCard(lesson.id, { cardType: "fill-blank", title: item.title ?? null, content: { text: item.text, answers: item.answers, caseSensitive: item.caseSensitive ?? false } });
+                      }
+                    }
+                    ok = items.length > 0;
+                  }
+                  if (ok) { onRefresh(); }
                   setPreviews((prev) => { const copy = { ...prev }; delete copy[lesson.id]; return copy; });
                 }}
               >保存</Button>
@@ -355,6 +476,7 @@ function LessonInspector(props: {
           </div>
         )}
       </div>
+      )}
 
       {/* 手動でカード追加 */}
       <div className="rounded-md border border-[hsl(var(--border))] p-3">
