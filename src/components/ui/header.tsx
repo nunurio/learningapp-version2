@@ -1,6 +1,5 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +15,6 @@ export function Header({
   initialQuery?: string;
   minimal?: boolean;
 }) {
-  const pathname = usePathname();
   const [q, setQ] = useState(initialQuery);
   const showCtas = !minimal;
 

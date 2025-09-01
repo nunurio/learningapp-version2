@@ -17,10 +17,10 @@ export function LessonCardsRunner({ lessonId, lessonTitle, onLog, onPreview, onF
 
   useSSE<CardsDone, CardsUpdate>("/api/ai/lesson-cards", { lessonTitle, desiredCount: 6 }, {
     onUpdate: (d) => onLog(lessonId, `${d?.node ?? d?.status}`),
-    onDone: (d) => {
+    onDone: async (d) => {
       const payload = d?.payload as LessonCards;
       if (payload) {
-        const draft = saveDraft("lesson-cards", payload);
+        const draft = await saveDraft("lesson-cards", payload);
         onPreview(lessonId, draft.id, payload);
         onLog(lessonId, `下書きを保存しました（ID: ${draft.id}）`);
       }

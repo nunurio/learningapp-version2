@@ -37,7 +37,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
             <ResizablePanel defaultSize={defaultLayout?.[0] ?? 24} minSize={16} className="border-r">
               <NavTree
                 courseId={courseId}
-                selectedId={selId as any}
+                selectedId={selId}
                 onSelect={(id, kind) => {
                   if (kind === "course") {
                     if (id !== courseId) {
@@ -75,7 +75,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
             </ResizablePanel>
             <ResizableHandle withHandle aria-label="エディタをリサイズ" />
             <ResizablePanel defaultSize={defaultLayout?.[2] ?? 28} minSize={18} className="border-l">
-              <Inspector courseId={courseId} selectedId={selId as any} selectedKind={selKind} />
+              <Inspector courseId={courseId} selectedId={selId} selectedKind={selKind} />
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>
@@ -96,7 +96,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
                   <div className="h-[calc(100vh-120px)] overflow-auto">
                     <NavTree
                       courseId={courseId}
-                      selectedId={selId as any}
+                      selectedId={selId}
                       onSelect={(id, kind) => {
                         if (kind === "course") {
                           setOpenNav(false);
@@ -135,7 +135,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
                     <Button onClick={() => setOpenInspector(false)} size="sm" variant="outline">閉じる</Button>
                   </SheetHeader>
                   <div className="h-[calc(100vh-120px)] overflow-auto">
-                    <Inspector courseId={courseId} selectedId={selId as any} selectedKind={selKind} />
+                    <Inspector courseId={courseId} selectedId={selId} selectedKind={selKind} />
                   </div>
                 </SheetContent>
               </Sheet>
@@ -147,7 +147,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
             ) : (
               <CardPlayer
                 courseId={courseId}
-                selectedId={selId as any}
+                selectedId={selId}
                 selectedKind={selKind}
                 onNavigate={(id) => { setSelId(id); setSelKind("card"); }}
               />
@@ -169,7 +169,7 @@ function CenterPanel({ courseId, selId, selKind, onNavigate }: { courseId: UUID;
       {!selId ? (
         <p className="text-sm text-gray-700">左のナビからカードを選択すると、ここで学習できます。</p>
       ) : (
-        <CardPlayer courseId={courseId} selectedId={selId as any} selectedKind={selKind} onNavigate={onNavigate} />
+        <CardPlayer courseId={courseId} selectedId={selId} selectedKind={selKind} onNavigate={onNavigate} />
       )}
     </div>
   );

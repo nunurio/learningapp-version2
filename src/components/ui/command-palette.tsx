@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { listCourses, listLessons } from "@/lib/localdb";
+import { listCourses, listLessons, useLocalDbVersion } from "@/lib/localdb";
 
 type Cmd = { id: string; label: string; hint?: string; action: () => void };
 
@@ -15,12 +15,13 @@ export function CommandPalette() {
   const [courses, setCourses] = useState(() => listCourses());
   const [lessons, setLessons] = useState<{ courseId: string; lessonId: string; title: string }[]>([]);
 
+  const dbv = useLocalDbVersion();
   useEffect(() => {
     const cs = listCourses();
     setCourses(cs);
     const all = cs.flatMap((c) => listLessons(c.id).map((l) => ({ courseId: c.id, lessonId: l.id, title: `${c.title} / ${l.title}` })));
     setLessons(all);
-  }, []);
+  }, [dbv]);
 
   // Global shortcuts: Cmd/Ctrl+K toggles
   useEffect(() => {
@@ -38,33 +39,30 @@ export function CommandPalette() {
   // External open via CustomEvent
   useEffect(() => {
     function onOpen() { setOpen(true); }
-    window.addEventListener("open-command-palette", onOpen as any);
-    return () => window.removeEventListener("open-command-palette", onOpen as any);
+    window.addEventListener("open-command-palette", onOpen);
+    return () => window.removeEventListener("open-command-palette", onOpen);
   }, []);
 
-  const base: Cmd[] = [
-    { id: "home", label: "ダッシュボードへ移動", hint: "/", action: () => router.push("/") },
-    { id: "plan", label: "AIでコース作成", hint: "/courses/plan", action: () => router.push("/courses/plan") },
-    { id: "new", label: "手動でコース作成", hint: "/courses/new", action: () => router.push("/courses/new") },
-  ];
-
-  const courseCmds: Cmd[] = courses.flatMap((c) => [
-    { id: `open-${c.id}` , label: `ワークスペースを開く: ${c.title}`, hint: "/courses/[id]/workspace", action: () => router.push(`/courses/${c.id}/workspace`) },
-  ]);
-
-  const lessonCmds: Cmd[] = lessons.map((l) => ({
-    id: `cards-${l.lessonId}`,
-    label: `ワークスペースで開く: ${l.title}`,
-    hint: "/courses/[id]/workspace",
-    action: () => router.push(`/courses/${l.courseId}/workspace`),
-  }));
-
   const cmds = useMemo(() => {
+    const base: Cmd[] = [
+      { id: "home", label: "ダッシュボードへ移動", hint: "/", action: () => router.push("/") },
+      { id: "plan", label: "AIでコース作成", hint: "/courses/plan", action: () => router.push("/courses/plan") },
+      { id: "new", label: "手動でコース作成", hint: "/courses/new", action: () => router.push("/courses/new") },
+    ];
+    const courseCmds: Cmd[] = courses.flatMap((c) => [
+      { id: `open-${c.id}` , label: `ワークスペースを開く: ${c.title}`, hint: "/courses/[id]/workspace", action: () => router.push(`/courses/${c.id}/workspace`) },
+    ]);
+    const lessonCmds: Cmd[] = lessons.map((l) => ({
+      id: `cards-${l.lessonId}`,
+      label: `ワークスペースで開く: ${l.title}`,
+      hint: "/courses/[id]/workspace",
+      action: () => router.push(`/courses/${l.courseId}/workspace`),
+    }));
     const all = [...base, ...courseCmds, ...lessonCmds];
     const kw = q.trim().toLowerCase();
     if (!kw) return all;
     return all.filter((c) => c.label.toLowerCase().includes(kw));
-  }, [q, courses, lessons]);
+  }, [q, courses, lessons, router]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -86,7 +84,7 @@ export function CommandPalette() {
           ) : (
             <ul role="listbox" aria-label="コマンド結果" className="divide-y divide-[hsl(var(--border))]">
               {cmds.map((c) => (
-                <li key={c.id} role="option">
+                <li key={c.id} role="option" aria-selected={false}>
                   <button
                     type="button"
                     onClick={() => { setOpen(false); setQ(""); setTimeout(() => c.action(), 0); }}

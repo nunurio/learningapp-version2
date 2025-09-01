@@ -17,13 +17,13 @@ type Props = {
 
 export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: Props) {
   // DB変更に追従（進捗/フラグ/ノート/カード追加など）
-  const dbv = useLocalDbVersion();
+  useLocalDbVersion();
   const [card, setCard] = React.useState<Card | null>(null);
   // コース内の全カード（レッスン順 → カード順）
-  const flatCards = React.useMemo(() => {
+  const flatCards = (() => {
     const ls = listLessons(courseId);
     return ls.flatMap((l) => listCards(l.id));
-  }, [courseId, dbv]);
+  })();
   // セッション用の対象集合（nullなら全件）
   const [scopeIds, setScopeIds] = React.useState<string[] | null>(null);
   const activeList = React.useMemo(() => (scopeIds ? flatCards.filter((c) => scopeIds.includes(c.id)) : flatCards), [flatCards, scopeIds]);
@@ -69,7 +69,7 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         <div className="float-right flex items-center gap-2">
           <Button
             aria-label={flag ? "フラグ解除" : "フラグ"}
-            onClick={() => setFlag(toggleFlag(card.id))}
+            onClick={async () => setFlag(await toggleFlag(card.id))}
             size="sm"
           >
             {flag ? "⭐" : "☆"}
@@ -85,7 +85,7 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
               </DialogHeader>
               <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="メモ…" />
               <div className="mt-3 flex justify-end">
-                <Button onClick={() => { saveNote(card.id, note); setNoteOpen(false); }} variant="default">保存</Button>
+                <Button onClick={async () => { await saveNote(card.id, note); setNoteOpen(false); }} variant="default">保存</Button>
               </div>
             </DialogContent>
           </Dialog>

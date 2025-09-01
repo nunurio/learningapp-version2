@@ -1,5 +1,5 @@
 "use client";
-import type { UUID, CardType } from "@/lib/types";
+import type { UUID } from "@/lib/types";
 import { draftsPut, draftsGet, draftsDelete, type DraftRow } from "@/lib/idb";
 import { updateCard } from "@/lib/localdb";
 
@@ -17,7 +17,7 @@ export async function saveCardDraft(input: SaveCardDraftInput): Promise<{ update
     key,
     cardId: input.cardId,
     cardType: input.cardType,
-    title: (input as any).title ?? null,
+    title: "title" in input ? (input.title ?? null) : null,
     data: input,
     updatedAt,
   };
@@ -35,13 +35,13 @@ export async function publishCard(cardId: UUID): Promise<void> {
   if (!row) return;
   const d = row.data as SaveCardDraftInput;
   if (d.cardType === "text") {
-    updateCard(d.cardId, {
+    await updateCard(d.cardId, {
       title: d.title ?? null,
       tags: d.tags ?? undefined,
       content: { body: d.body },
     });
   } else if (d.cardType === "quiz") {
-    updateCard(d.cardId, {
+    await updateCard(d.cardId, {
       title: d.title ?? null,
       tags: d.tags ?? undefined,
       content: {
@@ -52,7 +52,7 @@ export async function publishCard(cardId: UUID): Promise<void> {
       },
     });
   } else if (d.cardType === "fill-blank") {
-    updateCard(d.cardId, {
+    await updateCard(d.cardId, {
       title: d.title ?? null,
       tags: d.tags ?? undefined,
       content: {

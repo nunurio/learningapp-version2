@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import { Header } from "@/components/ui/header";
 import { SSETimeline } from "@/components/ui/SSETimeline";
 import { useSSE } from "@/components/ai/useSSE";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { DiffList, type DiffItem } from "@/components/ui/DiffList";
 import { toast } from "@/components/ui/toaster";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 type PlanUpdate = { node?: string; status?: string };
@@ -50,12 +50,12 @@ export default function PlanCoursePage() {
     setGenerating(true);
   }
 
-  function onCommit() {
+  async function onCommit() {
     if (!draftId) return;
     const idxs = Object.entries(selected)
       .filter(([, v]) => v)
       .map(([k]) => Number(k));
-    const res = idxs.length > 0 ? commitCoursePlanPartial(draftId, idxs) : commitCoursePlan(draftId);
+    const res = idxs.length > 0 ? await commitCoursePlanPartial(draftId, idxs) : await commitCoursePlan(draftId);
     if (!res) return alert("保存に失敗しました");
     try {
       toast({
@@ -63,7 +63,7 @@ export default function PlanCoursePage() {
         description: "コース案を反映しました。",
         actionLabel: "取り消す (60秒)",
         durationMs: 60000,
-        onAction: () => deleteCourse(res.courseId),
+        onAction: () => { void deleteCourse(res.courseId); },
       });
     } catch {}
     router.replace(`/courses/${res.courseId}`);
@@ -80,10 +80,10 @@ export default function PlanCoursePage() {
             url="/api/ai/outline"
             body={{ theme, level, goal, lessonCount }}
             onUpdate={(d) => setLogs((s) => [...s, { ts: Date.now(), text: `${d?.node ?? d?.status}` }])}
-            onDone={(d) => {
+            onDone={async (d) => {
               const p = d?.plan as CoursePlan;
               if (p) {
-                const draft = saveDraft("outline", p);
+                const draft = await saveDraft("outline", p);
                 setPlan(p);
                 setDraftId(draft.id);
                 setLogs((s) => [...s, { ts: Date.now(), text: `下書きを保存しました（ID: ${draft.id}）` }]);

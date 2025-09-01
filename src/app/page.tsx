@@ -2,14 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { listCourses, deleteCourse } from "@/lib/localdb";
+import { listCourses, deleteCourse, useLocalDbVersion } from "@/lib/localdb";
 import type { Course } from "@/lib/types";
 import { Header } from "@/components/ui/header";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Confirm } from "@/components/ui/confirm";
 
 type StatusFilter = "all" | "draft" | "published";
@@ -19,9 +18,10 @@ export default function Home() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
 
+  const dbv = useLocalDbVersion();
   useEffect(() => {
     setCourses(listCourses());
-  }, []);
+  }, [dbv]);
 
   function refresh() {
     setCourses(listCourses());
@@ -148,7 +148,7 @@ export default function Home() {
                       description="この操作は元に戻せません。関連するレッスンとカードも削除されます。"
                       confirmLabel="削除する"
                       cancelLabel="キャンセル"
-                      onConfirm={() => { deleteCourse(c.id); refresh(); }}
+                      onConfirm={async () => { await deleteCourse(c.id); refresh(); }}
                     >
                       <Button
                         variant="ghost"

@@ -7,7 +7,7 @@ function isEditableTarget(el: EventTarget | null) {
   const t = el as HTMLElement | null;
   if (!t) return false;
   const tag = t.tagName?.toLowerCase();
-  return tag === "input" || tag === "textarea" || (t as any).isContentEditable === true;
+  return tag === "input" || tag === "textarea" || t.isContentEditable === true;
 }
 
 // Simple hotkey hook; ignores events when typing in inputs/textarea/contentEditable
@@ -36,4 +36,3 @@ function normalizeKey(e: KeyboardEvent) {
   parts.push(e.key);
   return parts.join("+");
 }
-

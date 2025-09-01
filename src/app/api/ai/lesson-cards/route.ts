@@ -22,9 +22,9 @@ export async function POST(req: NextRequest) {
   let desiredCount: number | undefined;
   try {
     if (req.headers.get("content-type")?.includes("application/json")) {
-      const j = await req.json().catch(() => ({} as any));
-      lessonTitle = j?.lessonTitle ?? undefined;
-      desiredCount = typeof j?.desiredCount === "number" ? j.desiredCount : undefined;
+      const j = (await req.json().catch(() => ({}))) as Partial<{ lessonTitle: string; desiredCount: number }>;
+      lessonTitle = j.lessonTitle ?? undefined;
+      desiredCount = typeof j.desiredCount === "number" ? j.desiredCount : undefined;
     }
   } catch {}
   try {
@@ -57,8 +57,9 @@ export async function POST(req: NextRequest) {
         const payload: LessonCards = generateLessonCards({ lessonTitle, desiredCount });
         await new Promise((r) => setTimeout(r, 200));
         send({ event: "done", data: { payload, draftId: "local-client-will-save" } });
-      } catch (e: any) {
-        send({ event: "error", data: { message: e?.message ?? "unknown" } });
+      } catch (e: unknown) {
+        const err = e as { message?: string } | undefined;
+        send({ event: "error", data: { message: err?.message ?? "unknown" } });
       } finally {
         controller.close();
       }

@@ -15,6 +15,7 @@ export function useSSE<TDone, TUpdate = DefaultUpdate>(
   { onUpdate, onDone, onError }: Handlers<TDone, TUpdate>
 ) {
   const abortRef = useRef<AbortController | null>(null);
+  const bodyKey = JSON.stringify(body);
 
   useEffect(() => {
     // Abort any in-flight request for prior effect
@@ -23,8 +24,11 @@ export function useSSE<TDone, TUpdate = DefaultUpdate>(
     abortRef.current = ac;
 
     (async () => {
-      const isAbortError = (err: any) =>
-        err?.name === "AbortError" || err?.code === 20 || `${err?.message ?? ""}`.toLowerCase().includes("abort");
+      const isAbortError = (err: unknown) => {
+        const e = err as { name?: string; code?: number; message?: string } | undefined;
+        const msg = (e?.message ?? "").toLowerCase();
+        return e?.name === "AbortError" || e?.code === 20 || msg.includes("abort");
+      };
 
       try {
         const res = await fetch(url, {
@@ -87,7 +91,10 @@ export function useSSE<TDone, TUpdate = DefaultUpdate>(
             }
           }
         } catch (err) {
-          if (!isAbortError(err)) onError?.({ message: (err as any)?.message ?? "stream error" });
+          if (!isAbortError(err)) {
+            const e = err as { message?: string } | undefined;
+            onError?.({ message: e?.message ?? "stream error" });
+          }
         } finally {
           try { reader.releaseLock(); } catch {}
           // flush any remaining decoded text and parse once more
@@ -117,12 +124,15 @@ export function useSSE<TDone, TUpdate = DefaultUpdate>(
           }
         }
       } catch (err) {
-        if (!isAbortError(err)) onError?.({ message: (err as any)?.message ?? "request error" });
+        if (!isAbortError(err)) {
+          const e = err as { message?: string } | undefined;
+          onError?.({ message: e?.message ?? "request error" });
+        }
       }
     })();
 
     return () => {
       try { ac.abort(); } catch {}
     };
-  }, [url, JSON.stringify(body)]);
+  }, [url, body, bodyKey, onUpdate, onDone, onError]);
 }

@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { listLessons, listCards, listFlaggedByCourse, getProgress, listCourses, useLocalDbVersion } from "@/lib/localdb";
-import type { UUID, Card, Lesson, CardType, Course } from "@/lib/types";
+import type { UUID, Card, Lesson, CardType, Course, QuizCardContent, FillBlankCardContent } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ProgressRing } from "@/components/ui/progress-ring";
@@ -31,7 +31,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
   const [typeFilter, setTypeFilter] = React.useState<"all" | CardType>("all");
   const [onlyFlagged, setOnlyFlagged] = React.useState(false);
   const [onlyUnlearned, setOnlyUnlearned] = React.useState(false);
-  const flaggedSet = React.useMemo(() => new Set(listFlaggedByCourse(courseId)), [courseId, dbv]);
+  const flaggedSet = new Set(listFlaggedByCourse(courseId));
 
   // ロービング tabindex 用の"アクティブ"項目管理
   const [activeId, setActiveId] = React.useState<string | undefined>(undefined);
@@ -45,7 +45,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
 
   // 可視行をフラット化
   type Row = { key: string; type: "course" | "lesson" | "card"; id: string; level: number; title: string; tags?: string[]; completed?: boolean; expanded?: boolean };
-  const rows: Row[] = React.useMemo(() => {
+  const rows: Row[] = (() => {
     const out: Row[] = [];
     const match = (s: string) => (q ? s.toLowerCase().includes(q.toLowerCase()) : true);
     // コース → レッスン → カード
@@ -94,10 +94,10 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
       }
     });
     return out;
-  }, [courses, expanded, q, typeFilter, onlyFlagged, onlyUnlearned, flaggedSet, dbv]);
+  })();
 
   // レッスン単位の進捗率
-  const lessonProgress = React.useMemo(() => {
+  const lessonProgress = (() => {
     const map = new Map<string, number>();
     for (const l of lessons) {
       const cs = listCards(l.id);
@@ -106,7 +106,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
       map.set(l.id, Math.round((done / cs.length) * 100));
     }
     return map;
-  }, [lessons, dbv]);
+  })();
 
   // バーチャルリスト（@tanstack/react-virtual）
   const COURSE_H = 40; // px
@@ -120,7 +120,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
   });
 
   // 初回フォーカス時に先頭へロービング
-  const onTreeFocus = (e: React.FocusEvent) => {
+  const onTreeFocus = () => {
     if (!containerRef.current) return;
     const hasFocusedItem = !!containerRef.current.querySelector('[role="treeitem"][tabindex="0"]');
     if (!hasFocusedItem && rows.length) setActiveId(rows[0].id);
@@ -228,7 +228,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
         </div>
         <div className="flex items-center gap-2 text-xs">
           <label className="text-gray-600" htmlFor="type-filter">種類</label>
-          <Select id="type-filter" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} className="max-w-[140px]">
+          <Select id="type-filter" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as "all" | CardType)} className="max-w-[140px]">
             <option value="all">すべて</option>
             <option value="text">Text</option>
             <option value="quiz">Quiz</option>
@@ -472,6 +472,6 @@ function TreeCardRow({ id, title, level, selected, active, tags, completed, onCl
 
 function labelForCard(card: Card): string {
   if (card.cardType === "text") return "テキスト";
-  if (card.cardType === "quiz") return (card.content as any).question ?? "クイズ";
-  return (card.content as any).text?.replace(/\[\[(\d+)\]\]/g, "□") ?? "穴埋め";
+  if (card.cardType === "quiz") return (card.content as QuizCardContent).question ?? "クイズ";
+  return (card.content as FillBlankCardContent).text?.replace(/\[\[(\d+)\]\]/g, "□") ?? "穴埋め";
 }

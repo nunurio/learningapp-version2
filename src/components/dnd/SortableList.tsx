@@ -27,7 +27,7 @@ type SortableListProps = {
 
 export function SortableList({ ids, label, onReorder, renderItem }: SortableListProps) {
   const [items, setItems] = React.useState(ids);
-  React.useEffect(() => setItems(ids), [ids.join(",")]);
+  React.useEffect(() => setItems(ids), [ids]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),

@@ -15,7 +15,7 @@ type ToastItem = {
 
 const listeners = new Set<(t: ToastItem) => void>();
 type ToastRecord = ToastItem & { id: string; createdAt: number; state: "shown" | "action" | "dismissed" };
-let history: ToastRecord[] = [];
+const history: ToastRecord[] = [];
 const historyListeners = new Set<() => void>();
 
 function notifyHistoryChange() {
@@ -71,7 +71,8 @@ export function Toaster() {
                 className="text-xs underline underline-offset-2"
                 onClick={() => {
                   try { t.onAction?.(); } finally {
-                    history.push({ ...(t as any), id: t.id!, createdAt: Date.now(), state: "action" });
+                    const rec: ToastRecord = { ...(t as { id: string } & ToastItem), id: t.id!, createdAt: Date.now(), state: "action" };
+                    history.push(rec);
                     notifyHistoryChange();
                     setItems((s) => s.filter((x) => x.id !== t.id));
                   }

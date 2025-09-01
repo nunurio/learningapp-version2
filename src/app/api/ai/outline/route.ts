@@ -23,11 +23,11 @@ export async function POST(req: NextRequest) {
   let lessonCount: number | undefined;
   try {
     if (req.headers.get("content-type")?.includes("application/json")) {
-      const j = await req.json().catch(() => ({} as any));
-      theme = j?.theme ?? undefined;
-      level = j?.level ?? undefined;
-      goal = j?.goal ?? undefined;
-      lessonCount = typeof j?.lessonCount === "number" ? j.lessonCount : undefined;
+      const j = (await req.json().catch(() => ({}))) as Partial<{ theme: string; level: string; goal: string; lessonCount: number }>;
+      theme = j.theme ?? undefined;
+      level = j.level ?? undefined;
+      goal = j.goal ?? undefined;
+      lessonCount = typeof j.lessonCount === "number" ? j.lessonCount : undefined;
     }
   } catch {}
   try {
@@ -62,8 +62,9 @@ export async function POST(req: NextRequest) {
         const plan = generateCoursePlan({ theme, level, goal, lessonCount });
         await new Promise((r) => setTimeout(r, 200));
         send({ event: "done", data: { plan, draftId: "local-client-will-save" } });
-      } catch (e: any) {
-        send({ event: "error", data: { message: e?.message ?? "unknown" } });
+      } catch (e: unknown) {
+        const err = e as { message?: string } | undefined;
+        send({ event: "error", data: { message: err?.message ?? "unknown" } });
       } finally {
         controller.close();
       }

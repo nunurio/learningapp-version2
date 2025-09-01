@@ -4,7 +4,6 @@ import {
   PanelGroup as ResizablePanelGroupPrimitive,
   Panel as ResizablePanelPrimitive,
   PanelResizeHandle as ResizableHandlePrimitive,
-  type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
 import { cn } from "@/lib/utils/cn";
 

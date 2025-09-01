@@ -9,7 +9,7 @@ export function SSEConsole({ logs }: { logs: { ts: number; text: string }[] }) {
   }, [logs.length]);
 
   return (
-    <Card ref={ref as any} className="p-3 text-xs text-gray-700 h-64 overflow-auto" role="status" aria-live="polite">
+    <Card ref={ref} className="p-3 text-xs text-gray-700 h-64 overflow-auto" role="status" aria-live="polite">
       {logs.length === 0 ? (
         <p className="text-gray-500">ログはまだありません。</p>
       ) : (

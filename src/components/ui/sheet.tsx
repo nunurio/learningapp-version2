@@ -12,21 +12,21 @@ export function SheetContent({
   side = "right",
   children,
   ...props
-}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { side?: "left" | "right"; children?: React.ReactNode }) {
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { side?: "left" | "right"; children?: React.ReactNode; "aria-label"?: string }) {
   // Ensure Dialog.Content always has an accessible name.
   // Radix logs a console error if there is neither a Dialog.Title descendant
   // nor an explicit `aria-label` on Content. We add a visually hidden title
   // as a safe fallback when neither is present.
-  const ariaLabel = (props as any)["aria-label"] as string | undefined;
+  const ariaLabel = props["aria-label"];
 
   const containsDialogTitle = (node: React.ReactNode): boolean => {
     let found = false;
     React.Children.forEach(node as React.ReactNode, (child) => {
       if (found) return;
       if (!React.isValidElement(child)) return;
-      const el = child as React.ReactElement<any>;
+      const el = child as React.ReactElement<{ children?: React.ReactNode }>;
       // Direct Title
-      if (el.type === (DialogPrimitive as any).Title) {
+      if (el.type === DialogPrimitive.Title) {
         found = true;
         return;
       }

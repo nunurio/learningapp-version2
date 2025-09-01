@@ -42,8 +42,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   const debounceRef = React.useRef<number | null>(null);
   const [lessons, setLessons] = React.useState<Lesson[]>([]);
   const [cards, setCards] = React.useState<Card[]>([]);
-  const [newLessonTitle, setNewLessonTitle] = React.useState("");
-  const [newCard, setNewCard] = React.useState<{ type: CardType; title: string; body?: string; question?: string; options?: string; answerIndex?: number; explanation?: string; text?: string; answers?: string; caseSensitive?: boolean }>({ type: "text", title: "", body: "" });
+  // Reserved UI states (unused currently)
 
   // AI lesson-cards generation state
   const [runningLesson, setRunningLesson] = React.useState<Lesson | null>(null);
@@ -71,7 +70,22 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   }
 
   React.useEffect(() => {
-    refreshLists();
+    setCourse(getCourse(courseId) ?? null);
+    const ls = listLessons(courseId);
+    setLessons(ls);
+    if (selectedKind === "lesson" && selectedId) {
+      const l = ls.find((x) => x.id === selectedId) ?? null;
+      setLesson(l);
+      setCards(l ? listCards(l.id) : []);
+    } else if (selectedKind === "card" && selectedId) {
+      const l = ls.find((x) => listCards(x.id).some((c) => c.id === selectedId));
+      setLesson(null);
+      setCards([]);
+      const found = (l ? listCards(l.id) : []).find((c) => c.id === selectedId) ?? null;
+      setCard(found ?? null);
+    } else {
+      setLesson(null); setCards([]); setCard(null);
+    }
   }, [courseId, selectedId, selectedKind, dbv]);
 
   // 下書き or 現行値でフォーム初期化
@@ -83,7 +97,8 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
       if (!mounted) return;
       if (draft) { setForm(draft); return; }
       if (card.cardType === "text") {
-        setForm({ cardId: card.id, cardType: "text", title: card.title ?? null, tags: card.tags ?? [], body: (card.content as any).body ?? "" });
+        const c = card.content as import("@/lib/types").TextCardContent;
+        setForm({ cardId: card.id, cardType: "text", title: card.title ?? null, tags: card.tags ?? [], body: c.body ?? "" });
       } else if (card.cardType === "quiz") {
         const c = card.content as QuizCardContent;
         setForm({ cardId: card.id, cardType: "quiz", title: card.title ?? null, tags: card.tags ?? [], question: c.question, options: c.options, answerIndex: c.answerIndex, explanation: c.explanation ?? null });
@@ -93,7 +108,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
       }
     })();
     return () => { mounted = false; };
-  }, [card?.id]);
+  }, [card]);
 
   // 500ms デバウンスのオートセーブ
   React.useEffect(() => {
@@ -108,12 +123,12 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
     };
-  }, [JSON.stringify(form)]);
+  }, [form]);
 
   // 現在のレッスン（カード選択時も親レッスンを解決）
-  const currentLesson: Lesson | null = React.useMemo(() => {
+  const currentLesson: Lesson | null = (() => {
     if (selectedKind === "lesson" && selectedId) {
-      return (listLessons(courseId).find((x) => x.id === selectedId) ?? null);
+      return listLessons(courseId).find((x) => x.id === selectedId) ?? null;
     }
     if (selectedKind === "card" && selectedId) {
       const ls = listLessons(courseId);
@@ -121,7 +136,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
       return l ?? null;
     }
     return null;
-  }, [courseId, selectedKind, selectedId, dbv]);
+  })();
 
   // レッスン上部ツールはファイルスコープの安定コンポーネントに移動（下方で定義）
 
@@ -139,27 +154,13 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
           setPreviews={setPreviews}
           selectedIndexes={selectedIndexes}
           setSelectedIndexes={setSelectedIndexes}
-          onSaveAll={(lessonId, payload, selected) => {
+          onSaveAll={async (lessonId, payload, selected) => {
             const idxs = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
-            let ok = false;
             const res = idxs.length > 0
-              ? commitLessonCardsPartial({ draftId: payload.draftId, lessonId, selectedIndexes: idxs })
-              : commitLessonCards({ draftId: payload.draftId, lessonId });
-            ok = !!res;
-            if (!ok) {
-              const items = idxs.length > 0 ? payload.payload.cards.filter((_, i) => idxs.includes(i)) : payload.payload.cards;
-              for (const item of items) {
-                if (item.type === "text") {
-                  addCard(lessonId, { cardType: "text", title: item.title ?? null, content: { body: item.body } });
-                } else if (item.type === "quiz") {
-                  addCard(lessonId, { cardType: "quiz", title: item.title ?? null, content: { question: item.question, options: item.options, answerIndex: item.answerIndex, explanation: item.explanation ?? undefined } });
-                } else {
-                  addCard(lessonId, { cardType: "fill-blank", title: item.title ?? null, content: { text: item.text, answers: item.answers, caseSensitive: item.caseSensitive ?? false } });
-                }
-              }
-              ok = items.length > 0;
-            }
-            if (ok) refreshLists();
+              ? await commitLessonCardsPartial({ draftId: payload.draftId, lessonId, selectedIndexes: idxs })
+              : await commitLessonCards({ draftId: payload.draftId, lessonId });
+            if (!res) return alert("保存に失敗しました");
+            refreshLists();
             setPreviews((prev) => { const copy = { ...prev }; delete copy[lessonId]; return copy; });
           }}
         />
@@ -199,39 +200,39 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
           </div>
           <div>
             <label className="block text-sm mb-1">タイトル（任意）</label>
-            <Input value={(form as any).title ?? ""} onChange={(e) => setForm((f) => f ? ({ ...f, title: e.target.value }) as any : f)} />
+            <Input value={form.title ?? ""} onChange={(e) => setForm((f) => (f ? { ...f, title: e.target.value } : f))} />
           </div>
           <div>
             <label className="block text-sm mb-1">タグ（カンマ区切り）</label>
             <Input
-              value={(form as any).tags?.join(", ") ?? ""}
-              onChange={(e) => setForm((f) => f ? ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) }) as any : f)}
+              value={(form.tags ?? []).join(", ")}
+              onChange={(e) => setForm((f) => (f ? { ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) } : f))}
               placeholder="例: 基礎, 重要, 用語"
             />
           </div>
           {form.cardType === "text" && (
             <div>
               <label className="block text-sm mb-1">本文</label>
-              <Textarea value={(form as any).body ?? ""} onChange={(e) => setForm((f) => f ? ({ ...f, body: e.target.value }) as any : f)} />
+              <Textarea value={form.cardType === "text" ? form.body : ""} onChange={(e) => setForm((f) => (f && f.cardType === "text" ? { ...f, body: e.target.value } : f))} />
             </div>
           )}
           {form.cardType === "quiz" && (
             <div className="grid grid-cols-1 gap-2">
               <div>
                 <label className="block text-sm mb-1">設問</label>
-                <Input value={(form as any).question ?? ""} onChange={(e) => setForm((f) => f ? ({ ...f, question: e.target.value }) as any : f)} />
+                <Input value={form.cardType === "quiz" ? form.question : ""} onChange={(e) => setForm((f) => (f && f.cardType === "quiz" ? { ...f, question: e.target.value } : f))} />
               </div>
               <div>
                 <label className="block text-sm mb-1">選択肢（改行区切り）</label>
-                <Textarea value={(form as any).options?.join("\n") ?? ""} onChange={(e) => setForm((f) => f ? ({ ...f, options: e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean) }) as any : f)} />
+                <Textarea value={form.cardType === "quiz" ? (form.options ?? []).join("\n") : ""} onChange={(e) => setForm((f) => (f && f.cardType === "quiz" ? { ...f, options: e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean) } : f))} />
               </div>
               <div>
                 <label className="block text-sm mb-1">正解インデックス（0開始）</label>
-                <Input type="number" value={(form as any).answerIndex ?? 0} onChange={(e) => setForm((f) => f ? ({ ...f, answerIndex: Number(e.target.value) }) as any : f)} />
+                <Input type="number" value={form.cardType === "quiz" ? (form.answerIndex ?? 0) : 0} onChange={(e) => setForm((f) => (f && f.cardType === "quiz" ? { ...f, answerIndex: Number(e.target.value) } : f))} />
               </div>
               <div>
                 <label className="block text-sm mb-1">解説（任意）</label>
-                <Input value={(form as any).explanation ?? ""} onChange={(e) => setForm((f) => f ? ({ ...f, explanation: e.target.value }) as any : f)} />
+                <Input value={form.cardType === "quiz" ? (form.explanation ?? "") : ""} onChange={(e) => setForm((f) => (f && f.cardType === "quiz" ? { ...f, explanation: e.target.value } : f))} />
               </div>
             </div>
           )}
@@ -239,18 +240,18 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
             <div className="grid grid-cols-1 gap-2">
               <div>
                 <label className="block text-sm mb-1">テキスト（[[1]] 形式）</label>
-                <Textarea value={(form as any).text ?? ""} onChange={(e) => setForm((f) => f ? ({ ...f, text: e.target.value }) as any : f)} />
+                <Textarea value={form.cardType === "fill-blank" ? form.text : ""} onChange={(e) => setForm((f) => (f && f.cardType === "fill-blank" ? { ...f, text: e.target.value } : f))} />
               </div>
               <div>
                 <label className="block text-sm mb-1">回答（k:value 改行区切り）</label>
-                <Textarea value={Object.entries((form as any).answers ?? {}).map(([k,v]) => `${k}:${v}`).join("\n")} onChange={(e) => {
+                <Textarea value={Object.entries(form.cardType === "fill-blank" ? (form.answers ?? {}) : {}).map(([k,v]) => `${k}:${v}`).join("\n")} onChange={(e) => {
                   const obj: Record<string,string> = {};
                   e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean).forEach((line)=>{
                     const [k,...rest] = line.split(":");
                     const v = rest.join(":").trim();
                     if (k && v) obj[k.trim()] = v;
                   });
-                  setForm((f)=> f ? ({ ...f, answers: obj }) as any : f);
+                  setForm((f)=> (f && f.cardType === "fill-blank" ? { ...f, answers: obj } : f));
                 }} />
               </div>
             </div>
@@ -334,11 +335,7 @@ function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, se
   );
 }
 
-function summary(c: Card): string {
-  if (c.cardType === "text") return (c.content as any).body?.slice(0, 30) ?? "テキスト";
-  if (c.cardType === "quiz") return (c.content as any).question ?? "クイズ";
-  return (c.content as any).text?.replace(/\n/g, " ").slice(0, 30) ?? "穴埋め";
-}
+// (unused) summary helper was removed to reduce lint warnings
 
 // --- Sub-components -------------------------------------------------------
 
@@ -350,14 +347,14 @@ function CourseInspector({ course, lessons, onRefresh }: { course: Course; lesso
       <h3 className="font-medium">コース: {course.title}</h3>
       <div className="flex gap-2">
         <Input placeholder="新規レッスン名" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <Button onClick={() => { if (!title.trim()) return; addLesson(course.id, title); setTitle(""); onRefresh(); }}>レッスン追加</Button>
+        <Button onClick={async () => { if (!title.trim()) return; await addLesson(course.id, title); setTitle(""); onRefresh(); }}>レッスン追加</Button>
       </div>
       <div>
         <h4 className="text-sm text-gray-700 mb-2">レッスン並び替え</h4>
         <SortableList
           ids={lessons.map((l) => l.id)}
           label="レッスンの並び替え"
-          onReorder={(ids) => { reorderLessons(course.id, ids); onRefresh(); }}
+          onReorder={async (ids) => { await reorderLessons(course.id, ids); onRefresh(); }}
           renderItem={(id) => {
             const l = lessons.find((x) => x.id === id);
             if (!l) return <div className="text-xs text-gray-400">更新中…</div>;
@@ -369,7 +366,7 @@ function CourseInspector({ course, lessons, onRefresh }: { course: Course; lesso
                   description="この操作は元に戻せません。配下のカードも削除されます。"
                   confirmLabel="削除する"
                   cancelLabel="キャンセル"
-                  onConfirm={() => { deleteLesson(l.id); onRefresh(); }}
+                  onConfirm={async () => { await deleteLesson(l.id); onRefresh(); }}
                 >
                   <Button variant="destructive" size="sm">削除</Button>
                 </Confirm>
@@ -397,7 +394,7 @@ function LessonInspector(props: {
   hideAiSection?: boolean;
   onRefresh: () => void;
 }) {
-  const { courseId, lesson, cards, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, hideAiSection, onRefresh } = props;
+  const { lesson, cards, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, hideAiSection, onRefresh } = props;
 
   // AI SSE runner
   // Note: do NOT define inline components here to avoid remount loops.
@@ -444,30 +441,15 @@ function LessonInspector(props: {
             </ol>
             <div className="mt-3 flex justify-end gap-2">
               <Button
-                onClick={() => {
+                onClick={async () => {
                   const p = previews[lesson.id];
                   if (!p) return;
                   const selected = selectedIndexes[lesson.id] || {};
                   const idxs = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
-                  let ok = false;
                   const res = idxs.length > 0
-                    ? commitLessonCardsPartial({ draftId: p.draftId, lessonId: lesson.id, selectedIndexes: idxs })
-                    : commitLessonCards({ draftId: p.draftId, lessonId: lesson.id });
-                  ok = !!res;
-                  if (!ok) {
-                    const items = idxs.length > 0 ? p.payload.cards.filter((_, i) => idxs.includes(i)) : p.payload.cards;
-                    for (const item of items) {
-                      if (item.type === "text") {
-                        addCard(lesson.id, { cardType: "text", title: item.title ?? null, content: { body: item.body } });
-                      } else if (item.type === "quiz") {
-                        addCard(lesson.id, { cardType: "quiz", title: item.title ?? null, content: { question: item.question, options: item.options, answerIndex: item.answerIndex, explanation: item.explanation ?? undefined } });
-                      } else {
-                        addCard(lesson.id, { cardType: "fill-blank", title: item.title ?? null, content: { text: item.text, answers: item.answers, caseSensitive: item.caseSensitive ?? false } });
-                      }
-                    }
-                    ok = items.length > 0;
-                  }
-                  if (ok) { onRefresh(); }
+                    ? await commitLessonCardsPartial({ draftId: p.draftId, lessonId: lesson.id, selectedIndexes: idxs })
+                    : await commitLessonCards({ draftId: p.draftId, lessonId: lesson.id });
+                  if (res) { onRefresh(); }
                   setPreviews((prev) => { const copy = { ...prev }; delete copy[lesson.id]; return copy; });
                 }}
               >保存</Button>
@@ -493,7 +475,7 @@ function LessonInspector(props: {
           <SortableList
             ids={cards.map((c) => c.id)}
             label="カードの並び替え"
-            onReorder={(ids) => { reorderCards(lesson.id, ids); onRefresh(); }}
+            onReorder={async (ids) => { await reorderCards(lesson.id, ids); onRefresh(); }}
             renderItem={(id) => {
               const c = cards.find((x) => x.id === id);
               if (!c) return <div className="text-xs text-gray-400">更新中…</div>;
@@ -506,7 +488,7 @@ function LessonInspector(props: {
                     description="この操作は元に戻せません。学習履歴も削除されます。"
                     confirmLabel="削除する"
                     cancelLabel="キャンセル"
-                    onConfirm={() => { deleteCard(c.id); onRefresh(); }}
+                    onConfirm={async () => { await deleteCard(c.id); onRefresh(); }}
                   >
                     <Button variant="destructive" size="sm">削除</Button>
                   </Confirm>
@@ -521,9 +503,9 @@ function LessonInspector(props: {
 }
 
 function labelCard(card: Card): string {
-  if (card.cardType === "text") return (card.content as any).body?.slice(0, 18) ?? "テキスト";
-  if (card.cardType === "quiz") return (card.content as any).question ?? "クイズ";
-  return (card.content as any).text?.replace(/\[\[(\d+)\]\]/g, "□") ?? "穴埋め";
+  if (card.cardType === "text") return (card.content as import("@/lib/types").TextCardContent).body?.slice(0, 18) ?? "テキスト";
+  if (card.cardType === "quiz") return (card.content as import("@/lib/types").QuizCardContent).question ?? "クイズ";
+  return (card.content as import("@/lib/types").FillBlankCardContent).text?.replace(/\[\[(\d+)\]\]/g, "□") ?? "穴埋め";
 }
 
 function NewCardForm({ lessonId, onDone }: { lessonId: UUID; onDone: () => void }) {
@@ -540,15 +522,15 @@ function NewCardForm({ lessonId, onDone }: { lessonId: UUID; onDone: () => void 
 
   return (
     <form
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
         if (type === "text") {
           if (!body.trim()) return alert("本文は必須です");
-          addCard(lessonId, { cardType: "text", title: title || null, content: { body } });
+          await addCard(lessonId, { cardType: "text", title: title || null, content: { body } });
         } else if (type === "quiz") {
           const opts = options.split("\n").map((s) => s.trim()).filter(Boolean);
           if (!question.trim() || opts.length < 2) return alert("設問と選択肢2つ以上が必要です");
-          addCard(lessonId, { cardType: "quiz", title: title || null, content: { question, options: opts, answerIndex: Math.max(0, Math.min(answerIndex, opts.length - 1)), explanation: explanation || undefined } });
+          await addCard(lessonId, { cardType: "quiz", title: title || null, content: { question, options: opts, answerIndex: Math.max(0, Math.min(answerIndex, opts.length - 1)), explanation: explanation || undefined } });
         } else {
           const obj: Record<string, string> = {};
           answers.split("\n").map((s) => s.trim()).filter(Boolean).forEach((line) => {
@@ -557,7 +539,7 @@ function NewCardForm({ lessonId, onDone }: { lessonId: UUID; onDone: () => void 
             if (k && v) obj[k.trim()] = v;
           });
           if (!text.trim() || Object.keys(obj).length === 0) return alert("テキストと回答（例: 1:answer）を入力してください");
-          addCard(lessonId, { cardType: "fill-blank", title: title || null, content: { text, answers: obj, caseSensitive } });
+          await addCard(lessonId, { cardType: "fill-blank", title: title || null, content: { text, answers: obj, caseSensitive } });
         }
         setTitle(""); setBody(""); setQuestion(""); setOptions(""); setAnswerIndex(0); setExplanation(""); setText(""); setAnswers("1:answer"); setCaseSensitive(false);
         onDone();

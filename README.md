@@ -34,3 +34,20 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Supabase (DB persistence with Server Actions)
+
+This app persists data in Supabase with Row Level Security (RLS) using the authenticated user session (no service role on the app server).
+
+1) Set env vars in `.env.local`:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+2) Apply SQL under `supabase/schemas/*.sql` (or run the migrations in `supabase/migrations/`) to create tables, RLS, and triggers.
+
+3) Sign in to Supabase Auth in the app (RLS uses `auth.uid()`), then use the app normally.
+
+All writes go through Next.js Server Actions on the server. Reads are served via a single route handler (`/api/db`) and cached in a client-side store for smooth UX.

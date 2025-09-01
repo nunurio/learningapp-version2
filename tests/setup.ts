@@ -11,9 +11,10 @@ afterEach(() => {
 });
 
 // Provide a minimal localStorage in jsdom/node if absent
-if (!(globalThis as any).localStorage) {
+const g = globalThis as unknown as { localStorage?: Storage };
+if (!g.localStorage) {
   const store = new Map<string, string>();
-  (globalThis as any).localStorage = {
+  g.localStorage = {
     getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
     setItem: (k: string, v: string) => {
       store.set(k, String(v));

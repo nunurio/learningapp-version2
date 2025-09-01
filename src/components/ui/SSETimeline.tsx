@@ -95,7 +95,8 @@ export function SSETimeline({ logs }: { logs: SseLog[] }) {
         <ol className="space-y-2">
           {groupsWithTimes.map((g) => {
             const started = g.start != null;
-            const done = started && g.end != null && g.end < now && groupIndex.has(g.id) && GROUPS.indexOf(g as any) < GROUPS.length - 1 && groupsWithTimes.find((x) => x.id === g.id)?.end !== g.start; // heuristic
+            const currIdx = GROUPS.findIndex((gg) => gg.id === g.id);
+            const done = started && g.end != null && g.end < now && groupIndex.has(g.id) && currIdx < GROUPS.length - 1 && groupsWithTimes.find((x) => x.id === g.id)?.end !== g.start; // heuristic
             const active = started && !done;
             const duration = started ? (g.end ?? now) - (g.start as number) : 0;
             const dotColor = lastError && active ? "hsl(var(--destructive))" : active ? "hsl(var(--primary))" : started ? "rgba(0,0,0,.55)" : "rgba(0,0,0,.25)";

@@ -14,10 +14,10 @@ export default function NewCoursePage() {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return alert("タイトルは必須です");
-    const { courseId } = createCourse({ title, description, category });
+    const { courseId } = await createCourse({ title, description, category });
     router.replace(`/courses/${courseId}`);
   }
 
