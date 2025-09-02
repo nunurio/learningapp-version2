@@ -18,7 +18,7 @@ jobs:
       # pnpm を入れる（任意だが高速）
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          # package.json の packageManager を優先してpnpmを解決
           run_install: false
 
       # Node を固定し、pnpm の依存キャッシュを有効化（.nvmrc は未使用）
