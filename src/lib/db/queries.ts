@@ -160,7 +160,13 @@ export async function snapshot() {
 
   type Result<T> = { data: T | null; error: unknown };
   const dataOrThrow = <T extends unknown[]>(r: Result<T>): T => {
-    if (r.error) throw new Error(String(r.error));
+    if (r.error) {
+      // Preserve PostgrestError properties for better debugging
+      if (r.error && typeof r.error === "object" && "message" in r.error) {
+        throw r.error;
+      }
+      throw new Error(String(r.error));
+    }
     return r.data ?? ([] as T);
   };
 
