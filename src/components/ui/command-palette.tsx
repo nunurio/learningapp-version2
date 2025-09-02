@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { listCourses, listLessons } from "@/lib/client-api";
+import type { Course } from "@/lib/types";
 
 type Cmd = { id: string; label: string; hint?: string; action: () => void };
 
@@ -12,7 +13,7 @@ export function CommandPalette() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const [courses, setCourses] = useState<any[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [lessons, setLessons] = useState<{ courseId: string; lessonId: string; title: string }[]>([]);
 
   useEffect(() => {
