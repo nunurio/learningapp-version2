@@ -1,8 +1,14 @@
 export function uid(): string {
-  const c = (globalThis as unknown as { crypto?: Crypto }).crypto;
+  // Type guard to check if crypto is available
+  const hasCrypto = (obj: unknown): obj is { crypto: Crypto } => {
+    return typeof obj === "object" && obj !== null && "crypto" in obj;
+  };
+
   try {
     // Prefer secure UUID when available in browser
-    if (c && typeof c.randomUUID === "function") return c.randomUUID();
+    if (hasCrypto(globalThis) && typeof globalThis.crypto.randomUUID === "function") {
+      return globalThis.crypto.randomUUID();
+    }
   } catch {
     // ignore and fall back
   }

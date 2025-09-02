@@ -22,10 +22,16 @@ const eslintConfig = [
   },
   {
     rules: {
-      // 過度なエラー化は避け、まずは警告から始める
-      "@typescript-eslint/no-explicit-any": "warn",
+      // 型安全性の向上: any の使用を禁止
+      "@typescript-eslint/no-explicit-any": "error",
       // 型のimport/exportを安定させる
-      "@typescript-eslint/consistent-type-imports": ["warn", { prefer: "type-imports", fixStyle: "inline-type-imports" }],
+      "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports", fixStyle: "inline-type-imports" }],
+      // 非null assertionの使用を制限
+      "@typescript-eslint/no-non-null-assertion": "error",
+      // unsafe な型変換を制限
+      "@typescript-eslint/no-unsafe-assignment": "warn",
+      "@typescript-eslint/no-unsafe-call": "warn",
+      "@typescript-eslint/no-unsafe-member-access": "warn",
       // 今後の事故防止: 削除済みユーティリティの誤インポートを禁止
       "no-restricted-imports": [
         "error",

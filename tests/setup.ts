@@ -11,11 +11,16 @@ afterEach(() => {
 });
 
 // Provide a minimal localStorage in jsdom/node if absent
-const g = globalThis as unknown as { localStorage?: Storage };
-if (!g.localStorage) {
+const hasLocalStorage = (obj: unknown): obj is { localStorage: Storage } => {
+  return typeof obj === "object" && obj !== null && "localStorage" in obj;
+};
+
+if (!hasLocalStorage(globalThis) || !globalThis.localStorage) {
   const store = new Map<string, string>();
-  g.localStorage = {
-    getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+  
+  // Define the mock storage object with proper typing
+  const mockStorage: Storage = {
+    getItem: (k: string) => (store.has(k) ? store.get(k) ?? null : null),
     setItem: (k: string, v: string) => {
       store.set(k, String(v));
     },
@@ -29,5 +34,12 @@ if (!g.localStorage) {
     get length() {
       return store.size;
     },
-  } as unknown as Storage;
+  };
+
+  // Safely assign to globalThis
+  Object.defineProperty(globalThis, "localStorage", {
+    value: mockStorage,
+    writable: true,
+    configurable: true,
+  });
 }
