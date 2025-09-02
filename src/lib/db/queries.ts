@@ -160,8 +160,14 @@ export async function snapshot() {
 
   type Result<T> = { data: T | null; error: unknown };
   const dataOrThrow = <T extends unknown[]>(r: Result<T>): T => {
-    if (r.error) throw r.error as Error;
-    return (r.data ?? ([] as unknown as T));
+    if (r.error) {
+      // Preserve PostgrestError properties for better debugging
+      if (r.error && typeof r.error === "object" && "message" in r.error) {
+        throw r.error;
+      }
+      throw new Error(String(r.error));
+    }
+    return r.data ?? ([] as T);
   };
 
   const courses = dataOrThrow<CourseRow[]>(coursesRes).map(mapCourse);
@@ -200,11 +206,12 @@ export async function upsertSrs(entry: SrsEntry): Promise<SrsEntry> {
     .select("*")
     .maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error("Failed to upsert SRS entry");
   return {
-    cardId: data!.card_id,
-    ease: data!.ease,
-    interval: data!.interval,
-    due: new Date(data!.due).toISOString(),
-    lastRating: data!.last_rating ?? undefined,
+    cardId: data.card_id,
+    ease: data.ease,
+    interval: data.interval,
+    due: new Date(data.due).toISOString(),
+    lastRating: data.last_rating ?? undefined,
   } satisfies SrsEntry;
 }
