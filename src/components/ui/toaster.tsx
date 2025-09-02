@@ -2,6 +2,7 @@
 import * as React from "react";
 import * as ToastPrimitives from "@radix-ui/react-toast";
 import { cn } from "@/lib/utils/cn";
+import { uid } from "@/lib/utils/uid";
 
 type ToastItem = {
   id?: string;
@@ -38,7 +39,7 @@ export function Toaster() {
   const [items, setItems] = React.useState<(ToastItem & { id: string })[]>([]);
   React.useEffect(() => {
     const on = (t: ToastItem) => {
-      const id = crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`;
+      const id = uid();
       setItems((s) => [...s, { id, ...t }]);
       history.push({ id, ...t, createdAt: Date.now(), state: "shown" });
       notifyHistoryChange();
