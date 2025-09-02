@@ -28,6 +28,12 @@ async function api<T = unknown>(op: string, params?: unknown): Promise<T> {
     body: JSON.stringify({ op, params }),
   });
   if (!res.ok) throw new Error(await res.text());
+  const ct = res.headers.get("content-type") || "";
+  if (!ct.includes("application/json")) {
+    // 認証ミドルウェアにより /login へリダイレクトされた場合など、HTMLが返ることがある
+    const peek = (await res.text()).slice(0, 120);
+    throw new Error(`Unexpected non-JSON response (content-type: ${ct || "unknown"}). Possibly redirected to /login. Snippet: ${peek}`);
+  }
   return (await res.json()) as T;
 }
 
@@ -152,4 +158,3 @@ export async function commitLessonCardsPartial(opts: { draftId: string; lessonId
 }
 
 export type { Snapshot };
-

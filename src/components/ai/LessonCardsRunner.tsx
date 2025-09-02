@@ -1,5 +1,5 @@
 "use client";
-import { useSSE } from "@/components/ai/useSSE";
+import { useEffect, useRef } from "react";
 import { saveDraft } from "@/lib/client-api";
 import type { LessonCards, UUID } from "@/lib/types";
 
@@ -12,24 +12,37 @@ type Props = {
 };
 
 export function LessonCardsRunner({ lessonId, lessonTitle, onLog, onPreview, onFinish }: Props) {
-  type CardsUpdate = { node?: string; status?: string };
-  type CardsDone = { payload: LessonCards; draftId: string };
+  const logRef = useRef(onLog);
+  const previewRef = useRef(onPreview);
+  const finishRef = useRef(onFinish);
+  useEffect(() => { logRef.current = onLog; previewRef.current = onPreview; finishRef.current = onFinish; }, [onLog, onPreview, onFinish]);
 
-  useSSE<CardsDone, CardsUpdate>("/api/ai/lesson-cards", { lessonTitle, desiredCount: 6 }, {
-    onUpdate: (d) => onLog(lessonId, `${d?.node ?? d?.status}`),
-    onDone: async (d) => {
-      const payload = d?.payload as LessonCards;
-      if (payload) {
-        const draft = await saveDraft("lesson-cards", payload);
-        onPreview(lessonId, draft.id, payload);
-        onLog(lessonId, `下書きを保存しました（ID: ${draft.id}）`);
+  useEffect(() => {
+    let aborted = false;
+    (async () => {
+      try {
+        logRef.current(lessonId, "received");
+        const res = await fetch("/api/ai/lesson-cards", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lessonTitle, desiredCount: 6 }),
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { payload: LessonCards };
+        if (aborted) return;
+        const draft = await saveDraft("lesson-cards", data.payload);
+        if (aborted) return;
+        previewRef.current(lessonId, draft.id, data.payload);
+        logRef.current(lessonId, `下書きを保存しました（ID: ${draft.id}）`);
+      } catch (e: unknown) {
+        const msg = (e as { message?: string })?.message ?? "unknown";
+        if (!aborted) logRef.current(lessonId, `エラー: ${msg}`);
+      } finally {
+        if (!aborted) finishRef.current();
       }
-      onFinish();
-    },
-    onError: (d) => {
-      onLog(lessonId, `エラー: ${d?.message ?? "unknown"}`);
-      onFinish();
-    },
-  });
+    })();
+    return () => { aborted = true; };
+  }, [lessonId, lessonTitle]);
   return null;
 }

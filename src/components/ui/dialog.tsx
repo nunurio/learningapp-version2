@@ -51,12 +51,21 @@ export const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 shadow-lg outline-none",
+          // Positioning
+          "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
+          // Sizing: responsive width + vertical limit with scroll
+          "w-[95vw] sm:w-full max-w-lg max-h-[85vh] sm:max-h-[85dvh] overflow-y-auto overscroll-contain scrollbar-gutter-stable",
+          // Aesthetics
+          "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 shadow-lg outline-none",
           className
         )}
         {...props}
         aria-label={ariaLabel ?? (!hasTitle ? "Dialog" : undefined)}
       >
+        {/* Body scroll lock while dialog is mounted */}
+        {typeof window !== "undefined" ? (
+          <ScrollLock />
+        ) : null}
         {!hasTitle ? (
           <DialogPrimitive.Title className="sr-only">{ariaLabel ?? "Dialog"}</DialogPrimitive.Title>
         ) : null}
@@ -66,6 +75,18 @@ export const DialogContent = React.forwardRef<
   );
 });
 DialogContent.displayName = DialogPrimitive.Content.displayName;
+
+function ScrollLock() {
+  React.useEffect(() => {
+    const el = document.documentElement;
+    const prev = el.style.overflow;
+    el.style.overflow = "hidden";
+    return () => {
+      el.style.overflow = prev;
+    };
+  }, []);
+  return null;
+}
 
 export const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)} {...props} />
