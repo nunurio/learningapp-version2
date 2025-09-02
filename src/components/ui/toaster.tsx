@@ -72,7 +72,8 @@ export function Toaster() {
                 className="text-xs underline underline-offset-2"
                 onClick={() => {
                   try { t.onAction?.(); } finally {
-                    const rec: ToastRecord = { ...(t as { id: string } & ToastItem), id: t.id!, createdAt: Date.now(), state: "action" };
+                    const toastId = t.id ?? uid();
+                    const rec: ToastRecord = { ...t, id: toastId, createdAt: Date.now(), state: "action" };
                     history.push(rec);
                     notifyHistoryChange();
                     setItems((s) => s.filter((x) => x.id !== t.id));

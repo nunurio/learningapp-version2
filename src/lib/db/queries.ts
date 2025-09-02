@@ -160,8 +160,8 @@ export async function snapshot() {
 
   type Result<T> = { data: T | null; error: unknown };
   const dataOrThrow = <T extends unknown[]>(r: Result<T>): T => {
-    if (r.error) throw r.error as Error;
-    return (r.data ?? ([] as unknown as T));
+    if (r.error) throw new Error(String(r.error));
+    return r.data ?? ([] as T);
   };
 
   const courses = dataOrThrow<CourseRow[]>(coursesRes).map(mapCourse);
