@@ -158,8 +158,9 @@ export async function snapshot() {
     supa.from("notes").select("*"),
   ]);
 
-  type Result<T> = { data: T | null; error: unknown };
-  const dataOrThrow = <T extends unknown[]>(r: Result<T>): T => {
+  // Supabase select() responses return an array or null
+  type ResultArr<T> = { data: T[] | null; error: unknown };
+  const dataOrThrow = <T,>(r: ResultArr<T>): T[] => {
     if (r.error) {
       // Preserve PostgrestError properties for better debugging
       if (r.error && typeof r.error === "object" && "message" in r.error) {
@@ -167,24 +168,25 @@ export async function snapshot() {
       }
       throw new Error(String(r.error));
     }
-    return r.data ?? ([] as T);
+    // When no rows, return a typed empty array
+    return (r.data ?? []) as T[];
   };
 
-  const courses = dataOrThrow<CourseRow[]>(coursesRes).map(mapCourse);
-  const lessons = dataOrThrow<LessonRow[]>(lessonsRes).map(mapLesson);
-  const cards = dataOrThrow<CardRow[]>(cardsRes).map(mapCard);
+  const courses = dataOrThrow<CourseRow>(coursesRes).map(mapCourse);
+  const lessons = dataOrThrow<LessonRow>(lessonsRes).map(mapLesson);
+  const cards = dataOrThrow<CardRow>(cardsRes).map(mapCard);
 
   type ProgressRow = { card_id: UUID; completed: boolean; completed_at: string | null; answer: unknown };
   type FlagRow = { card_id: UUID; flagged_at: string };
   type NoteRow = { card_id: UUID; text: string; updated_at: string };
-  const progress = dataOrThrow<ProgressRow[]>(progressRes).map((p) => ({
+  const progress = dataOrThrow<ProgressRow>(progressRes).map((p) => ({
     cardId: p.card_id,
     completed: p.completed,
     completedAt: p.completed_at ?? undefined,
     answer: p.answer ?? undefined,
   }));
-  const flags = dataOrThrow<FlagRow[]>(flagsRes).map((f) => ({ cardId: f.card_id, flaggedAt: f.flagged_at }));
-  const notes = dataOrThrow<NoteRow[]>(notesRes).map((n) => ({ cardId: n.card_id, text: n.text, updatedAt: n.updated_at }));
+  const flags = dataOrThrow<FlagRow>(flagsRes).map((f) => ({ cardId: f.card_id, flaggedAt: f.flagged_at }));
+  const notes = dataOrThrow<NoteRow>(notesRes).map((n) => ({ cardId: n.card_id, text: n.text, updatedAt: n.updated_at }));
 
   return { courses, lessons, cards, progress, flags, notes };
 }
