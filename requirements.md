@@ -43,21 +43,21 @@
 - LangGraph JS: StateGraph + PostgresSaver（チェックポイント永続化, thread_id 単位）
 - OpenAI Responses API: Structured Outputs（json_schema, strict）/ Tool Calling（将来拡張）
 
-ディレクトリ例:
-app/(auth)/login|signup|reset-password/
-app/(dashboard)/page.tsx
-app/courses/new/page.tsx
-app/courses/plan/page.tsx
-app/courses/[courseId]/page.tsx
-app/learn/[courseId]/page.tsx
-app/api/ai/outline/route.ts
-app/api/ai/lesson-cards/route.ts
-lib/supabase/{server.ts,browser.ts}
-lib/ai/{schema.ts,prompt.ts}
-lib/db/queries.ts
-lib/utils/crypto.ts
-server-actions/{courses.ts,lessons.ts,cards.ts,ai.ts,progress.ts}
-components/{cards/,forms/,ui/}
+ディレクトリ例（src 配下）:
+src/app/(auth)/login|signup|reset-password/
+src/app/(dashboard)/page.tsx
+src/app/courses/new/page.tsx
+src/app/courses/plan/page.tsx
+src/app/courses/[courseId]/page.tsx
+src/app/learn/[courseId]/page.tsx
+src/app/api/ai/outline/route.ts
+src/app/api/ai/lesson-cards/route.ts
+src/lib/supabase/{server.ts,browser.ts}
+src/lib/ai/{schema.ts,prompt.ts}
+src/lib/db/queries.ts
+src/lib/utils/crypto.ts
+src/server-actions/{courses.ts,lessons.ts,cards.ts,ai.ts,progress.ts}
+src/components/{cards/,forms/,ui/}
 
 ────────────────────────────────────────────────────────────────────
 4) 画面 / フロー

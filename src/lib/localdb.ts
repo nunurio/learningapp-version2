@@ -1,4 +1,5 @@
 "use client";
+import * as React from "react";
 
 import type {
   AiDraft,
@@ -9,282 +10,236 @@ import type {
   Progress,
   UUID,
   CoursePlan,
+  SrsEntry,
+  SrsRating,
 } from "./types";
 
-const STORAGE_KEY = "learnify_v1";
+// --- Client cache + pub/sub (no localStorage persistence) ------------------
+let __dbVersion = 0;
+const __listeners = new Set<() => void>();
+let __bc: BroadcastChannel | null = null;
 
 type DB = {
   courses: Course[];
   lessons: Lesson[];
   cards: Card[];
   progress: Progress[];
-  drafts: AiDraft[];
+  srs: SrsEntry[];
+  flags: { cardId: UUID; flaggedAt: string }[];
+  notes: { cardId: UUID; text: string; updatedAt: string }[];
 };
 
 function emptyDb(): DB {
-  return { courses: [], lessons: [], cards: [], progress: [], drafts: [] };
+  return { courses: [], lessons: [], cards: [], progress: [], srs: [], flags: [], notes: [] };
 }
 
-function nowIso() {
-  return new Date().toISOString();
+let __db: DB = emptyDb();
+
+function __notifyDbChange() {
+  __dbVersion++;
+  __listeners.forEach((l) => { try { l(); } catch {} });
+  try { __bc?.postMessage({ type: "db-change", v: __dbVersion }); } catch {}
 }
 
-function uuid(): UUID {
-  // Prefer Web Crypto; fallback to timestamp-based id
-  try {
-    const g = (globalThis as any).crypto?.randomUUID;
-    if (g) return g();
-  } catch {}
-  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function load(): DB {
-  if (typeof window === "undefined") return emptyDb();
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyDb();
-    const parsed = JSON.parse(raw) as Partial<DB>;
-    return {
-      courses: parsed.courses ?? [],
-      lessons: parsed.lessons ?? [],
-      cards: parsed.cards ?? [],
-      progress: parsed.progress ?? [],
-      drafts: parsed.drafts ?? [],
+if (typeof window !== "undefined") {
+  try { __bc = new BroadcastChannel("learnify_sync"); } catch {}
+  if (__bc) {
+    __bc.onmessage = (ev) => {
+      if (ev?.data?.type === "db-change") {
+        __dbVersion = Math.max(__dbVersion, Number(ev.data.v) || 0);
+        __listeners.forEach((l) => { try { l(); } catch {} });
+      }
     };
-  } catch {
-    return emptyDb();
   }
+  // Initial sync
+  void refreshAll();
 }
 
-function save(db: DB) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+export function subscribeLocalDb(listener: () => void): () => void {
+  __listeners.add(listener);
+  return () => { __listeners.delete(listener); };
 }
 
-// Public API
+export function useLocalDbVersion(): number {
+  return React.useSyncExternalStore(subscribeLocalDb, () => __dbVersion, () => __dbVersion);
+}
 
+async function api<T = unknown>(op: string, params?: unknown): Promise<T> {
+  const res = await fetch("/api/db", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ op, params }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as T;
+}
+
+export async function refreshAll() {
+  const snap = await api<DB & { notes: { cardId: UUID; text: string; updatedAt: string } }>("snapshot");
+  __db = { ...__db, ...snap };
+  __notifyDbChange();
+}
+
+// ----- Reads (sync from cache) --------------------------------------------
 export function listCourses(): Course[] {
-  return load().courses.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return [...__db.courses].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 export function getCourse(courseId: UUID): Course | undefined {
-  return load().courses.find((c) => c.id === courseId);
-}
-
-export function createCourse(input: {
-  title: string;
-  description?: string;
-  category?: string;
-}): { courseId: UUID } {
-  const db = load();
-  const id = uuid();
-  const now = nowIso();
-  db.courses.push({
-    id,
-    title: input.title.trim(),
-    description: input.description?.trim() || undefined,
-    category: input.category?.trim() || undefined,
-    status: "draft",
-    createdAt: now,
-    updatedAt: now,
-  });
-  save(db);
-  return { courseId: id };
-}
-
-export function updateCourse(courseId: UUID, patch: Partial<Course>) {
-  const db = load();
-  const idx = db.courses.findIndex((c) => c.id === courseId);
-  if (idx === -1) return;
-  db.courses[idx] = { ...db.courses[idx], ...patch, updatedAt: nowIso() };
-  save(db);
-}
-
-export function deleteCourse(courseId: UUID) {
-  const db = load();
-  db.courses = db.courses.filter((c) => c.id !== courseId);
-  const lessonIds = db.lessons.filter((l) => l.courseId === courseId).map((l) => l.id);
-  db.lessons = db.lessons.filter((l) => l.courseId !== courseId);
-  db.cards = db.cards.filter((cd) => !lessonIds.includes(cd.lessonId));
-  db.progress = db.progress.filter((p) => db.cards.some((c) => c.id === p.cardId));
-  save(db);
+  return __db.courses.find((c) => c.id === courseId);
 }
 
 export function listLessons(courseId: UUID): Lesson[] {
-  return load()
-    .lessons.filter((l) => l.courseId === courseId)
+  return __db.lessons
+    .filter((l) => l.courseId === courseId)
     .sort((a, b) => a.orderIndex - b.orderIndex || a.createdAt.localeCompare(b.createdAt));
-}
-
-export function addLesson(courseId: UUID, title: string): { lessonId: UUID } {
-  const db = load();
-  const id = uuid();
-  const now = nowIso();
-  const current = db.lessons.filter((l) => l.courseId === courseId);
-  const nextIndex = current.length ? Math.max(...current.map((l) => l.orderIndex)) + 1 : 0;
-  db.lessons.push({ id, courseId, title: title.trim(), orderIndex: nextIndex, createdAt: now });
-  const cidx = db.courses.findIndex((c) => c.id === courseId);
-  if (cidx !== -1) db.courses[cidx].updatedAt = now;
-  save(db);
-  return { lessonId: id };
-}
-
-export function deleteLesson(lessonId: UUID) {
-  const db = load();
-  const courseId = db.lessons.find((l) => l.id === lessonId)?.courseId;
-  db.lessons = db.lessons.filter((l) => l.id !== lessonId);
-  db.cards = db.cards.filter((c) => c.lessonId !== lessonId);
-  if (courseId) {
-    const cidx = db.courses.findIndex((c) => c.id === courseId);
-    if (cidx !== -1) db.courses[cidx].updatedAt = nowIso();
-  }
-  save(db);
-}
-
-export function reorderLessons(courseId: UUID, orderedIds: UUID[]) {
-  const db = load();
-  const map = new Map(orderedIds.map((id, idx) => [id, idx] as const));
-  db.lessons = db.lessons.map((l) =>
-    l.courseId === courseId && map.has(l.id) ? { ...l, orderIndex: map.get(l.id)! } : l
-  );
-  const cidx = db.courses.findIndex((c) => c.id === courseId);
-  if (cidx !== -1) db.courses[cidx].updatedAt = nowIso();
-  save(db);
 }
 
 export function listCards(lessonId: UUID): Card[] {
-  return load()
-    .cards.filter((c) => c.lessonId === lessonId)
+  return __db.cards
+    .filter((c) => c.lessonId === lessonId)
     .sort((a, b) => a.orderIndex - b.orderIndex || a.createdAt.localeCompare(b.createdAt));
 }
 
-export function addCard(
+export function getProgress(cardId: UUID): Progress | undefined {
+  return __db.progress.find((p) => p.cardId === cardId);
+}
+
+export function isFlagged(cardId: UUID): boolean {
+  return __db.flags.some((f) => f.cardId === cardId);
+}
+
+export function getNote(cardId: UUID): string | undefined {
+  return __db.notes.find((n) => n.cardId === cardId)?.text;
+}
+
+export function listFlaggedByCourse(courseId: UUID): UUID[] {
+  const lessonIds = __db.lessons.filter((l) => l.courseId === courseId).map((l) => l.id);
+  const cardIds = __db.cards.filter((c) => lessonIds.includes(c.lessonId)).map((c) => c.id);
+  const set = new Set(cardIds);
+  return __db.flags.filter((f) => set.has(f.cardId)).map((f) => f.cardId);
+}
+
+// ----- Writes (async, then refresh cache) ---------------------------------
+export async function createCourse(input: { title: string; description?: string; category?: string }): Promise<{ courseId: UUID }> {
+  const res = await api<{ courseId: UUID }>("createCourse", input);
+  await refreshAll();
+  return res;
+}
+
+export async function updateCourse(courseId: UUID, patch: Partial<Course>): Promise<void> {
+  await api("updateCourse", { courseId, patch });
+  await refreshAll();
+}
+
+export async function deleteCourse(courseId: UUID): Promise<void> {
+  await api("deleteCourse", { courseId });
+  await refreshAll();
+}
+
+export async function addLesson(courseId: UUID, title: string): Promise<{ lessonId: UUID }> {
+  const res = await api<{ lessonId: UUID }>("addLesson", { courseId, title });
+  await refreshAll();
+  return res;
+}
+
+export async function deleteLesson(lessonId: UUID): Promise<void> {
+  await api("deleteLesson", { lessonId });
+  await refreshAll();
+}
+
+export async function reorderLessons(courseId: UUID, orderedIds: UUID[]): Promise<void> {
+  await api("reorderLessons", { courseId, orderedIds });
+  await refreshAll();
+}
+
+export async function addCard(
   lessonId: UUID,
   card: Omit<Card, "id" | "lessonId" | "createdAt" | "orderIndex">
-): UUID {
-  const db = load();
-  const id = uuid();
-  const now = nowIso();
-  const siblings = db.cards.filter((c) => c.lessonId === lessonId);
-  const nextIndex = siblings.length ? Math.max(...siblings.map((c) => c.orderIndex)) + 1 : 0;
-  db.cards.push({ ...card, id, lessonId, createdAt: now, orderIndex: nextIndex });
-  save(db);
+): Promise<UUID> {
+  const { id } = await api<{ id: UUID }>("addCard", { lessonId, card });
+  await refreshAll();
   return id;
 }
 
-export function updateCard(cardId: UUID, patch: Partial<Card>) {
-  const db = load();
-  const idx = db.cards.findIndex((c) => c.id === cardId);
-  if (idx === -1) return;
-  db.cards[idx] = { ...db.cards[idx], ...patch };
-  save(db);
+export async function updateCard(cardId: UUID, patch: Partial<Card>): Promise<void> {
+  await api("updateCard", { cardId, patch });
+  await refreshAll();
 }
 
-export function deleteCard(cardId: UUID) {
-  const db = load();
-  db.cards = db.cards.filter((c) => c.id !== cardId);
-  db.progress = db.progress.filter((p) => p.cardId !== cardId);
-  save(db);
+export async function deleteCard(cardId: UUID): Promise<void> {
+  await api("deleteCard", { cardId });
+  await refreshAll();
 }
 
-export function reorderCards(lessonId: UUID, orderedIds: UUID[]) {
-  const db = load();
-  const map = new Map(orderedIds.map((id, idx) => [id, idx] as const));
-  db.cards = db.cards.map((c) =>
-    c.lessonId === lessonId && map.has(c.id) ? { ...c, orderIndex: map.get(c.id)! } : c
-  );
-  save(db);
+export async function deleteCards(ids: UUID[]): Promise<void> {
+  await api("deleteCards", { ids });
+  await refreshAll();
 }
 
-export function saveProgress(input: Progress) {
-  const db = load();
-  const idx = db.progress.findIndex((p) => p.cardId === input.cardId);
-  if (idx === -1) db.progress.push(input);
-  else db.progress[idx] = input;
-  save(db);
+export async function reorderCards(lessonId: UUID, orderedIds: UUID[]): Promise<void> {
+  await api("reorderCards", { lessonId, orderedIds });
+  await refreshAll();
 }
 
-export function getProgress(cardId: UUID): Progress | undefined {
-  return load().progress.find((p) => p.cardId === cardId);
+export async function saveProgress(input: Progress): Promise<void> {
+  await api("saveProgress", { input });
+  const idx = __db.progress.findIndex((p) => p.cardId === input.cardId);
+  if (idx === -1) __db.progress.push(input); else __db.progress[idx] = input;
+  __notifyDbChange();
 }
 
-// AI drafts (mock only)
-export function saveDraft(kind: AiDraft["kind"], payload: CoursePlan | LessonCards): AiDraft {
-  const db = load();
-  const draft: AiDraft = { id: uuid(), kind, payload, createdAt: nowIso() };
-  db.drafts = db.drafts.filter((d) => d.kind !== kind); // keep latest per kind
-  db.drafts.push(draft);
-  save(db);
-  return draft;
+export async function rateSrs(cardId: UUID, rating: SrsRating): Promise<SrsEntry> {
+  const entry = await api<SrsEntry>("rateSrs", { cardId, rating });
+  const idx = __db.srs.findIndex((s) => s.cardId === cardId);
+  if (idx === -1) __db.srs.push(entry); else __db.srs[idx] = entry;
+  __notifyDbChange();
+  return entry;
 }
 
-export function getDraft(id: string): AiDraft | undefined {
-  return load().drafts.find((d) => d.id === id);
+export async function toggleFlag(cardId: UUID): Promise<boolean> {
+  const { on } = await api<{ on: boolean }>("toggleFlag", { cardId });
+  const idx = __db.flags.findIndex((f) => f.cardId === cardId);
+  if (on && idx === -1) __db.flags.push({ cardId, flaggedAt: new Date().toISOString() });
+  if (!on && idx !== -1) __db.flags.splice(idx, 1);
+  __notifyDbChange();
+  return on;
 }
 
-export function commitCoursePlan(draftId: string): { courseId: UUID } | undefined {
-  const db = load();
-  const draft = db.drafts.find((d) => d.id === draftId && d.kind === "outline");
-  if (!draft) return undefined;
-  const plan = draft.payload as CoursePlan;
-  const { courseId } = createCourse({
-    title: plan.course.title,
-    description: plan.course.description,
-    category: plan.course.category,
-  });
-  plan.lessons.forEach((l) => addLesson(courseId, l.title));
-  // Remove draft after commit
-  const latest = load();
-  latest.drafts = latest.drafts.filter((d) => d.id !== draftId);
-  save(latest);
-  return { courseId };
+export async function saveNote(cardId: UUID, text: string): Promise<void> {
+  await api("saveNote", { cardId, text });
+  const idx = __db.notes.findIndex((n) => n.cardId === cardId);
+  const row = { cardId, text, updatedAt: new Date().toISOString() };
+  if (idx === -1) __db.notes.push(row); else __db.notes[idx] = row;
+  __notifyDbChange();
 }
 
-export function commitLessonCards(opts: {
-  draftId: string;
-  lessonId: UUID;
-}): { count: number } | undefined {
-  const db = load();
-  const draft = db.drafts.find((d) => d.id === opts.draftId && d.kind === "lesson-cards");
-  if (!draft) return undefined;
-  const payload = draft.payload as LessonCards;
-  const items = payload.cards;
-  let count = 0;
-  for (const item of items) {
-    if (item.type === "text") {
-      addCard(opts.lessonId, {
-        cardType: "text",
-        title: item.title ?? null,
-        content: { body: item.body },
-      });
-      count++;
-    } else if (item.type === "quiz") {
-      addCard(opts.lessonId, {
-        cardType: "quiz",
-        title: item.title ?? null,
-        content: {
-          question: item.question,
-          options: item.options,
-          answerIndex: item.answerIndex,
-          explanation: item.explanation ?? undefined,
-        },
-      });
-      count++;
-    } else if (item.type === "fill-blank") {
-      addCard(opts.lessonId, {
-        cardType: "fill-blank",
-        title: item.title ?? null,
-        content: {
-          text: item.text,
-          answers: item.answers,
-          caseSensitive: item.caseSensitive ?? false,
-        },
-      });
-      count++;
-    }
-  }
-  const latest = load();
-  latest.drafts = latest.drafts.filter((d) => d.id !== opts.draftId);
-  save(latest);
-  return { count };
+// ----- AI drafts backed by DB ---------------------------------------------
+export async function saveDraft(kind: AiDraft["kind"], payload: CoursePlan | LessonCards): Promise<AiDraft> {
+  const res = await api<{ id: string }>("saveDraft", { kind, payload });
+  return { id: res.id, kind, payload, createdAt: new Date().toISOString() };
+}
+
+export async function commitCoursePlan(draftId: string): Promise<{ courseId: UUID } | undefined> {
+  const res = await api<{ courseId: UUID } | null>("commitCoursePlan", { draftId });
+  await refreshAll();
+  return res ?? undefined;
+}
+
+export async function commitCoursePlanPartial(draftId: string, selectedIndexes: number[]): Promise<{ courseId: UUID } | undefined> {
+  const res = await api<{ courseId: UUID } | null>("commitCoursePlanPartial", { draftId, selectedIndexes });
+  await refreshAll();
+  return res ?? undefined;
+}
+
+export async function commitLessonCards(opts: { draftId: string; lessonId: UUID }): Promise<{ count: number; cardIds: UUID[] } | undefined> {
+  const res = await api<{ count: number; cardIds: UUID[] } | null>("commitLessonCards", opts);
+  await refreshAll();
+  return res ?? undefined;
+}
+
+export async function commitLessonCardsPartial(opts: { draftId: string; lessonId: UUID; selectedIndexes: number[] }): Promise<{ count: number; cardIds: UUID[] } | undefined> {
+  const res = await api<{ count: number; cardIds: UUID[] } | null>("commitLessonCardsPartial", opts);
+  await refreshAll();
+  return res ?? undefined;
 }

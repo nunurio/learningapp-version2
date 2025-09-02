@@ -1,5 +1,3 @@
-"use client";
-
 import type { CoursePlan, LessonCards } from "../types";
 
 function pick<T>(arr: T[]): T {
