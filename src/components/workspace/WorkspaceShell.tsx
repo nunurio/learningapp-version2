@@ -27,12 +27,9 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
       <Header />
       <main className="h-[calc(100vh-56px)]">
         <div className="hidden md:block h-full">
-          <ResizablePanelGroup
+            <ResizablePanelGroup
             direction="horizontal"
             autoSaveId={`workspace:${courseId}`}
-            onLayout={(sizes) => {
-              if (cookieKey) document.cookie = `${cookieKey}=${JSON.stringify(sizes)}; path=/; max-age=${60 * 60 * 24 * 365}`;
-            }}
           >
             <ResizablePanel defaultSize={defaultLayout?.[0] ?? 24} minSize={16} className="border-r">
               <NavTree

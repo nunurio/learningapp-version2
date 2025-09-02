@@ -17,11 +17,11 @@ export default function LoginPage() {
           <form className="space-y-3">
             <div className="space-y-1">
               <label htmlFor="email" className="text-sm">Email</label>
-              <Input id="email" name="email" type="email" required />
+              <Input id="email" name="email" type="email" autoComplete="email" required />
             </div>
             <div className="space-y-1">
               <label htmlFor="password" className="text-sm">Password</label>
-              <Input id="password" name="password" type="password" required />
+              <Input id="password" name="password" type="password" autoComplete="current-password" required />
             </div>
             <div className="flex gap-2">
               <Button formAction={login} variant="default" className="flex-1">Log in</Button>

@@ -1,33 +1,23 @@
 "use client";
-import { commitCoursePlan, commitCoursePlanPartial, saveDraft, deleteCourse } from "@/lib/client-api";
+import { commitCoursePlan, saveDraft, deleteCourse } from "@/lib/client-api";
 import type { CoursePlan } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/ui/header";
 import { SSETimeline } from "@/components/ui/SSETimeline";
-import { useSSE } from "@/components/ai/useSSE";
-import { useState } from "react";
-import { DiffList, type DiffItem } from "@/components/ui/DiffList";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toaster";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
-type PlanUpdate = { node?: string; status?: string };
-type PlanDone = { plan: CoursePlan; draftId: string };
-
-function SSERunner({ url, body, onUpdate, onDone, onError }: {
-  url: string;
-  body: Record<string, unknown>;
-  onUpdate: (d: PlanUpdate) => void;
-  onDone: (d: PlanDone) => void;
-  onError: (d: { message?: string }) => void;
-}) {
-  useSSE<PlanDone, PlanUpdate>(url, body, { onUpdate, onDone, onError });
-  return null;
-}
+type TimedStep = { atMs: number; label: string };
 
 export default function PlanCoursePage() {
   const router = useRouter();
@@ -36,26 +26,102 @@ export default function PlanCoursePage() {
   const [goal, setGoal] = useState("");
   const [lessonCount, setLessonCount] = useState(6);
   const [plan, setPlan] = useState<CoursePlan | null>(null);
-  const [draftId, setDraftId] = useState<string | null>(null);
+  const [editedPlan, setEditedPlan] = useState<CoursePlan | null>(null);
+  // 生成直後の下書きIDは保持しない（編集結果を都度保存してコミット）
   const [generating, setGenerating] = useState(false);
   const [logs, setLogs] = useState<{ ts: number; text: string }[]>([]);
-  const [selected, setSelected] = useState<Record<number, boolean>>({});
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [lessonKeys, setLessonKeys] = useState<string[]>([]);
+  const timersRef = useRef<number[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      timersRef.current.forEach((id) => clearTimeout(id));
+      timersRef.current = [];
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  // 進行表示をタイマーで行う（合計 ~60 秒で最終段階）
+  function startProgressTimeline() {
+    // クリア
+    timersRef.current.forEach((id) => clearTimeout(id));
+    timersRef.current = [];
+    const now = Date.now();
+    const steps: TimedStep[] = [
+      { atMs: 0, label: "received" }, // 準備
+      { atMs: 0, label: "normalizeInput" },
+      { atMs: 15000, label: "planCourse" }, // 生成
+      { atMs: 40000, label: "validatePlan" }, // 検証
+      { atMs: 55000, label: "persistPreview" }, // 保存
+      { atMs: 60000, label: "保存" }, // 最終段階（視覚的に完了）
+    ];
+    for (const s of steps) {
+      const id = window.setTimeout(() => {
+        setLogs((ls) => [...ls, { ts: now + s.atMs, text: s.label }]);
+      }, s.atMs);
+      timersRef.current.push(id);
+    }
+    // 60秒後に解決するPromiseを返す
+    return new Promise<void>((resolve) => {
+      const id = window.setTimeout(() => resolve(), 60000);
+      timersRef.current.push(id);
+    });
+  }
 
   function startGenerate(e?: React.FormEvent) {
     if (e) e.preventDefault();
     if (!theme.trim()) return alert("テーマは必須です");
     setPlan(null);
-    setDraftId(null);
+    // 前回の下書きIDは破棄
+    setPreviewOpen(false);
     setLogs([]);
     setGenerating(true);
+    // 中断用
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+
+    const progressP = startProgressTimeline();
+    const fetchP = (async () => {
+      try {
+        const res = await fetch("/api/ai/outline", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ theme, level, goal, lessonCount }),
+          signal: abortRef.current?.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { plan: CoursePlan };
+        const draft = await saveDraft("outline", data.plan);
+        setPlan(data.plan);
+        setEditedPlan(data.plan);
+        setLessonKeys(data.plan.lessons.map((_, i) => `l-${Date.now()}-${i}`));
+        // 初回生成時にも下書きは保存するが、編集コミット時に改めて保存し直す
+        setLogs((s) => [...s, { ts: Date.now(), text: `下書きを保存しました（ID: ${draft.id}）` }]);
+        setPreviewOpen(true);
+      } catch (err: unknown) {
+        const msg = (err as { message?: string })?.message ?? "unknown";
+        setLogs((s) => [...s, { ts: Date.now(), text: `エラー: ${msg}` }]);
+        // エラー時は即終了
+        timersRef.current.forEach((id) => clearTimeout(id));
+        timersRef.current = [];
+        setGenerating(false);
+      }
+    })();
+
+    // 進行表示(60s)と生成完了の両方が揃ったら完了扱い
+    Promise.allSettled([progressP, fetchP]).then(() => {
+      setGenerating(false);
+    });
   }
 
   async function onCommit() {
-    if (!draftId) return;
-    const idxs = Object.entries(selected)
-      .filter(([, v]) => v)
-      .map(([k]) => Number(k));
-    const res = idxs.length > 0 ? await commitCoursePlanPartial(draftId, idxs) : await commitCoursePlan(draftId);
+    if (!editedPlan) return;
+    // 編集結果を新しいドラフトとして保存してからコミット（全件反映）
+    const draft = await saveDraft("outline", editedPlan);
+    const newDraftId = draft.id;
+    const res = await commitCoursePlan(newDraftId);
     if (!res) return alert("保存に失敗しました");
     try {
       toast({
@@ -69,38 +135,80 @@ export default function PlanCoursePage() {
     router.replace(`/courses/${res.courseId}`);
   }
 
-  const diffs: DiffItem[] = plan ? plan.lessons.map((l) => ({ kind: "add", label: l.title })) : [];
+  function addLesson() {
+    setEditedPlan((p) => {
+      if (!p) return p;
+      const nextIndex = p.lessons.length + 1;
+      return {
+        ...p,
+        lessons: [...p.lessons, { title: `新しいレッスン ${nextIndex}`, summary: "" }],
+      };
+    });
+    setLessonKeys((ks) => [...ks, `l-${Date.now()}-${(ks?.length ?? 0) + 1}`]);
+  }
+
+  function removeLesson(idx: number) {
+    setEditedPlan((p) => {
+      if (!p) return p;
+      const lessons = p.lessons.slice();
+      lessons.splice(idx, 1);
+      return { ...p, lessons };
+    });
+    setLessonKeys((ks) => {
+      const arr = ks.slice();
+      arr.splice(idx, 1);
+      return arr;
+    });
+  }
+
+  function moveLesson(idx: number, dir: -1 | 1) {
+    setEditedPlan((p) => {
+      if (!p) return p;
+      const j = idx + dir;
+      if (j < 0 || j >= p.lessons.length) return p;
+      const lessons = p.lessons.slice();
+      const tmp = lessons[idx];
+      lessons[idx] = lessons[j];
+      lessons[j] = tmp;
+      return { ...p, lessons };
+    });
+    setLessonKeys((ks) => {
+      const j = idx + dir;
+      if (j < 0 || j >= ks.length) return ks;
+      const arr = ks.slice();
+      const t = arr[idx];
+      arr[idx] = arr[j];
+      arr[j] = t;
+      return arr;
+    });
+  }
+
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = lessonKeys.indexOf(String(active.id));
+    const to = lessonKeys.indexOf(String(over.id));
+    if (from < 0 || to < 0 || !editedPlan) return;
+    setLessonKeys((ks) => arrayMove(ks, from, to));
+    setEditedPlan((p) => {
+      if (!p) return p;
+      const newLessons = arrayMove(p.lessons, from, to);
+      return { ...p, lessons: newLessons };
+    });
+  }
+
+  // 差分表示は廃止（編集プレビューに一本化）
 
   return (
     <div className="min-h-screen">
       <Header />
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-        {generating && (
-          <SSERunner
-            url="/api/ai/outline"
-            body={{ theme, level, goal, lessonCount }}
-            onUpdate={(d) => setLogs((s) => [...s, { ts: Date.now(), text: `${d?.node ?? d?.status}` }])}
-            onDone={async (d) => {
-              const p = d?.plan as CoursePlan;
-              if (p) {
-                const draft = await saveDraft("outline", p);
-                setPlan(p);
-                setDraftId(draft.id);
-                setLogs((s) => [...s, { ts: Date.now(), text: `下書きを保存しました（ID: ${draft.id}）` }]);
-              }
-              setGenerating(false);
-            }}
-            onError={(d) => {
-              setLogs((s) => [...s, { ts: Date.now(), text: `エラー: ${d?.message ?? "unknown"}` }]);
-              setGenerating(false);
-            }}
-          />
-        )}
+        {/* ストリーミング実行は廃止（タイマー進行表示に変更） */}
         <section className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>AI コース設計</CardTitle>
-              <CardDescription>入力 → ストリーミング → 差分プレビュー → 保存</CardDescription>
+              <CardDescription>入力 → 進行表示（タイマー）→ プレビュー編集 → 保存</CardDescription>
               <ol className="flex items-center gap-2 text-xs">
                 <Badge variant="secondary">テーマ</Badge>
                 <span>→</span>
@@ -155,57 +263,145 @@ export default function PlanCoursePage() {
                 {plan && (
                   <>
                     <Button type="button" onClick={startGenerate}>再生成</Button>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button type="button">差分プレビュー</Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>差分プレビュー</DialogTitle>
-                          <DialogDescription>追加されるレッスンの一覧です。保存で反映されます。</DialogDescription>
-                        </DialogHeader>
-                        <DiffList items={diffs} />
-                        <div className="mt-4 flex justify-end gap-2">
-                          <Button onClick={onCommit} variant="default">保存して反映</Button>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
+                    <Button type="button" variant="secondary" onClick={() => setPreviewOpen(true)}>プレビューを開く</Button>
                   </>
                 )}
               </div>
             </form>
             </CardContent>
           </Card>
+          <Dialog
+            open={previewOpen}
+            onOpenChange={(open) => {
+              if (open) {
+                setPreviewOpen(true);
+              } else {
+                // 未保存の編集がある場合は意図しないクローズを防ぐ
+                const hasDirty = JSON.stringify(editedPlan) !== JSON.stringify(plan);
+                if (hasDirty) {
+                  const ok = window.confirm("保存していない変更があります。閉じると破棄されます。閉じますか？");
+                  if (!ok) return; // キャンセル
+                }
+                setPreviewOpen(false);
+              }
+            }}
+          >
+            {editedPlan && (
+              <DialogContent
+                className="max-w-3xl h-[100dvh] rounded-none sm:h-auto sm:rounded-md sm:max-h-[80dvh] p-0"
+                onEscapeKeyDown={(e) => {
+                  const hasDirty = JSON.stringify(editedPlan) !== JSON.stringify(plan);
+                  if (hasDirty) e.preventDefault();
+                }}
+                onPointerDownOutside={(e) => {
+                  const hasDirty = JSON.stringify(editedPlan) !== JSON.stringify(plan);
+                  if (hasDirty) e.preventDefault();
+                }}
+              >
+                <DialogHeader className="sticky top-0 z-10 bg-[hsl(var(--card))] px-6 pt-4 pb-3 border-b border-[hsl(var(--border))]">
+                  <div className="flex items-start">
+                    <div className="flex-1">
+                      <DialogTitle>プレビューを編集</DialogTitle>
+                      <DialogDescription>タイトル・説明・各レッスン名を直接編集できます。追加/削除/並び替えも可能です。</DialogDescription>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      aria-label="閉じる"
+                      onClick={() => {
+                        const hasDirty = JSON.stringify(editedPlan) !== JSON.stringify(plan);
+                        if (hasDirty && !window.confirm("保存していない変更があります。閉じると破棄されます。閉じますか？")) return;
+                        setPreviewOpen(false);
+                      }}
+                    >
+                      ×
+                    </Button>
+                  </div>
+                </DialogHeader>
 
-          {plan && (
-            <Card>
-              <CardHeader>
-                <CardTitle>{plan.course.title}</CardTitle>
-                {plan.course.description && (
-                  <CardDescription>{plan.course.description}</CardDescription>
-                )}
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm text-gray-700 mb-2">反映するレッスンを選択（未選択なら全件）</div>
-                <ol className="mt-1 space-y-2 list-decimal list-inside">
-                  {plan.lessons.map((l, idx) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <input
-                        aria-label={`${l.title} を選択`}
-                        type="checkbox"
-                        checked={!!selected[idx]}
-                        onChange={(e) => setSelected((s) => ({ ...s, [idx]: e.target.checked }))}
-                      />
-                      <div>
-                        <div className="font-medium">{l.title}</div>
-                        {l.summary && <div className="text-sm text-gray-600">{l.summary}</div>}
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              </CardContent>
-            </Card>
-          )}
+                <div className="grid gap-4 px-6 py-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">コースタイトル</label>
+                    <Input
+                      autoFocus
+                      value={editedPlan.course.title}
+                      onChange={(e) => setEditedPlan((p) => (p ? { ...p, course: { ...p.course, title: e.target.value } } : p))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">コース説明（任意）</label>
+                    <Textarea
+                      value={editedPlan.course.description ?? ""}
+                      onChange={(e) => setEditedPlan((p) => (p ? { ...p, course: { ...p.course, description: e.target.value } } : p))}
+                      placeholder="このコースの概要を入力"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">カテゴリ（任意）</label>
+                    <Input
+                      value={editedPlan.course.category ?? ""}
+                      onChange={(e) => setEditedPlan((p) => (p ? { ...p, course: { ...p.course, category: e.target.value } } : p))}
+                      placeholder="例: AI/データサイエンス"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-2 px-6 flex items-center justify-between">
+                  <div className="text-sm text-gray-700">レッスン一覧</div>
+                  <Button variant="outline" onClick={addLesson}>レッスンを追加</Button>
+                </div>
+
+                <div className="mt-2 px-6 pb-4">
+                  <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                    <SortableContext items={lessonKeys} strategy={verticalListSortingStrategy}>
+                      <ol className="space-y-3 list-decimal list-inside">
+                        {editedPlan.lessons.map((l, idx) => (
+                          <SortableLessonItem
+                            key={lessonKeys[idx] ?? `k-${idx}`}
+                            id={lessonKeys[idx] ?? `k-${idx}`}
+                            index={idx}
+                            title={l.title}
+                            summary={l.summary}
+                            onRemove={() => removeLesson(idx)}
+                            onTitle={(v) => setEditedPlan((p) => {
+                              if (!p) return p;
+                              const lessons = p.lessons.slice();
+                              lessons[idx] = { ...lessons[idx], title: v };
+                              return { ...p, lessons };
+                            })}
+                            onSummary={(v) => setEditedPlan((p) => {
+                              if (!p) return p;
+                              const lessons = p.lessons.slice();
+                              lessons[idx] = { ...lessons[idx], summary: v };
+                              return { ...p, lessons };
+                            })}
+                            canMoveUp={idx > 0}
+                            canMoveDown={idx < editedPlan.lessons.length - 1}
+                            onMoveUp={() => moveLesson(idx, -1)}
+                            onMoveDown={() => moveLesson(idx, 1)}
+                          />
+                        ))}
+                      </ol>
+                    </SortableContext>
+                  </DndContext>
+                </div>
+
+                <div className="mt-2 sticky bottom-0 z-10 bg-[hsl(var(--card))] pt-3 px-6 pb-4 flex justify-end gap-2 border-t border-[hsl(var(--border))]">
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      const hasDirty = JSON.stringify(editedPlan) !== JSON.stringify(plan);
+                      if (hasDirty && !window.confirm("保存していない変更があります。閉じると破棄されます。閉じますか？")) return;
+                      setPreviewOpen(false);
+                    }}
+                  >
+                    閉じる
+                  </Button>
+                  <Button onClick={onCommit} variant="default">保存して反映</Button>
+                </div>
+              </DialogContent>
+            )}
+          </Dialog>
         </section>
 
         <aside className="space-y-3">
@@ -213,19 +409,61 @@ export default function PlanCoursePage() {
             <Tabs defaultValue="log">
               <TabsList>
                 <TabsTrigger value="log">ログ</TabsTrigger>
-                <TabsTrigger value="diff">差分</TabsTrigger>
               </TabsList>
               <TabsContent value="log">
                 <SSETimeline logs={logs} />
-              </TabsContent>
-              <TabsContent value="diff">
-                <Card className="p-3">
-                  <DiffList items={diffs} />
-                </Card>
               </TabsContent>
             </Tabs>
         </aside>
       </main>
     </div>
+  );
+}
+
+type SortableLessonItemProps = {
+  id: string;
+  index: number;
+  title: string;
+  summary?: string;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onRemove: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onTitle: (v: string) => void;
+  onSummary: (v: string) => void;
+};
+
+function SortableLessonItem(props: SortableLessonItemProps) {
+  const { id, index, title, summary, canMoveUp, canMoveDown, onRemove, onMoveUp, onMoveDown, onTitle, onSummary } = props;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  } as React.CSSProperties;
+  return (
+    <li ref={setNodeRef} style={style} className="flex items-start gap-3 rounded-md border border-[hsl(var(--border))] p-3 bg-[hsl(var(--card))] data-[dragging=true]:opacity-80" data-dragging={isDragging}>
+      <div className="flex-1 grid gap-2">
+        <div className="flex items-center gap-2">
+          <label className="block text-xs text-gray-600">レッスン {index + 1}</label>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="ドラッグで並び替え"
+              className="cursor-grab active:cursor-grabbing rounded px-2 py-1 text-gray-500 hover:text-gray-800"
+              {...listeners}
+              {...attributes}
+            >
+              ⋮⋮
+            </button>
+            <Button type="button" size="sm" variant="outline" onClick={onMoveUp} disabled={!canMoveUp}>↑</Button>
+            <Button type="button" size="sm" variant="outline" onClick={onMoveDown} disabled={!canMoveDown}>↓</Button>
+            <Button type="button" size="sm" variant="destructive" onClick={onRemove}>削除</Button>
+          </div>
+        </div>
+        <Input value={title} onChange={(e) => onTitle(e.target.value)} />
+        <Textarea value={summary ?? ""} onChange={(e) => onSummary(e.target.value)} placeholder="このレッスンで学ぶこと" />
+      </div>
+    </li>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { listCourses, listLessons } from "@/lib/client-api";
@@ -11,28 +11,42 @@ type Cmd = { id: string; label: string; hint?: string; action: () => void };
 
 export function CommandPalette() {
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [courses, setCourses] = useState<Course[]>([]);
   const [lessons, setLessons] = useState<{ courseId: string; lessonId: string; title: string }[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
+  // 認証不要ページではデータ取得を抑止
+  const isAuthContext = React.useMemo(() => {
+    const p = pathname || "";
+    return p.startsWith("/login") || p.startsWith("/auth") || p.startsWith("/error");
+  }, [pathname]);
+  // ダイアログが開かれたときに初回のみ取得（未ログイン時は取得しない）
   useEffect(() => {
+    if (!open || loaded || isAuthContext) return;
     let mounted = true;
     (async () => {
-      const cs = await listCourses();
-      if (!mounted) return;
-      setCourses(cs);
-      const all: { courseId: string; lessonId: string; title: string }[] = [];
-      for (const c of cs) {
-        const ls = await listLessons(c.id);
+      try {
+        const cs = await listCourses();
         if (!mounted) return;
-        ls.forEach((l) => all.push({ courseId: c.id, lessonId: l.id, title: `${c.title} / ${l.title}` }));
+        setCourses(cs);
+        const all: { courseId: string; lessonId: string; title: string }[] = [];
+        for (const c of cs) {
+          const ls = await listLessons(c.id);
+          if (!mounted) return;
+          ls.forEach((l) => all.push({ courseId: c.id, lessonId: l.id, title: `${c.title} / ${l.title}` }));
+        }
+        if (!mounted) return;
+        setLessons(all);
+        setLoaded(true);
+      } catch {
+        // 認証前のリダイレクト等で失敗するケースは黙って無視
       }
-      if (!mounted) return;
-      setLessons(all);
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [open, loaded, isAuthContext]);
 
   // Global shortcuts: Cmd/Ctrl+K toggles
   useEffect(() => {
