@@ -1,6 +1,8 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import type { UUID, Card } from "@/lib/types";
+import { asUpsertById } from "@/lib/db/helpers";
+import type { TablesInsert } from "@/lib/database.types";
 
 export async function addCardAction(
   lessonId: UUID,
@@ -24,7 +26,7 @@ export async function addCardAction(
       tags: card.tags ?? [],
       content: card.content,
       order_index: nextIndex,
-    })
+    } satisfies TablesInsert<"cards">)
     .select("id")
     .single();
   if (error) throw error;
@@ -59,6 +61,8 @@ export async function deleteCardsAction(ids: UUID[]) {
 export async function reorderCardsAction(lessonId: UUID, orderedIds: UUID[]) {
   const supa = await createClient();
   const updates = orderedIds.map((id, idx) => ({ id, order_index: idx }));
-  const { error } = await supa.from("cards").upsert(updates, { onConflict: "id" });
+  const { error } = await supa
+    .from("cards")
+    .upsert(asUpsertById<"cards">(updates), { onConflict: "id" });
   if (error) throw error;
 }

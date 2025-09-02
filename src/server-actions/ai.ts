@@ -1,6 +1,7 @@
 "use server";
 import type { UUID, CoursePlan, LessonCards } from "@/lib/types";
 import { createClient, getCurrentUserId } from "@/lib/supabase/server";
+import type { Tables, TablesInsert } from "@/lib/database.types";
 
 export async function saveDraftAction(
   kind: "outline" | "lesson-cards",
@@ -34,13 +35,13 @@ export async function commitCoursePlanAction(draftId: string): Promise<{ courseI
   const plan = draft.payload as CoursePlan;
   const { data: course, error: e2 } = await supa
     .from("courses")
-    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, status: "draft" })
+    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, status: "draft" } satisfies TablesInsert<"courses">)
     .select("id")
     .single();
   if (e2) throw e2;
   const cid = course.id as UUID;
   // insert lessons with incremental order_index
-  const rows = plan.lessons.map((l, idx) => ({ course_id: cid, title: l.title, order_index: idx }));
+  const rows: TablesInsert<"lessons">[] = plan.lessons.map((l, idx) => ({ course_id: cid, title: l.title, order_index: idx }));
   if (rows.length) {
     const { error: e3 } = await supa.from("lessons").insert(rows);
     if (e3) throw e3;
@@ -65,7 +66,7 @@ export async function commitCoursePlanPartialAction(draftId: string, selectedInd
   const plan = draft.payload as CoursePlan;
   const { data: course, error: e2 } = await supa
     .from("courses")
-    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, status: "draft" })
+    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, status: "draft" } satisfies TablesInsert<"courses">)
     .select("id")
     .single();
   if (e2) throw e2;
@@ -73,8 +74,8 @@ export async function commitCoursePlanPartialAction(draftId: string, selectedInd
   const set = new Set(selectedIndexes);
   const rows = plan.lessons
     .map((l, idx) => (set.has(idx) ? { course_id: cid, title: l.title } : null))
-    .filter(Boolean) as { course_id: UUID; title: string }[];
-  const withOrder = rows.map((r, idx) => ({ ...r, order_index: idx }));
+    .filter(Boolean) as Pick<Tables<"lessons">, "course_id" | "title">[];
+  const withOrder: TablesInsert<"lessons">[] = rows.map((r, idx) => ({ ...r, order_index: idx }));
   if (withOrder.length) {
     const { error: e3 } = await supa.from("lessons").insert(withOrder);
     if (e3) throw e3;
@@ -105,7 +106,7 @@ export async function commitLessonCardsAction(opts: { draftId: string; lessonId:
     .limit(1);
   if (siblings.error) throw siblings.error;
   let next = siblings.data?.[0]?.order_index != null ? Number(siblings.data[0].order_index) + 1 : 0;
-  const rows = payload.cards.map((item) => ({
+  const rows: TablesInsert<"cards">[] = payload.cards.map((item) => ({
     lesson_id: opts.lessonId,
     card_type: item.type,
     title: "title" in item ? (item.title ?? null) : null,
@@ -147,7 +148,7 @@ export async function commitLessonCardsPartialAction(opts: { draftId: string; le
     .limit(1);
   if (siblings.error) throw siblings.error;
   let next = siblings.data?.[0]?.order_index != null ? Number(siblings.data[0].order_index) + 1 : 0;
-  const rows = selected.map((item) => ({
+  const rows: TablesInsert<"cards">[] = selected.map((item) => ({
     lesson_id: opts.lessonId,
     card_type: item.type,
     title: "title" in item ? (item.title ?? null) : null,

@@ -1,6 +1,7 @@
 export type UUID = string;
+import type { Enums } from "@/lib/database.types";
 
-export type CourseStatus = 'draft' | 'published';
+export type CourseStatus = Enums<"course_status">;
 
 export type Course = {
   id: UUID;
@@ -20,7 +21,7 @@ export type Lesson = {
   createdAt: string; // ISO
 };
 
-export type CardType = 'text' | 'quiz' | 'fill-blank';
+export type CardType = Enums<"card_type">;
 
 export type TextCardContent = {
   body: string;
@@ -58,7 +59,7 @@ export type Progress = {
 };
 
 // Simple local SRS (Spaced Repetition) model
-export type SrsRating = "again" | "hard" | "good" | "easy";
+export type SrsRating = Enums<"srs_rating">;
 export type SrsEntry = {
   cardId: UUID;
   ease: number; // 1.3–3.0 range

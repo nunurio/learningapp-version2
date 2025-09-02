@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import type { Database } from "@/lib/database.types";
 
 // Server-side Supabase client following the Next.js quickstart.
 // Uses public env vars and Next.js cookies to maintain the auth session.
@@ -12,7 +13,7 @@ export async function createClient() {
   // Next.js 15: cookies() is async in the official example
   const cookieStore = await cookies();
 
-  return createServerClient(supabaseUrl, supabaseKey, {
+  return createServerClient<Database>(supabaseUrl, supabaseKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();

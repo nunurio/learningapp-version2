@@ -1,66 +1,12 @@
 import { createClient, getCurrentUserId } from "@/lib/supabase/server";
-import type { Course, Lesson, Card, Progress, UUID, SrsEntry, CourseStatus, CardType } from "@/lib/types";
+import type { Course, Lesson, Card, Progress, UUID, SrsEntry } from "@/lib/types";
+import type { Tables } from "@/lib/database.types";
+import { mapCourse, mapLesson, mapCard } from "@/lib/db/mappers";
 
 // All functions here run on the server and use the authenticated
 // Supabase session (RLS enforced).
 
-type CourseRow = {
-  id: UUID;
-  title: string;
-  description: string | null;
-  category: string | null;
-  status: CourseStatus;
-  created_at: string;
-  updated_at: string;
-};
-
-type LessonRow = {
-  id: UUID;
-  course_id: UUID;
-  title: string;
-  order_index: number;
-  created_at: string;
-};
-
-type CardRow = {
-  id: UUID;
-  lesson_id: UUID;
-  card_type: CardType;
-  title: string | null;
-  tags: string[] | null;
-  content: unknown;
-  order_index: number;
-  created_at: string;
-};
-
-const mapCourse = (r: CourseRow): Course => ({
-  id: r.id,
-  title: r.title,
-  description: r.description ?? undefined,
-  category: r.category ?? undefined,
-  status: r.status,
-  createdAt: r.created_at,
-  updatedAt: r.updated_at,
-});
-
-const mapLesson = (r: LessonRow): Lesson => ({
-  id: r.id,
-  courseId: r.course_id,
-  title: r.title,
-  orderIndex: r.order_index,
-  createdAt: r.created_at,
-});
-
-const mapCard = (r: CardRow): Card => ({
-  id: r.id,
-  lessonId: r.lesson_id,
-  cardType: r.card_type,
-  title: r.title ?? null,
-  tags: r.tags ?? undefined,
-  content: r.content as Card["content"],
-  orderIndex: r.order_index,
-  createdAt: r.created_at,
-});
+// Row→ドメイン変換は mappers.ts に集約
 
 export async function listCourses(): Promise<Course[]> {
   const supa = await createClient();
@@ -172,13 +118,13 @@ export async function snapshot() {
     return (r.data ?? []) as T[];
   };
 
-  const courses = dataOrThrow<CourseRow>(coursesRes).map(mapCourse);
-  const lessons = dataOrThrow<LessonRow>(lessonsRes).map(mapLesson);
-  const cards = dataOrThrow<CardRow>(cardsRes).map(mapCard);
+  const courses = dataOrThrow<Tables<"courses">>(coursesRes).map(mapCourse);
+  const lessons = dataOrThrow<Tables<"lessons">>(lessonsRes).map(mapLesson);
+  const cards = dataOrThrow<Tables<"cards">>(cardsRes).map(mapCard);
 
-  type ProgressRow = { card_id: UUID; completed: boolean; completed_at: string | null; answer: unknown };
-  type FlagRow = { card_id: UUID; flagged_at: string };
-  type NoteRow = { card_id: UUID; text: string; updated_at: string };
+  type ProgressRow = Tables<"progress">;
+  type FlagRow = Tables<"flags">;
+  type NoteRow = Tables<"notes">;
   const progress = dataOrThrow<ProgressRow>(progressRes).map((p) => ({
     cardId: p.card_id,
     completed: p.completed,
