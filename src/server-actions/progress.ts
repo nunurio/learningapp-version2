@@ -1,6 +1,7 @@
 "use server";
 import type { UUID, Progress, SrsEntry, SrsRating } from "@/lib/types";
 import { createClient, getCurrentUserId } from "@/lib/supabase/server";
+import type { TablesInsert, Json } from "@/lib/database.types";
 
 export async function saveProgressAction(input: Progress) {
   const supa = await createClient();
@@ -13,8 +14,8 @@ export async function saveProgressAction(input: Progress) {
       card_id: input.cardId,
       completed: !!input.completed,
       completed_at: input.completedAt ?? null,
-      answer: input.answer ?? null,
-    });
+      answer: (input.answer as Json | undefined) ?? null,
+    } satisfies TablesInsert<"progress">);
   if (error) throw error;
 }
 
@@ -69,7 +70,7 @@ export async function rateSrsAction(cardId: UUID, rating: SrsRating): Promise<Sr
       interval,
       due: due.slice(0, 10),
       last_rating: rating,
-    });
+    } satisfies TablesInsert<"srs">);
   if (error) throw error;
   return next;
 }
@@ -85,7 +86,7 @@ export async function toggleFlagAction(cardId: UUID): Promise<boolean> {
     .eq("card_id", cardId)
     .maybeSingle();
   if (!row) {
-    const { error } = await supa.from("flags").insert({ user_id: userId, card_id: cardId });
+    const { error } = await supa.from("flags").insert({ user_id: userId, card_id: cardId } satisfies TablesInsert<"flags">);
     if (error) throw error;
     return true;
   } else {
@@ -101,6 +102,6 @@ export async function saveNoteAction(cardId: UUID, text: string) {
   if (!userId) throw new Error("Not authenticated");
   const { error } = await supa
     .from("notes")
-    .upsert({ user_id: userId, card_id: cardId, text });
+    .upsert({ user_id: userId, card_id: cardId, text } satisfies TablesInsert<"notes">);
   if (error) throw error;
 }

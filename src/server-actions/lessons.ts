@@ -1,6 +1,8 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import type { UUID } from "@/lib/types";
+import type { TablesInsert } from "@/lib/database.types";
+import { asUpsertById } from "@/lib/db/helpers";
 
 export async function addLessonAction(courseId: UUID, title: string): Promise<{ lessonId: UUID }> {
   const supa = await createClient();
@@ -14,7 +16,7 @@ export async function addLessonAction(courseId: UUID, title: string): Promise<{ 
   const nextIndex = maxData?.[0]?.order_index != null ? Number(maxData[0].order_index) + 1 : 0;
   const { data, error } = await supa
     .from("lessons")
-    .insert({ course_id: courseId, title: title.trim(), order_index: nextIndex })
+    .insert({ course_id: courseId, title: title.trim(), order_index: nextIndex } satisfies TablesInsert<"lessons">)
     .select("id")
     .single();
   if (error) throw error;
@@ -30,6 +32,8 @@ export async function deleteLessonAction(lessonId: UUID) {
 export async function reorderLessonsAction(courseId: UUID, orderedIds: UUID[]) {
   const supa = await createClient();
   const updates = orderedIds.map((id, idx) => ({ id, order_index: idx }));
-  const { error } = await supa.from("lessons").upsert(updates, { onConflict: "id" });
+  const { error } = await supa
+    .from("lessons")
+    .upsert(asUpsertById<"lessons">(updates), { onConflict: "id" });
   if (error) throw error;
 }

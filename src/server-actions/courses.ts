@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient, getCurrentUserId } from "@/lib/supabase/server";
 import type { UUID, Course } from "@/lib/types";
+import type { TablesInsert } from "@/lib/database.types";
 
 export async function createCourseAction(input: { title: string; description?: string; category?: string }): Promise<{ courseId: UUID }> {
   const supa = await createClient();
@@ -15,7 +16,7 @@ export async function createCourseAction(input: { title: string; description?: s
       description: input.description?.trim() || null,
       category: input.category?.trim() || null,
       status: "draft",
-    })
+    } satisfies TablesInsert<"courses">)
     .select("id")
     .single();
   if (error) throw error;
