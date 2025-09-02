@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import type { UUID, Card, Course, CoursePlan, LessonCards } from "@/lib/types";
+import type { UUID, Card, CoursePlan, LessonCards } from "@/lib/types";
 import * as Q from "@/lib/db/queries";
 import { createCourseAction, deleteCourseAction, updateCourseAction } from "@/server-actions/courses";
 import { addLessonAction, deleteLessonAction, reorderLessonsAction } from "@/server-actions/lessons";

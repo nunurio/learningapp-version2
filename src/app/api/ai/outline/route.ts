@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { generateCoursePlan } from "@/lib/ai/mock";
 
 export const runtime = "nodejs";

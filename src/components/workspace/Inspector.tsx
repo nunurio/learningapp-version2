@@ -14,7 +14,7 @@ import {
   commitLessonCardsPartial,
   useLocalDbVersion,
 } from "@/lib/localdb";
-import type { UUID, Card, Lesson, Course, QuizCardContent, FillBlankCardContent, LessonCards, CardType } from "@/lib/types";
+import type { UUID, Card, Lesson, Course, QuizCardContent, FillBlankCardContent, LessonCards, CardType, TextCardContent } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -97,7 +97,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
       if (!mounted) return;
       if (draft) { setForm(draft); return; }
       if (card.cardType === "text") {
-        const c = card.content as import("@/lib/types").TextCardContent;
+        const c = card.content as TextCardContent;
         setForm({ cardId: card.id, cardType: "text", title: card.title ?? null, tags: card.tags ?? [], body: c.body ?? "" });
       } else if (card.cardType === "quiz") {
         const c = card.content as QuizCardContent;
@@ -503,9 +503,9 @@ function LessonInspector(props: {
 }
 
 function labelCard(card: Card): string {
-  if (card.cardType === "text") return (card.content as import("@/lib/types").TextCardContent).body?.slice(0, 18) ?? "テキスト";
-  if (card.cardType === "quiz") return (card.content as import("@/lib/types").QuizCardContent).question ?? "クイズ";
-  return (card.content as import("@/lib/types").FillBlankCardContent).text?.replace(/\[\[(\d+)\]\]/g, "□") ?? "穴埋め";
+  if (card.cardType === "text") return (card.content as TextCardContent).body?.slice(0, 18) ?? "テキスト";
+  if (card.cardType === "quiz") return (card.content as QuizCardContent).question ?? "クイズ";
+  return (card.content as FillBlankCardContent).text?.replace(/\[\[(\d+)\]\]/g, "□") ?? "穴埋め";
 }
 
 function NewCardForm({ lessonId, onDone }: { lessonId: UUID; onDone: () => void }) {

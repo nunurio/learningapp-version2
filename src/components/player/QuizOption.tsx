@@ -24,6 +24,46 @@ export function QuizOption({ id, label, checked, onSelect, disabled }: QuizOptio
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onSelect();
+          return;
+        }
+        const move = (delta: -1 | 1) => {
+          const current = e.currentTarget as HTMLElement;
+          const group = current.closest('[role="radiogroup"]');
+          if (!group) return;
+          const items = Array.from(group.querySelectorAll<HTMLElement>('[role="radio"]:not([aria-disabled="true"])'));
+          const idx = items.indexOf(current);
+          if (idx === -1) return;
+          const next = (idx + delta + items.length) % items.length;
+          // ラジオの矢印キー操作は選択を移動させるのが慣例
+          const target = items[next];
+          target.focus();
+          (target as HTMLButtonElement).click();
+        };
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+          e.preventDefault();
+          move(1);
+        } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+          e.preventDefault();
+          move(-1);
+        } else if (e.key === "Home") {
+          e.preventDefault();
+          const current = e.currentTarget as HTMLElement;
+          const group = current.closest('[role="radiogroup"]');
+          const first = group?.querySelector<HTMLElement>('[role="radio"]:not([aria-disabled="true"])');
+          if (first) {
+            first.focus();
+            (first as HTMLButtonElement).click();
+          }
+        } else if (e.key === "End") {
+          e.preventDefault();
+          const current = e.currentTarget as HTMLElement;
+          const group = current.closest('[role="radiogroup"]');
+          const items = group ? Array.from(group.querySelectorAll<HTMLElement>('[role="radio"]:not([aria-disabled="true"])')) : [];
+          const last = items[items.length - 1];
+          if (last) {
+            last.focus();
+            (last as HTMLButtonElement).click();
+          }
         }
       }}
       className={cn(
@@ -39,4 +79,3 @@ export function QuizOption({ id, label, checked, onSelect, disabled }: QuizOptio
     </button>
   );
 }
-

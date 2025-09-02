@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { generateLessonCards } from "@/lib/ai/mock";
 import type { LessonCards } from "@/lib/types";
 
