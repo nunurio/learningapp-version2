@@ -200,11 +200,12 @@ export async function upsertSrs(entry: SrsEntry): Promise<SrsEntry> {
     .select("*")
     .maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error("Failed to upsert SRS entry");
   return {
-    cardId: data!.card_id,
-    ease: data!.ease,
-    interval: data!.interval,
-    due: new Date(data!.due).toISOString(),
-    lastRating: data!.last_rating ?? undefined,
+    cardId: data.card_id,
+    ease: data.ease,
+    interval: data.interval,
+    due: new Date(data.due).toISOString(),
+    lastRating: data.last_rating ?? undefined,
   } satisfies SrsEntry;
 }
