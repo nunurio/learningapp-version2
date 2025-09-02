@@ -1,0 +1,55 @@
+name: CI (shared)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm を入れる（任意だが高速）
+      - uses: pnpm/action-setup@v4
+        with:
+          # package.json の packageManager を優先してpnpmを解決
+          run_install: false
+
+      # Node を固定し、pnpm の依存キャッシュを有効化（.nvmrc は未使用）
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      # Next.js の CI 用ビルドキャッシュを復元
+      - name: Restore Next.js cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            .next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ hashFiles('**/*.[jt]s', '**/*.[jt]sx', '**/*.tsx') }}
+          restore-keys: ${{ runner.os }}-nextjs-${{ hashFiles('**/pnpm-lock.yaml') }}-
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type Check
+        run: pnpm exec tsc -p tsconfig.json --noEmit
+
+      - name: Build
+        run: pnpm build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Unit Test
+        run: pnpm test

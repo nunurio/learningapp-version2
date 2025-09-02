@@ -1,5 +1,5 @@
 "use client";
-import { commitCoursePlan, commitCoursePlanPartial, saveDraft, deleteCourse } from "@/lib/localdb";
+import { commitCoursePlan, commitCoursePlanPartial, saveDraft, deleteCourse } from "@/lib/client-api";
 import type { CoursePlan } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/ui/header";

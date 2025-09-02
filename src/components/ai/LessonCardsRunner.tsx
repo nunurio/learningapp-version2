@@ -1,6 +1,6 @@
 "use client";
 import { useSSE } from "@/components/ai/useSSE";
-import { saveDraft } from "@/lib/localdb";
+import { saveDraft } from "@/lib/client-api";
 import type { LessonCards, UUID } from "@/lib/types";
 
 type Props = {
