@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { listCourses, listLessons, useLocalDbVersion } from "@/lib/localdb";
+import { listCourses, listLessons } from "@/lib/client-api";
 
 type Cmd = { id: string; label: string; hint?: string; action: () => void };
 
@@ -12,16 +12,26 @@ export function CommandPalette() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const [courses, setCourses] = useState(() => listCourses());
+  const [courses, setCourses] = useState<any[]>([]);
   const [lessons, setLessons] = useState<{ courseId: string; lessonId: string; title: string }[]>([]);
 
-  const dbv = useLocalDbVersion();
   useEffect(() => {
-    const cs = listCourses();
-    setCourses(cs);
-    const all = cs.flatMap((c) => listLessons(c.id).map((l) => ({ courseId: c.id, lessonId: l.id, title: `${c.title} / ${l.title}` })));
-    setLessons(all);
-  }, [dbv]);
+    let mounted = true;
+    (async () => {
+      const cs = await listCourses();
+      if (!mounted) return;
+      setCourses(cs);
+      const all: { courseId: string; lessonId: string; title: string }[] = [];
+      for (const c of cs) {
+        const ls = await listLessons(c.id);
+        if (!mounted) return;
+        ls.forEach((l) => all.push({ courseId: c.id, lessonId: l.id, title: `${c.title} / ${l.title}` }));
+      }
+      if (!mounted) return;
+      setLessons(all);
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   // Global shortcuts: Cmd/Ctrl+K toggles
   useEffect(() => {

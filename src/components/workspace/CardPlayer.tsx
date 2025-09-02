@@ -1,7 +1,15 @@
 "use client";
 import * as React from "react";
-import { listLessons, listCards, saveProgress, rateSrs, getProgress, isFlagged, toggleFlag, saveNote, getNote, listFlaggedByCourse, useLocalDbVersion } from "@/lib/localdb";
-import type { UUID, Card, QuizCardContent, FillBlankCardContent, SrsRating, TextCardContent } from "@/lib/types";
+import {
+  snapshot as fetchSnapshot,
+  saveProgress as saveProgressApi,
+  rateSrs as rateSrsApi,
+  listFlaggedByCourse,
+  toggleFlag as toggleFlagApi,
+  saveNote as saveNoteApi,
+  getNote as getNoteApi,
+} from "@/lib/client-api";
+import type { UUID, Card, QuizCardContent, FillBlankCardContent, SrsRating, TextCardContent, Lesson, Progress } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { QuizOption } from "@/components/player/QuizOption";
@@ -16,16 +24,30 @@ type Props = {
 };
 
 export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: Props) {
-  // DB変更に追従（進捗/フラグ/ノート/カード追加など）
-  useLocalDbVersion();
+  const [cards, setCards] = React.useState<Card[]>([]);
+  const [progress, setProgress] = React.useState<Progress[]>([]);
+  const [flagged, setFlagged] = React.useState<Set<UUID>>(new Set());
   const [card, setCard] = React.useState<Card | null>(null);
-  // コース内の全カード（レッスン順 → カード順）
-  const flatCards = (() => {
-    const ls = listLessons(courseId);
-    return ls.flatMap((l) => listCards(l.id));
-  })();
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const snap = await fetchSnapshot();
+      if (!mounted) return;
+      // keep only cards for lessons in this course
+      const lessonIds = new Set<string>(snap.lessons.filter((l) => l.courseId === courseId).map((l) => l.id));
+      const cs = snap.cards.filter((c) => lessonIds.has(c.lessonId)).sort((a, b) => a.orderIndex - b.orderIndex || a.createdAt.localeCompare(b.createdAt));
+      setCards(cs);
+      setProgress(snap.progress);
+      const ids = await listFlaggedByCourse(courseId);
+      if (!mounted) return;
+      setFlagged(new Set(ids));
+    })();
+    return () => { mounted = false; };
+  }, [courseId]);
   // セッション用の対象集合（nullなら全件）
   const [scopeIds, setScopeIds] = React.useState<string[] | null>(null);
+  const flatCards = React.useMemo(() => cards, [cards]);
   const activeList = React.useMemo(() => (scopeIds ? flatCards.filter((c) => scopeIds.includes(c.id)) : flatCards), [flatCards, scopeIds]);
   const activeIndex = React.useMemo(() => activeList.findIndex((c) => c.id === selectedId), [activeList, selectedId]);
   const prevId = activeIndex > 0 ? (activeList[activeIndex - 1]?.id as UUID) : undefined;
@@ -49,12 +71,12 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
       setCard(found);
       // カード切り替え→計測開始＆フラグ/ノート同期
       cardStartRef.current = Date.now();
-      setFlag(isFlagged(selectedId));
-      setNote(getNote(selectedId) ?? "");
+      setFlag(flagged.has(selectedId));
+      (async () => setNote((await getNoteApi(selectedId)) ?? ""))();
     } else {
       setCard(null);
     }
-  }, [courseId, selectedId, selectedKind, flatCards]);
+  }, [courseId, selectedId, selectedKind, flatCards, flagged]);
 
   if (!selectedId || !card) {
     return <p className="text-sm text-gray-700">カードを選択すると、ここで学習できます。</p>;
@@ -69,7 +91,15 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         <div className="float-right flex items-center gap-2">
           <Button
             aria-label={flag ? "フラグ解除" : "フラグ"}
-            onClick={async () => setFlag(await toggleFlag(card.id))}
+            onClick={async () => {
+              const on = await toggleFlagApi(card.id);
+              setFlag(on);
+              setFlagged((s) => {
+                const copy = new Set(s);
+                if (on) copy.add(card.id); else copy.delete(card.id);
+                return copy;
+              });
+            }}
             size="sm"
           >
             {flag ? "⭐" : "☆"}
@@ -85,7 +115,7 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
               </DialogHeader>
               <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="メモ…" />
               <div className="mt-3 flex justify-end">
-                <Button onClick={async () => { await saveNote(card.id, note); setNoteOpen(false); }} variant="default">保存</Button>
+                <Button onClick={async () => { await saveNoteApi(card.id, note); setNoteOpen(false); }} variant="default">保存</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -158,12 +188,17 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         >
           前へ
         </Button>
-        <div className="text-sm text-gray-600" aria-live="polite">{getProgress(card.id)?.completed ? "完了" : "未完了"}</div>
+        <div className="text-sm text-gray-600" aria-live="polite">{(progress.find((p) => p.cardId === card.id))?.completed ? "完了" : "未完了"}</div>
         <Button
           onClick={() => {
             if (nextId && onNavigate) {
               if (card.cardType === "text") {
-                saveProgress({ cardId: card.id, completed: true, completedAt: new Date().toISOString() });
+                const input = { cardId: card.id, completed: true, completedAt: new Date().toISOString() } as Progress;
+                void saveProgressApi(input).then(() => setProgress((arr) => {
+                  const idx = arr.findIndex((p) => p.cardId === input.cardId);
+                  if (idx === -1) return [...arr, input];
+                  const copy = arr.slice(); copy[idx] = input; return copy;
+                }));
               }
               onNavigate(nextId);
             }
@@ -222,8 +257,8 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
               }}
             >Hardのみ再演習</Button>
             <Button
-              onClick={() => {
-                const flagged = listFlaggedByCourse(courseId);
+              onClick={async () => {
+                const flagged = await listFlaggedByCourse(courseId);
                 const arr = flagged.length ? flagged : null;
                 setScopeIds(arr);
                 if (arr && arr[0] && onNavigate) onNavigate(arr[0] as UUID);
@@ -296,7 +331,10 @@ function TextLearn({ content, cardId }: { content: TextCardContent; cardId: stri
     <div>
       <p className="whitespace-pre-wrap text-gray-800">{content.body}</p>
       <div className="mt-4">
-        <Button onClick={() => saveProgress({ cardId, completed: true, completedAt: new Date().toISOString() })}>完了</Button>
+        <Button onClick={() => {
+          const input = { cardId, completed: true, completedAt: new Date().toISOString() } as Progress;
+          void saveProgressApi(input);
+        }}>完了</Button>
       </div>
     </div>
   );
@@ -312,7 +350,8 @@ function QuizLearn({ content, cardId, onResult, onRated, gotoNext }: { content: 
     const ok = selected === content.answerIndex;
     setResult(ok ? "correct" : "wrong");
     onResult?.(ok ? "correct" : "wrong");
-    saveProgress({ cardId, completed: ok, completedAt: ok ? new Date().toISOString() : undefined, answer: { selected } });
+    const input = { cardId, completed: ok, completedAt: ok ? new Date().toISOString() : undefined, answer: { selected } } as Progress;
+    void saveProgressApi(input);
   }
 
   return (
@@ -339,7 +378,7 @@ function QuizLearn({ content, cardId, onResult, onRated, gotoNext }: { content: 
         <p className="mt-2 text-sm text-gray-700">{content.explanation}</p>
       )}
       {result !== "idle" && (
-        <SrsPanel onSelect={(rating) => { onRated?.(rating); rateSrs(cardId, rating); setTimeout(() => gotoNext?.(), 150); }} />
+        <SrsPanel onSelect={(rating) => { onRated?.(rating); void rateSrsApi(cardId, rating); setTimeout(() => gotoNext?.(), 150); }} />
       )}
     </div>
   );
@@ -359,7 +398,8 @@ function FillBlankLearn({ content, cardId, onResult, onRated, gotoNext }: { cont
     });
     setResult(ok ? "correct" : "wrong");
     onResult?.(ok ? "correct" : "wrong");
-    saveProgress({ cardId, completed: ok, completedAt: ok ? new Date().toISOString() : undefined, answer: answers });
+    const input = { cardId, completed: ok, completedAt: ok ? new Date().toISOString() : undefined, answer: answers } as Progress;
+    void saveProgressApi(input);
   }
 
   const parts = content.text.split(/(\[\[\d+\]\])/g);
@@ -387,7 +427,7 @@ function FillBlankLearn({ content, cardId, onResult, onRated, gotoNext }: { cont
         </span>
       </div>
       {result !== "idle" && (
-        <SrsPanel onSelect={(rating) => { onRated?.(rating); rateSrs(cardId, rating); setTimeout(() => gotoNext?.(), 150); }} />
+        <SrsPanel onSelect={(rating) => { onRated?.(rating); void rateSrsApi(cardId, rating); setTimeout(() => gotoNext?.(), 150); }} />
       )}
     </div>
   );

@@ -1,19 +1,16 @@
 "use client";
 import * as React from "react";
 import {
-  getCourse,
-  listLessons,
-  listCards,
-  addLesson,
-  reorderLessons,
-  deleteLesson,
-  addCard,
-  deleteCard,
-  reorderCards,
-  commitLessonCards,
-  commitLessonCardsPartial,
-  useLocalDbVersion,
-} from "@/lib/localdb";
+  snapshot as fetchSnapshot,
+  addLesson as addLessonApi,
+  reorderLessons as reorderLessonsApi,
+  deleteLesson as deleteLessonApi,
+  addCard as addCardApi,
+  deleteCard as deleteCardApi,
+  reorderCards as reorderCardsApi,
+  commitLessonCards as commitLessonCardsApi,
+  commitLessonCardsPartial as commitLessonCardsPartialApi,
+} from "@/lib/client-api";
 import type { UUID, Card, Lesson, Course, QuizCardContent, FillBlankCardContent, LessonCards, CardType, TextCardContent } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,7 +29,6 @@ type Props = {
 };
 
 export function Inspector({ courseId, selectedId, selectedKind }: Props) {
-  const dbv = useLocalDbVersion();
   const [course, setCourse] = React.useState<Course | null>(null);
   const [lesson, setLesson] = React.useState<Lesson | null>(null);
   const [card, setCard] = React.useState<Card | null>(null);
@@ -50,43 +46,29 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   const [previews, setPreviews] = React.useState<Record<string, { draftId: string; payload: LessonCards }>>({});
   const [selectedIndexes, setSelectedIndexes] = React.useState<Record<string, Record<number, boolean>>>({});
 
-  function refreshLists() {
-    setCourse(getCourse(courseId) ?? null);
-    const ls = listLessons(courseId);
+  async function refreshLists() {
+    const snap = await fetchSnapshot();
+    const co = snap.courses.find((c) => c.id === courseId) ?? null;
+    setCourse(co);
+    const ls = snap.lessons.filter((l) => l.courseId === courseId).sort((a, b) => a.orderIndex - b.orderIndex || a.createdAt.localeCompare(b.createdAt));
     setLessons(ls);
     if (selectedKind === "lesson" && selectedId) {
       const l = ls.find((x) => x.id === selectedId) ?? null;
       setLesson(l);
-      setCards(l ? listCards(l.id) : []);
+      setCards(l ? snap.cards.filter((c) => c.lessonId === l.id).sort((a, b) => a.orderIndex - b.orderIndex || a.createdAt.localeCompare(b.createdAt)) : []);
+      setCard(null);
     } else if (selectedKind === "card" && selectedId) {
-      const l = ls.find((x) => listCards(x.id).some((c) => c.id === selectedId));
+      const l = ls.find((x) => snap.cards.some((c) => c.lessonId === x.id && c.id === selectedId));
       setLesson(null);
       setCards([]);
-      const found = (l ? listCards(l.id) : []).find((c) => c.id === selectedId) ?? null;
+      const found = (l ? snap.cards.filter((c) => c.lessonId === l.id) : []).find((c) => c.id === selectedId) ?? null;
       setCard(found ?? null);
     } else {
       setLesson(null); setCards([]); setCard(null);
     }
   }
 
-  React.useEffect(() => {
-    setCourse(getCourse(courseId) ?? null);
-    const ls = listLessons(courseId);
-    setLessons(ls);
-    if (selectedKind === "lesson" && selectedId) {
-      const l = ls.find((x) => x.id === selectedId) ?? null;
-      setLesson(l);
-      setCards(l ? listCards(l.id) : []);
-    } else if (selectedKind === "card" && selectedId) {
-      const l = ls.find((x) => listCards(x.id).some((c) => c.id === selectedId));
-      setLesson(null);
-      setCards([]);
-      const found = (l ? listCards(l.id) : []).find((c) => c.id === selectedId) ?? null;
-      setCard(found ?? null);
-    } else {
-      setLesson(null); setCards([]); setCard(null);
-    }
-  }, [courseId, selectedId, selectedKind, dbv]);
+  React.useEffect(() => { void refreshLists(); }, [courseId, selectedId, selectedKind]);
 
   // 下書き or 現行値でフォーム初期化
   React.useEffect(() => {
@@ -128,12 +110,11 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   // 現在のレッスン（カード選択時も親レッスンを解決）
   const currentLesson: Lesson | null = (() => {
     if (selectedKind === "lesson" && selectedId) {
-      return listLessons(courseId).find((x) => x.id === selectedId) ?? null;
+      return lessons.find((x) => x.id === selectedId) ?? null;
     }
     if (selectedKind === "card" && selectedId) {
-      const ls = listLessons(courseId);
-      const l = ls.find((x) => listCards(x.id).some((c) => c.id === selectedId)) ?? null;
-      return l ?? null;
+      if (card) return lessons.find((x) => x.id === card.lessonId) ?? null;
+      return null;
     }
     return null;
   })();
@@ -157,8 +138,8 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
           onSaveAll={async (lessonId, payload, selected) => {
             const idxs = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
             const res = idxs.length > 0
-              ? await commitLessonCardsPartial({ draftId: payload.draftId, lessonId, selectedIndexes: idxs })
-              : await commitLessonCards({ draftId: payload.draftId, lessonId });
+              ? await commitLessonCardsPartialApi({ draftId: payload.draftId, lessonId, selectedIndexes: idxs })
+              : await commitLessonCardsApi({ draftId: payload.draftId, lessonId });
             if (!res) return alert("保存に失敗しました");
             refreshLists();
             setPreviews((prev) => { const copy = { ...prev }; delete copy[lessonId]; return copy; });
@@ -347,14 +328,14 @@ function CourseInspector({ course, lessons, onRefresh }: { course: Course; lesso
       <h3 className="font-medium">コース: {course.title}</h3>
       <div className="flex gap-2">
         <Input placeholder="新規レッスン名" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <Button onClick={async () => { if (!title.trim()) return; await addLesson(course.id, title); setTitle(""); onRefresh(); }}>レッスン追加</Button>
+        <Button onClick={async () => { if (!title.trim()) return; await addLessonApi(course.id, title); setTitle(""); onRefresh(); }}>レッスン追加</Button>
       </div>
       <div>
         <h4 className="text-sm text-gray-700 mb-2">レッスン並び替え</h4>
         <SortableList
           ids={lessons.map((l) => l.id)}
           label="レッスンの並び替え"
-          onReorder={async (ids) => { await reorderLessons(course.id, ids); onRefresh(); }}
+          onReorder={async (ids) => { await reorderLessonsApi(course.id, ids); onRefresh(); }}
           renderItem={(id) => {
             const l = lessons.find((x) => x.id === id);
             if (!l) return <div className="text-xs text-gray-400">更新中…</div>;
@@ -366,7 +347,7 @@ function CourseInspector({ course, lessons, onRefresh }: { course: Course; lesso
                   description="この操作は元に戻せません。配下のカードも削除されます。"
                   confirmLabel="削除する"
                   cancelLabel="キャンセル"
-                  onConfirm={async () => { await deleteLesson(l.id); onRefresh(); }}
+                  onConfirm={async () => { await deleteLessonApi(l.id); onRefresh(); }}
                 >
                   <Button variant="destructive" size="sm">削除</Button>
                 </Confirm>
@@ -447,8 +428,8 @@ function LessonInspector(props: {
                   const selected = selectedIndexes[lesson.id] || {};
                   const idxs = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
                   const res = idxs.length > 0
-                    ? await commitLessonCardsPartial({ draftId: p.draftId, lessonId: lesson.id, selectedIndexes: idxs })
-                    : await commitLessonCards({ draftId: p.draftId, lessonId: lesson.id });
+                    ? await commitLessonCardsPartialApi({ draftId: p.draftId, lessonId: lesson.id, selectedIndexes: idxs })
+                    : await commitLessonCardsApi({ draftId: p.draftId, lessonId: lesson.id });
                   if (res) { onRefresh(); }
                   setPreviews((prev) => { const copy = { ...prev }; delete copy[lesson.id]; return copy; });
                 }}
@@ -475,7 +456,7 @@ function LessonInspector(props: {
           <SortableList
             ids={cards.map((c) => c.id)}
             label="カードの並び替え"
-            onReorder={async (ids) => { await reorderCards(lesson.id, ids); onRefresh(); }}
+            onReorder={async (ids) => { await reorderCardsApi(lesson.id, ids); onRefresh(); }}
             renderItem={(id) => {
               const c = cards.find((x) => x.id === id);
               if (!c) return <div className="text-xs text-gray-400">更新中…</div>;
@@ -488,7 +469,7 @@ function LessonInspector(props: {
                     description="この操作は元に戻せません。学習履歴も削除されます。"
                     confirmLabel="削除する"
                     cancelLabel="キャンセル"
-                    onConfirm={async () => { await deleteCard(c.id); onRefresh(); }}
+                    onConfirm={async () => { await deleteCardApi(c.id); onRefresh(); }}
                   >
                     <Button variant="destructive" size="sm">削除</Button>
                   </Confirm>
@@ -526,11 +507,11 @@ function NewCardForm({ lessonId, onDone }: { lessonId: UUID; onDone: () => void 
         e.preventDefault();
         if (type === "text") {
           if (!body.trim()) return alert("本文は必須です");
-          await addCard(lessonId, { cardType: "text", title: title || null, content: { body } });
+          await addCardApi(lessonId, { cardType: "text", title: title || null, content: { body } });
         } else if (type === "quiz") {
           const opts = options.split("\n").map((s) => s.trim()).filter(Boolean);
           if (!question.trim() || opts.length < 2) return alert("設問と選択肢2つ以上が必要です");
-          await addCard(lessonId, { cardType: "quiz", title: title || null, content: { question, options: opts, answerIndex: Math.max(0, Math.min(answerIndex, opts.length - 1)), explanation: explanation || undefined } });
+          await addCardApi(lessonId, { cardType: "quiz", title: title || null, content: { question, options: opts, answerIndex: Math.max(0, Math.min(answerIndex, opts.length - 1)), explanation: explanation || undefined } });
         } else {
           const obj: Record<string, string> = {};
           answers.split("\n").map((s) => s.trim()).filter(Boolean).forEach((line) => {
@@ -539,7 +520,7 @@ function NewCardForm({ lessonId, onDone }: { lessonId: UUID; onDone: () => void 
             if (k && v) obj[k.trim()] = v;
           });
           if (!text.trim() || Object.keys(obj).length === 0) return alert("テキストと回答（例: 1:answer）を入力してください");
-          await addCard(lessonId, { cardType: "fill-blank", title: title || null, content: { text, answers: obj, caseSensitive } });
+          await addCardApi(lessonId, { cardType: "fill-blank", title: title || null, content: { text, answers: obj, caseSensitive } });
         }
         setTitle(""); setBody(""); setQuestion(""); setOptions(""); setAnswerIndex(0); setExplanation(""); setText(""); setAnswers("1:answer"); setCaseSensitive(false);
         onDone();

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createCourse } from "@/lib/localdb";
+import { createCourse } from "@/lib/client-api";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/ui/header";
 import { Button } from "@/components/ui/button";

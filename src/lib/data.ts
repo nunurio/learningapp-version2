@@ -1,7 +1,7 @@
 "use client";
 import type { UUID } from "@/lib/types";
 import { draftsPut, draftsGet, draftsDelete, type DraftRow } from "@/lib/idb";
-import { updateCard } from "@/lib/localdb";
+import { updateCard } from "@/lib/client-api";
 
 // Inspector 用の下書き保存 + 公開
 

@@ -11,7 +11,7 @@ const NavTree = dynamic(() => import("@/components/workspace/NavTree").then((m) 
 const Inspector = dynamic(() => import("@/components/workspace/Inspector").then((m) => m.Inspector), { ssr: false, loading: () => <SkeletonInspector /> });
 const CardPlayer = dynamic(() => import("@/components/workspace/CardPlayer").then((m) => m.CardPlayer), { ssr: false, loading: () => <SkeletonPlayer /> });
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from "@/components/ui/sheet";
-import { listCards } from "@/lib/localdb";
+import { listCards as listCardsApi } from "@/lib/client-api";
 
 type Props = { courseId: UUID; defaultLayout?: number[]; cookieKey?: string };
 
@@ -54,9 +54,11 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
                     return;
                   }
                   if (kind === "lesson") {
-                    const first = listCards(id)[0];
-                    if (first) { setSelId(first.id); setSelKind("card"); }
-                    else { setSelId(undefined); setSelKind(undefined); }
+                    (async () => {
+                      const first = (await listCardsApi(id))[0];
+                      if (first) { setSelId(first.id); setSelKind("card"); }
+                      else { setSelId(undefined); setSelKind(undefined); }
+                    })();
                   } else {
                     setSelId(id);
                     setSelKind("card");
@@ -112,9 +114,11 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
                           return;
                         }
                         if (kind === "lesson") {
-                          const first = listCards(id)[0];
-                          if (first) { setSelId(first.id); setSelKind("card"); }
-                          else { setSelId(undefined); setSelKind(undefined); }
+                          (async () => {
+                            const first = (await listCardsApi(id))[0];
+                            if (first) { setSelId(first.id); setSelKind("card"); }
+                            else { setSelId(undefined); setSelKind(undefined); }
+                          })();
                         } else {
                           setSelId(id);
                           setSelKind("card");

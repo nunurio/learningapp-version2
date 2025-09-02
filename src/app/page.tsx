@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { listCourses, deleteCourse, useLocalDbVersion } from "@/lib/localdb";
+import { listCourses, deleteCourse } from "@/lib/client-api";
 import type { Course } from "@/lib/types";
 import { Header } from "@/components/ui/header";
 import { Button } from "@/components/ui/button";
@@ -18,13 +18,17 @@ export default function Home() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
 
-  const dbv = useLocalDbVersion();
   useEffect(() => {
-    setCourses(listCourses());
-  }, [dbv]);
+    let mounted = true;
+    (async () => {
+      const cs = await listCourses();
+      if (mounted) setCourses(cs);
+    })();
+    return () => { mounted = false; };
+  }, []);
 
-  function refresh() {
-    setCourses(listCourses());
+  async function refresh() {
+    setCourses(await listCourses());
   }
 
   const filtered = useMemo(() => {

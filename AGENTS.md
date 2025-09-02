@@ -4,7 +4,7 @@
 
 ## Project Structure & Module Organization
 - Source: `src/app` (Next.js App Router). Routes follow `app/<segment>/page.tsx` with dynamic segments like `courses/[courseId]/lessons/[lessonId]/page.tsx`. Global styles: `src/app/globals.css`.
-- Libraries: `src/lib` contains domain types (`types.ts`), local storage data layer (`localdb.ts`, key: `learnify_v1`), and mock AI generators (`ai/mock.ts`).
+- Libraries: `src/lib` contains domain types (`types.ts`), client API wrappers for Server Actions (`client-api.ts`), and mock AI generators (`ai/mock.ts`).
 - Assets: `public/` for static files. Config lives in `next.config.ts`, `tsconfig.json` (alias `@/*` → `src/*`), `eslint.config.mjs`, and `postcss.config.mjs`.
 
 
@@ -33,7 +33,7 @@
 - PRs: include purpose, linked issue, and screenshots/GIFs for UI changes. Ensure `pnpm lint` and `pnpm build` pass locally.
 
 ## Security & Configuration Tips
-- Data is local‑first: clear with `localStorage.removeItem('learnify_v1')` in DevTools to reset.
+- Data persistence: Supabase + Server Actions. No `localStorage`-backed DB; inspect/clear via Supabase when needed.
 - Environment: no secrets required for the mock setup. If introducing env vars, use `.env.local` (ignored) and the `NEXT_PUBLIC_` prefix only for values intentionally exposed to the client.
 - Supabase (planned): `src/lib/supabase/*` exists for future use. If you enable it, configure keys in `.env.local` and never expose secrets under `NEXT_PUBLIC_` unless they are safe for the client.
 
@@ -71,7 +71,7 @@ src/
       queries.ts
     utils/
       crypto.ts
-    localdb.ts
+    client-api.ts
     types.ts
     ai/mock.ts
   server-actions/
@@ -107,7 +107,7 @@ These rules apply to this repo (App Router, strict TypeScript) and should be fol
 - **Navigation:** Use `Link` for internal navigation. Respect `prefetch` defaults and tune when necessary.
 - **Accessibility/SEO:** Provide `export const metadata`. Use semantic HTML, alt text, and proper labels.
 - **Repo conventions:** Use alias `@/*`, 2-space indent, double quotes, semicolons. One file per responsibility. Everything under `server-actions/*` is server-only.
-- **Local data:** For browser persistence, go through `src/lib/localdb.ts` (key `learnify_v1`). Do not use `localStorage` on the server.
+- **Data access:** Prefer Server Components and Server Actions. From client components, go through `src/lib/client-api.ts` which calls `/api/db` (Server Actions under the hood). Avoid direct `localStorage` for app state.
 
 **Anti-patterns**
 - **Overusing `"use client"`:** Putting it on root or high-level `layout`s and turning the tree into client-only.

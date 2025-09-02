@@ -1,8 +1,8 @@
 "use client";
 import * as React from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { listLessons, listCards, listFlaggedByCourse, getProgress, listCourses, useLocalDbVersion } from "@/lib/localdb";
-import type { UUID, Card, Lesson, CardType, Course, QuizCardContent, FillBlankCardContent } from "@/lib/types";
+import { snapshot as fetchSnapshot, listFlaggedByCourse } from "@/lib/client-api";
+import type { UUID, Card, Lesson, CardType, Course, QuizCardContent, FillBlankCardContent, Progress } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ProgressRing } from "@/components/ui/progress-ring";
@@ -21,27 +21,62 @@ type Props = {
 };
 
 export function NavTree({ courseId, selectedId, onSelect }: Props) {
-  // DB変更に追従
-  const dbv = useLocalDbVersion();
   const [q, setQ] = React.useState("");
   const [courses, setCourses] = React.useState<Course[]>([]);
   const [lessons, setLessons] = React.useState<Lesson[]>([]);
+  const [cards, setCards] = React.useState<Card[]>([]);
+  const [progress, setProgress] = React.useState<Progress[]>([]);
+  const [flaggedSet, setFlaggedSet] = React.useState<Set<UUID>>(new Set());
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [typeFilter, setTypeFilter] = React.useState<"all" | CardType>("all");
   const [onlyFlagged, setOnlyFlagged] = React.useState(false);
   const [onlyUnlearned, setOnlyUnlearned] = React.useState(false);
-  const flaggedSet = new Set(listFlaggedByCourse(courseId));
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const snap = await fetchSnapshot();
+      if (!mounted) return;
+      setCourses(snap.courses);
+      setLessons(snap.lessons);
+      setCards(snap.cards);
+      setProgress(snap.progress);
+      const ids = await listFlaggedByCourse(courseId);
+      if (!mounted) return;
+      setFlaggedSet(new Set(ids));
+      // 初期展開
+      setExpanded((m) => (m[`co:${courseId}`] ? m : { ...m, [`co:${courseId}`]: true }));
+    })();
+    return () => { mounted = false; };
+  }, [courseId]);
 
   // ロービング tabindex 用の"アクティブ"項目管理
   const [activeId, setActiveId] = React.useState<string | undefined>(undefined);
 
-  React.useEffect(() => {
-    setCourses(listCourses());
-    setLessons(listLessons(courseId));
-    // 初期表示では現在のコースを展開
-    setExpanded((m) => (m[`co:${courseId}`] ? m : { ...m, [`co:${courseId}`]: true }));
-  }, [courseId, dbv]);
+  const lessonsByCourse = React.useMemo(() => {
+    const map = new Map<string, Lesson[]>();
+    for (const l of lessons) {
+      const arr = map.get(l.courseId) ?? [];
+      arr.push(l);
+      map.set(l.courseId, arr);
+    }
+    for (const arr of map.values()) arr.sort((a, b) => a.orderIndex - b.orderIndex || a.createdAt.localeCompare(b.createdAt));
+    return map;
+  }, [lessons]);
+
+  const cardsByLesson = React.useMemo(() => {
+    const map = new Map<string, Card[]>();
+    for (const c of cards) {
+      const arr = map.get(c.lessonId) ?? [];
+      arr.push(c);
+      map.set(c.lessonId, arr);
+    }
+    for (const arr of map.values()) arr.sort((a, b) => a.orderIndex - b.orderIndex || a.createdAt.localeCompare(b.createdAt));
+    return map;
+  }, [cards]);
+
+  const getProgressLocal = React.useCallback((cardId: UUID) => progress.find((p) => p.cardId === cardId), [progress]);
 
   // 可視行をフラット化
   type Row = { key: string; type: "course" | "lesson" | "card"; id: string; level: number; title: string; tags?: string[]; completed?: boolean; expanded?: boolean };
@@ -51,15 +86,15 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
     // コース → レッスン → カード
     courses.forEach((co) => {
       // 子どもに検索/フィルタがかかっていれば親は表示
-      const ls = listLessons(co.id);
+      const ls = lessonsByCourse.get(co.id) ?? [];
       const hasChild = ls.some((l) => {
-        const cs = listCards(l.id);
+        const cs = cardsByLesson.get(l.id) ?? [];
         return (
           match(l.title) ||
           cs.some((c) => {
             if (typeFilter !== "all" && c.cardType !== typeFilter) return false;
             if (onlyFlagged && !flaggedSet.has(c.id)) return false;
-            if (onlyUnlearned && getProgress(c.id)?.completed) return false;
+            if (onlyUnlearned && getProgressLocal(c.id)?.completed) return false;
             return match(c.title ?? "") || match(c.cardType);
           })
         );
@@ -70,24 +105,24 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
       if (expanded[`co:${co.id}`]) {
         ls.forEach((l) => {
           const childAny = (() => {
-            const cs = listCards(l.id);
+            const cs = cardsByLesson.get(l.id) ?? [];
             return cs.some((c) => {
               if (typeFilter !== "all" && c.cardType !== typeFilter) return false;
               if (onlyFlagged && !flaggedSet.has(c.id)) return false;
-              if (onlyUnlearned && getProgress(c.id)?.completed) return false;
+              if (onlyUnlearned && getProgressLocal(c.id)?.completed) return false;
               return match(c.title ?? "") || match(c.cardType);
             });
           })();
           if (!(match(l.title) || childAny)) return;
           out.push({ key: `l:${l.id}`, type: "lesson", id: l.id, level: 2, title: l.title, expanded: !!expanded[`le:${l.id}`] });
           if (expanded[`le:${l.id}`]) {
-            const cs = listCards(l.id);
+            const cs = cardsByLesson.get(l.id) ?? [];
             cs.forEach((c) => {
               if (typeFilter !== "all" && c.cardType !== typeFilter) return;
               if (onlyFlagged && !flaggedSet.has(c.id)) return;
-              if (onlyUnlearned && getProgress(c.id)?.completed) return;
+              if (onlyUnlearned && getProgressLocal(c.id)?.completed) return;
               if (match(c.title ?? "") || match(c.cardType))
-                out.push({ key: `c:${c.id}`, type: "card", id: c.id, level: 3, title: labelForCard(c), tags: c.tags ?? [], completed: !!getProgress(c.id)?.completed });
+                out.push({ key: `c:${c.id}`, type: "card", id: c.id, level: 3, title: labelForCard(c), tags: c.tags ?? [], completed: !!getProgressLocal(c.id)?.completed });
             });
           }
         });
@@ -100,9 +135,9 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
   const lessonProgress = (() => {
     const map = new Map<string, number>();
     for (const l of lessons) {
-      const cs = listCards(l.id);
+      const cs = cardsByLesson.get(l.id) ?? [];
       if (cs.length === 0) { map.set(l.id, 0); continue; }
-      const done = cs.reduce((acc, c) => acc + (getProgress(c.id)?.completed ? 1 : 0), 0);
+      const done = cs.reduce((acc, c) => acc + (getProgressLocal(c.id)?.completed ? 1 : 0), 0);
       map.set(l.id, Math.round((done / cs.length) * 100));
     }
     return map;
