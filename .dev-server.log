@@ -1,0 +1,22 @@
+
+> learningapp-version2@0.1.0 dev /Users/takahashigenki/projects/learningapp-version2.worktree/agent2
+> NODE_OPTIONS=--max-http-header-size=16384 next dev --turbopack
+
+ ⚠ Port 3000 is in use by process 96376, using available port 3002 instead.
+   ▲ Next.js 15.5.0 (Turbopack)
+   - Local:        http://localhost:3002
+   - Network:      http://192.168.55.55:3002
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Compiled middleware in 81ms
+ ✓ Ready in 834ms
+ ⚠ Found a change in next.config.ts. Restarting the server to apply the changes...
+   ▲ Next.js 15.5.0 (Turbopack)
+   - Local:        http://localhost:3002
+   - Network:      http://192.168.55.55:3002
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Compiled middleware in 116ms
+ ✓ Ready in 889ms

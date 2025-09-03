@@ -8,6 +8,11 @@ const nextConfig: NextConfigWithTurbopack = {
     // Pin build root to this project to avoid multi-lockfile inference
     root: __dirname,
   },
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "i.pravatar.cc" },
+    ],
+  },
 };
 
 export default nextConfig;

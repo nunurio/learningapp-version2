@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { openCommandPalette } from "@/components/ui/command-palette";
 import { NotificationCenterButton } from "@/components/ui/notification-center";
+import { signout } from "@/app/login/actions";
 
 export function Header({
   onSearch,
@@ -55,6 +56,12 @@ export function Header({
                 <span className="hidden sm:inline">手動で作る</span>
               </Link>
             </Button>
+            {/* Logout */}
+            <form action={signout}>
+              <Button size="sm" variant="ghost" type="submit" aria-label="ログアウト" title="ログアウト">
+                ログアウト
+              </Button>
+            </form>
           </nav>
         )}
       </div>
