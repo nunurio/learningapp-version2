@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react(), tsconfigPaths()],
   test: {
     css: true,
-    // モックの後始末を自動化
+    // デフォルト（プロジェクト未指定時）
     restoreMocks: true,
     clearMocks: true,
     // CI/サンドボックス環境向け: ワーカー kill の権限エラー回避
@@ -27,6 +27,9 @@ export default defineConfig({
         plugins: [tsconfigPaths()],
         test: {
           environment: "jsdom",
+          // マルチプロジェクトではルートの設定が継承されないため個別指定
+          restoreMocks: true,
+          clearMocks: true,
           setupFiles: ["./tests/setup.client.ts"],
           include: [
             "src/**/*.{test,spec}.{ts,tsx}",
@@ -40,6 +43,9 @@ export default defineConfig({
         plugins: [tsconfigPaths()],
         test: {
           environment: "node",
+          // マルチプロジェクトではルートの設定が継承されないため個別指定
+          restoreMocks: true,
+          clearMocks: true,
           setupFiles: ["./tests/setup.server.ts"],
           include: [
             "src/app/api/**/*.test.{ts,tsx}",
