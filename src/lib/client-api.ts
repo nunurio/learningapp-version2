@@ -11,6 +11,11 @@ import type {
   CoursePlan,
   LessonCards,
 } from "@/lib/types";
+import { createCourseAction, updateCourseAction, deleteCourseAction } from "@/server-actions/courses";
+import { addLessonAction, deleteLessonAction, reorderLessonsAction } from "@/server-actions/lessons";
+import { addCardAction, updateCardAction, deleteCardAction, deleteCardsAction, reorderCardsAction } from "@/server-actions/cards";
+import { saveProgressAction, rateSrsAction, toggleFlagAction, saveNoteAction } from "@/server-actions/progress";
+import { saveDraftAction, commitCoursePlanAction, commitCoursePlanPartialAction, commitLessonCardsAction, commitLessonCardsPartialAction } from "@/server-actions/ai";
 
 type Snapshot = {
   courses: Course[];
@@ -70,91 +75,89 @@ export async function getNote(cardId: UUID): Promise<string | undefined> {
   return (await api<string | null>("getNote", { cardId })) ?? undefined;
 }
 
-// Writes (mutations)
+// Writes (mutations) via Server Actions
 export async function createCourse(input: { title: string; description?: string; category?: string }): Promise<{ courseId: UUID }> {
-  return await api<{ courseId: UUID }>("createCourse", input);
+  return await createCourseAction(input);
 }
 
 export async function updateCourse(courseId: UUID, patch: Partial<Pick<Course, "title" | "description" | "category" | "status">>): Promise<void> {
-  await api("updateCourse", { courseId, patch });
+  await updateCourseAction(courseId, patch);
 }
 
 export async function deleteCourse(courseId: UUID): Promise<void> {
-  await api("deleteCourse", { courseId });
+  await deleteCourseAction(courseId);
 }
 
 export async function addLesson(courseId: UUID, title: string): Promise<{ lessonId: UUID }> {
-  return await api<{ lessonId: UUID }>("addLesson", { courseId, title });
+  return await addLessonAction(courseId, title);
 }
 
 export async function deleteLesson(lessonId: UUID): Promise<void> {
-  await api("deleteLesson", { lessonId });
+  await deleteLessonAction(lessonId);
 }
 
 export async function reorderLessons(courseId: UUID, orderedIds: UUID[]): Promise<void> {
-  await api("reorderLessons", { courseId, orderedIds });
+  await reorderLessonsAction(courseId, orderedIds);
 }
 
 export async function addCard(
   lessonId: UUID,
   card: Omit<Card, "id" | "lessonId" | "createdAt" | "orderIndex">
 ): Promise<UUID> {
-  const { id } = await api<{ id: UUID }>("addCard", { lessonId, card });
-  return id;
+  return await addCardAction(lessonId, card);
 }
 
 export async function updateCard(cardId: UUID, patch: Partial<Card>): Promise<void> {
-  await api("updateCard", { cardId, patch });
+  await updateCardAction(cardId, patch);
 }
 
 export async function deleteCard(cardId: UUID): Promise<void> {
-  await api("deleteCard", { cardId });
+  await deleteCardAction(cardId);
 }
 
 export async function deleteCards(ids: UUID[]): Promise<void> {
-  await api("deleteCards", { ids });
+  await deleteCardsAction(ids);
 }
 
 export async function reorderCards(lessonId: UUID, orderedIds: UUID[]): Promise<void> {
-  await api("reorderCards", { lessonId, orderedIds });
+  await reorderCardsAction(lessonId, orderedIds);
 }
 
 export async function saveProgress(input: Progress): Promise<void> {
-  await api("saveProgress", { input });
+  await saveProgressAction(input);
 }
 
 export async function rateSrs(cardId: UUID, rating: SrsRating): Promise<SrsEntry> {
-  return await api<SrsEntry>("rateSrs", { cardId, rating });
+  return await rateSrsAction(cardId, rating);
 }
 
 export async function toggleFlag(cardId: UUID): Promise<boolean> {
-  const { on } = await api<{ on: boolean }>("toggleFlag", { cardId });
-  return on;
+  return await toggleFlagAction(cardId);
 }
 
 export async function saveNote(cardId: UUID, text: string): Promise<void> {
-  await api("saveNote", { cardId, text });
+  await saveNoteAction(cardId, text);
 }
 
 // AI drafts
 export async function saveDraft(kind: "outline" | "lesson-cards", payload: CoursePlan | LessonCards): Promise<{ id: string }> {
-  return await api<{ id: string }>("saveDraft", { kind, payload });
+  return await saveDraftAction(kind, payload);
 }
 
 export async function commitCoursePlan(draftId: string): Promise<{ courseId: UUID } | undefined> {
-  return (await api<{ courseId: UUID } | null>("commitCoursePlan", { draftId })) ?? undefined;
+  return await commitCoursePlanAction(draftId);
 }
 
 export async function commitCoursePlanPartial(draftId: string, selectedIndexes: number[]): Promise<{ courseId: UUID } | undefined> {
-  return (await api<{ courseId: UUID } | null>("commitCoursePlanPartial", { draftId, selectedIndexes })) ?? undefined;
+  return await commitCoursePlanPartialAction(draftId, selectedIndexes);
 }
 
 export async function commitLessonCards(opts: { draftId: string; lessonId: UUID }): Promise<{ count: number; cardIds: UUID[] } | undefined> {
-  return (await api<{ count: number; cardIds: UUID[] } | null>("commitLessonCards", opts)) ?? undefined;
+  return await commitLessonCardsAction(opts);
 }
 
 export async function commitLessonCardsPartial(opts: { draftId: string; lessonId: UUID; selectedIndexes: number[] }): Promise<{ count: number; cardIds: UUID[] } | undefined> {
-  return (await api<{ count: number; cardIds: UUID[] } | null>("commitLessonCardsPartial", opts)) ?? undefined;
+  return await commitLessonCardsPartialAction(opts);
 }
 
 export type { Snapshot };

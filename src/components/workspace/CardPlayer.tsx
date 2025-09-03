@@ -9,12 +9,14 @@ import {
   saveNote as saveNoteApi,
   getNote as getNoteApi,
 } from "@/lib/client-api";
-import type { UUID, Card, QuizCardContent, FillBlankCardContent, SrsRating, TextCardContent, Lesson, Progress } from "@/lib/types";
+import type { UUID, Card, QuizCardContent, FillBlankCardContent, SrsRating, TextCardContent, Progress } from "@/lib/types";
+import type { SaveCardDraftInput } from "@/lib/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { QuizOption } from "@/components/player/QuizOption";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { useWorkspaceSelector } from "@/lib/state/workspace-store";
 
 type Props = {
   courseId: UUID;
@@ -24,6 +26,8 @@ type Props = {
 };
 
 export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: Props) {
+  const version = useWorkspaceSelector((s) => s.version);
+  const draftForSelected = useWorkspaceSelector((s) => (selectedId ? s.drafts[selectedId] : undefined), (a, b) => JSON.stringify(a) === JSON.stringify(b));
   const [cards, setCards] = React.useState<Card[]>([]);
   const [progress, setProgress] = React.useState<Progress[]>([]);
   const [flagged, setFlagged] = React.useState<Set<UUID>>(new Set());
@@ -44,7 +48,7 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
       setFlagged(new Set(ids));
     })();
     return () => { mounted = false; };
-  }, [courseId]);
+  }, [courseId, version]);
   // セッション用の対象集合（nullなら全件）
   const [scopeIds, setScopeIds] = React.useState<string[] | null>(null);
   const flatCards = React.useMemo(() => cards, [cards]);
@@ -78,7 +82,38 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
     }
   }, [courseId, selectedId, selectedKind, flatCards, flagged]);
 
-  if (!selectedId || !card) {
+  // Draft overlay: create a view-model merged with transient edits
+  const draft: SaveCardDraftInput | undefined =
+    draftForSelected && card && (draftForSelected as SaveCardDraftInput).cardId === card.id
+      ? (draftForSelected as SaveCardDraftInput)
+      : undefined;
+  const view = React.useMemo<Card | null>(() => {
+    if (!card) return null;
+    if (!draft) return card;
+    const base: Card = { ...card };
+    // common fields
+    base.title = draft.title ?? base.title ?? null;
+    base.tags = draft.tags ?? base.tags;
+    if (draft.cardType === "text" && base.cardType === "text") {
+      base.content = { body: draft.body } as TextCardContent;
+    } else if (draft.cardType === "quiz" && base.cardType === "quiz") {
+      base.content = {
+        question: draft.question,
+        options: draft.options,
+        answerIndex: draft.answerIndex,
+        explanation: draft.explanation ?? undefined,
+      } as QuizCardContent;
+    } else if (draft.cardType === "fill-blank" && base.cardType === "fill-blank") {
+      base.content = {
+        text: draft.text,
+        answers: draft.answers,
+        caseSensitive: !!draft.caseSensitive,
+      } as FillBlankCardContent;
+    }
+    return base;
+  }, [card, draft]);
+
+  if (!selectedId || !view) {
     return <p className="text-sm text-gray-700">カードを選択すると、ここで学習できます。</p>;
   }
 
@@ -86,17 +121,17 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
     <div className="p-2">
       {/* ヘッダー／カードメタ＋フラグ＋ノート */}
       <div className="mb-2">
-        <span className="px-2 py-1 rounded bg-black/5 text-xs">{card.cardType}</span>
-        {card.title ? <span className="ml-2 font-medium">{card.title}</span> : null}
+        <span className="px-2 py-1 rounded bg-black/5 text-xs">{view.cardType}</span>
+        {view.title ? <span className="ml-2 font-medium">{view.title}</span> : null}
         <div className="float-right flex items-center gap-2">
           <Button
             aria-label={flag ? "フラグ解除" : "フラグ"}
             onClick={async () => {
-              const on = await toggleFlagApi(card.id);
+              const on = await toggleFlagApi(view.id);
               setFlag(on);
               setFlagged((s) => {
                 const copy = new Set(s);
-                if (on) copy.add(card.id); else copy.delete(card.id);
+                if (on) copy.add(view.id); else copy.delete(view.id);
                 return copy;
               });
             }}
@@ -115,7 +150,7 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
               </DialogHeader>
               <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="メモ…" />
               <div className="mt-3 flex justify-end">
-                <Button onClick={async () => { await saveNoteApi(card.id, note); setNoteOpen(false); }} variant="default">保存</Button>
+                <Button onClick={async () => { await saveNoteApi(view.id, note); setNoteOpen(false); }} variant="default">保存</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -143,32 +178,32 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
       )}
 
       {/* 本文 */}
-      {card.cardType === "text" && (
-        <TextLearn content={card.content as TextCardContent} cardId={card.id} />
+      {view.cardType === "text" && (
+        <TextLearn content={view.content as TextCardContent} cardId={view.id} />
       )}
-      {card.cardType === "quiz" && (
+      {view.cardType === "quiz" && (
         <QuizLearn
-          content={card.content as QuizCardContent}
-          cardId={card.id}
+          content={view.content as QuizCardContent}
+          cardId={view.id}
           onResult={(r) => {
             const d = Date.now() - cardStartRef.current;
-            setDurations((m) => ({ ...m, [card.id]: d }));
-            setResults((m) => ({ ...m, [card.id]: r }));
+            setDurations((m) => ({ ...m, [view.id]: d }));
+            setResults((m) => ({ ...m, [view.id]: r }));
           }}
-          onRated={(rating) => setRatings((m) => ({ ...m, [card.id]: rating }))}
+          onRated={(rating) => setRatings((m) => ({ ...m, [view.id]: rating }))}
           gotoNext={() => { if (nextId && onNavigate) onNavigate(nextId); }}
         />
       )}
-      {card.cardType === "fill-blank" && (
+      {view.cardType === "fill-blank" && (
         <FillBlankLearn
-          content={card.content as FillBlankCardContent}
-          cardId={card.id}
+          content={view.content as FillBlankCardContent}
+          cardId={view.id}
           onResult={(r) => {
             const d = Date.now() - cardStartRef.current;
-            setDurations((m) => ({ ...m, [card.id]: d }));
-            setResults((m) => ({ ...m, [card.id]: r }));
+            setDurations((m) => ({ ...m, [view.id]: d }));
+            setResults((m) => ({ ...m, [view.id]: r }));
           }}
-          onRated={(rating) => setRatings((m) => ({ ...m, [card.id]: rating }))}
+          onRated={(rating) => setRatings((m) => ({ ...m, [view.id]: rating }))}
           gotoNext={() => { if (nextId && onNavigate) onNavigate(nextId); }}
         />
       )}
@@ -188,12 +223,12 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         >
           前へ
         </Button>
-        <div className="text-sm text-gray-600" aria-live="polite">{(progress.find((p) => p.cardId === card.id))?.completed ? "完了" : "未完了"}</div>
+        <div className="text-sm text-gray-600" aria-live="polite">{(progress.find((p) => p.cardId === view.id))?.completed ? "完了" : "未完了"}</div>
         <Button
           onClick={() => {
             if (nextId && onNavigate) {
-              if (card.cardType === "text") {
-                const input = { cardId: card.id, completed: true, completedAt: new Date().toISOString() } as Progress;
+              if (view.cardType === "text") {
+                const input = { cardId: view.id, completed: true, completedAt: new Date().toISOString() } as Progress;
                 void saveProgressApi(input).then(() => setProgress((arr) => {
                   const idx = arr.findIndex((p) => p.cardId === input.cardId);
                   if (idx === -1) return [...arr, input];

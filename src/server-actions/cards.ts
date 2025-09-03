@@ -1,7 +1,8 @@
 "use server";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { UUID, Card } from "@/lib/types";
-import { asUpsertById } from "@/lib/db/helpers";
+// asUpsertById not needed after switching to plain updates for reordering
 import type { TablesInsert } from "@/lib/database.types";
 
 export async function addCardAction(
@@ -9,6 +10,8 @@ export async function addCardAction(
   card: Omit<Card, "id" | "lessonId" | "createdAt" | "orderIndex">
 ): Promise<UUID> {
   const supa = await createClient();
+  const { data: lrow, error: le } = await supa.from("lessons").select("course_id").eq("id", lessonId).single();
+  if (le) throw le;
   const { data: maxData, error: e1 } = await supa
     .from("cards")
     .select("order_index")
@@ -30,11 +33,16 @@ export async function addCardAction(
     .select("id")
     .single();
   if (error) throw error;
+  revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
   return data.id as UUID;
 }
 
 export async function updateCardAction(cardId: UUID, patch: Partial<Card>) {
   const supa = await createClient();
+  const { data: crow, error: ce } = await supa.from("cards").select("lesson_id").eq("id", cardId).single();
+  if (ce) throw ce;
+  const { data: lrow, error: le } = await supa.from("lessons").select("course_id").eq("id", crow.lesson_id).single();
+  if (le) throw le;
   const updates: Record<string, unknown> = {};
   if (patch.title !== undefined) updates.title = patch.title;
   if (patch.tags !== undefined) updates.tags = patch.tags;
@@ -43,26 +51,60 @@ export async function updateCardAction(cardId: UUID, patch: Partial<Card>) {
   if (Object.keys(updates).length === 0) return;
   const { error } = await supa.from("cards").update(updates).eq("id", cardId);
   if (error) throw error;
+  revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
 }
 
 export async function deleteCardAction(cardId: UUID) {
   const supa = await createClient();
+  const { data: crow, error: ce } = await supa.from("cards").select("lesson_id").eq("id", cardId).single();
+  if (ce) throw ce;
+  const { data: lrow, error: le } = await supa.from("lessons").select("course_id").eq("id", crow.lesson_id).single();
   const { error } = await supa.from("cards").delete().eq("id", cardId);
   if (error) throw error;
+  if (!le) revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
 }
 
 export async function deleteCardsAction(ids: UUID[]) {
   if (!ids.length) return;
   const supa = await createClient();
+  const { data: rows } = await supa.from("cards").select("lesson_id").in("id", ids);
+  let courseId: string | undefined;
+  if (rows && rows[0]) {
+    const { data: lrow } = await supa.from("lessons").select("course_id").eq("id", rows[0].lesson_id).single();
+    courseId = lrow?.course_id as string | undefined;
+  }
   const { error } = await supa.from("cards").delete().in("id", ids);
   if (error) throw error;
+  if (courseId) revalidatePath(`/courses/${courseId}/workspace`, "page");
 }
 
 export async function reorderCardsAction(lessonId: UUID, orderedIds: UUID[]) {
   const supa = await createClient();
-  const updates = orderedIds.map((id, idx) => ({ id, order_index: idx }));
-  const { error } = await supa
-    .from("cards")
-    .upsert(asUpsertById<"cards">(updates), { onConflict: "id" });
-  if (error) throw error;
+  const { data: lrow, error: le } = await supa.from("lessons").select("course_id").eq("id", lessonId).single();
+  if (le) throw le;
+  // NOTE: Upsert can hit RLS/privilege checks (42501) on some setups
+  // because it requires both INSERT and UPDATE permissions. Additionally,
+  // unique (lesson_id, order_index) can transiently conflict. To avoid
+  // both issues, perform two-phase plain updates with a large offset.
+  const OFFSET = 1_000_000; // keep within int range and out of normal window
+  // Phase 1: move to provisional window to avoid unique collisions.
+  for (let idx = 0; idx < orderedIds.length; idx++) {
+    const id = orderedIds[idx];
+    const provisional = idx + OFFSET;
+    const { error } = await supa
+      .from("cards")
+      .update({ order_index: provisional })
+      .eq("id", id);
+    if (error) throw error;
+  }
+  // Phase 2: set final indices 0..n-1.
+  for (let idx = 0; idx < orderedIds.length; idx++) {
+    const id = orderedIds[idx];
+    const { error } = await supa
+      .from("cards")
+      .update({ order_index: idx })
+      .eq("id", id);
+    if (error) throw error;
+  }
+  revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
 }

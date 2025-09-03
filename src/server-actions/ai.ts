@@ -1,4 +1,5 @@
 "use server";
+import { revalidatePath } from "next/cache";
 import type { UUID, CoursePlan, LessonCards } from "@/lib/types";
 import { createClient, getCurrentUserId } from "@/lib/supabase/server";
 import type { Tables, TablesInsert } from "@/lib/database.types";
@@ -121,6 +122,8 @@ export async function commitLessonCardsAction(opts: { draftId: string; lessonId:
     count = data.length; ids.push(...data.map((r: { id: UUID }) => r.id));
   }
   await supa.from("ai_drafts").delete().eq("id", opts.draftId);
+  const { data: lrow } = await supa.from("lessons").select("course_id").eq("id", opts.lessonId).single();
+  if (lrow?.course_id) revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
   return { count, cardIds: ids };
 }
 
@@ -163,5 +166,7 @@ export async function commitLessonCardsPartialAction(opts: { draftId: string; le
     count = data.length; ids.push(...data.map((r: { id: UUID }) => r.id));
   }
   await supa.from("ai_drafts").delete().eq("id", opts.draftId);
+  const { data: lrow } = await supa.from("lessons").select("course_id").eq("id", opts.lessonId).single();
+  if (lrow?.course_id) revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
   return { count, cardIds: ids };
 }

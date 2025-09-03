@@ -21,6 +21,7 @@ import { Confirm } from "@/components/ui/confirm";
 import { Select } from "@/components/ui/select";
 import { SortableList } from "@/components/dnd/SortableList";
 import { saveCardDraft, loadCardDraft, publishCard, type SaveCardDraftInput } from "@/lib/data";
+import { workspaceStore, useWorkspace } from "@/lib/state/workspace-store";
 
 type Props = {
   courseId: UUID;
@@ -29,6 +30,8 @@ type Props = {
 };
 
 export function Inspector({ courseId, selectedId, selectedKind }: Props) {
+  // subscribe to workspace store (no direct read needed here, but keeps future-dependent UIs in sync)
+  useWorkspace();
   const [course, setCourse] = React.useState<Course | null>(null);
   const [lesson, setLesson] = React.useState<Lesson | null>(null);
   const [card, setCard] = React.useState<Card | null>(null);
@@ -45,8 +48,10 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   const [logsByLesson, setLogsByLesson] = React.useState<Record<string, { ts: number; text: string }[]>>({});
   const [previews, setPreviews] = React.useState<Record<string, { draftId: string; payload: LessonCards }>>({});
   const [selectedIndexes, setSelectedIndexes] = React.useState<Record<string, Record<number, boolean>>>({});
+  // fill-blank 回答の一時テキスト（未完成行の入力を保持）
+  const [answersText, setAnswersText] = React.useState<string>("");
 
-  async function refreshLists() {
+  const refreshLists = React.useCallback(async function refreshLists() {
     const snap = await fetchSnapshot();
     const co = snap.courses.find((c) => c.id === courseId) ?? null;
     setCourse(co);
@@ -66,9 +71,9 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
     } else {
       setLesson(null); setCards([]); setCard(null);
     }
-  }
+  }, [courseId, selectedId, selectedKind]);
 
-  React.useEffect(() => { void refreshLists(); }, [courseId, selectedId, selectedKind]);
+  React.useEffect(() => { void refreshLists(); }, [refreshLists]);
 
   // 下書き or 現行値でフォーム初期化
   React.useEffect(() => {
@@ -77,16 +82,30 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
       if (!card) { setForm(null); return; }
       const draft = await loadCardDraft(card.id);
       if (!mounted) return;
-      if (draft) { setForm(draft); return; }
+      if (draft) {
+        setForm(draft);
+        workspaceStore.setDraft(draft);
+        if (draft.cardType === "fill-blank") {
+          const s = Object.entries(draft.answers ?? {}).map(([k, v]) => `${k}:${v}`).join("\n");
+          setAnswersText(s);
+        } else {
+          setAnswersText("");
+        }
+        return;
+      }
       if (card.cardType === "text") {
         const c = card.content as TextCardContent;
         setForm({ cardId: card.id, cardType: "text", title: card.title ?? null, tags: card.tags ?? [], body: c.body ?? "" });
+        setAnswersText("");
       } else if (card.cardType === "quiz") {
         const c = card.content as QuizCardContent;
         setForm({ cardId: card.id, cardType: "quiz", title: card.title ?? null, tags: card.tags ?? [], question: c.question, options: c.options, answerIndex: c.answerIndex, explanation: c.explanation ?? null });
+        setAnswersText("");
       } else {
         const c = card.content as FillBlankCardContent;
         setForm({ cardId: card.id, cardType: "fill-blank", title: card.title ?? null, tags: card.tags ?? [], text: c.text, answers: c.answers, caseSensitive: !!c.caseSensitive });
+        const s = Object.entries(c.answers ?? {}).map(([k, v]) => `${k}:${v}`).join("\n");
+        setAnswersText(s);
       }
     })();
     return () => { mounted = false; };
@@ -181,39 +200,76 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
           </div>
           <div>
             <label className="block text-sm mb-1">タイトル（任意）</label>
-            <Input value={form.title ?? ""} onChange={(e) => setForm((f) => (f ? { ...f, title: e.target.value } : f))} />
+            <Input value={form.title ?? ""} onChange={(e) => setForm((f) => {
+              if (!f) return f;
+              const next = { ...f, title: e.target.value } as SaveCardDraftInput;
+              workspaceStore.setDraft(next);
+              return next;
+            })} />
           </div>
           <div>
             <label className="block text-sm mb-1">タグ（カンマ区切り）</label>
             <Input
               value={(form.tags ?? []).join(", ")}
-              onChange={(e) => setForm((f) => (f ? { ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) } : f))}
+              onChange={(e) => setForm((f) => {
+                if (!f) return f;
+                const tags = e.target.value.split(",").map((s)=>s.trim()).filter(Boolean);
+                const next = { ...f, tags } as SaveCardDraftInput;
+                workspaceStore.setDraft(next);
+                return next;
+              })}
               placeholder="例: 基礎, 重要, 用語"
             />
           </div>
           {form.cardType === "text" && (
             <div>
               <label className="block text-sm mb-1">本文</label>
-              <Textarea value={form.cardType === "text" ? form.body : ""} onChange={(e) => setForm((f) => (f && f.cardType === "text" ? { ...f, body: e.target.value } : f))} />
+              <Textarea value={form.cardType === "text" ? form.body : ""} onChange={(e) => setForm((f) => {
+                if (!f || f.cardType !== "text") return f;
+                const next = { ...f, body: e.target.value } as SaveCardDraftInput;
+                workspaceStore.setDraft(next);
+                return next;
+              })} />
             </div>
           )}
           {form.cardType === "quiz" && (
             <div className="grid grid-cols-1 gap-2">
               <div>
                 <label className="block text-sm mb-1">設問</label>
-                <Input value={form.cardType === "quiz" ? form.question : ""} onChange={(e) => setForm((f) => (f && f.cardType === "quiz" ? { ...f, question: e.target.value } : f))} />
+                <Input value={form.cardType === "quiz" ? form.question : ""} onChange={(e) => setForm((f) => {
+                  if (!f || f.cardType !== "quiz") return f;
+                  const next = { ...f, question: e.target.value } as SaveCardDraftInput;
+                  workspaceStore.setDraft(next);
+                  return next;
+                })} />
               </div>
               <div>
                 <label className="block text-sm mb-1">選択肢（改行区切り）</label>
-                <Textarea value={form.cardType === "quiz" ? (form.options ?? []).join("\n") : ""} onChange={(e) => setForm((f) => (f && f.cardType === "quiz" ? { ...f, options: e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean) } : f))} />
+                <Textarea value={form.cardType === "quiz" ? (form.options ?? []).join("\n") : ""} onChange={(e) => setForm((f) => {
+                  if (!f || f.cardType !== "quiz") return f;
+                  const options = e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean);
+                  const next = { ...f, options } as SaveCardDraftInput;
+                  workspaceStore.setDraft(next);
+                  return next;
+                })} />
               </div>
               <div>
                 <label className="block text-sm mb-1">正解インデックス（0開始）</label>
-                <Input type="number" value={form.cardType === "quiz" ? (form.answerIndex ?? 0) : 0} onChange={(e) => setForm((f) => (f && f.cardType === "quiz" ? { ...f, answerIndex: Number(e.target.value) } : f))} />
+                <Input type="number" value={form.cardType === "quiz" ? (form.answerIndex ?? 0) : 0} onChange={(e) => setForm((f) => {
+                  if (!f || f.cardType !== "quiz") return f;
+                  const next = { ...f, answerIndex: Number(e.target.value) } as SaveCardDraftInput;
+                  workspaceStore.setDraft(next);
+                  return next;
+                })} />
               </div>
               <div>
                 <label className="block text-sm mb-1">解説（任意）</label>
-                <Input value={form.cardType === "quiz" ? (form.explanation ?? "") : ""} onChange={(e) => setForm((f) => (f && f.cardType === "quiz" ? { ...f, explanation: e.target.value } : f))} />
+                <Input value={form.cardType === "quiz" ? (form.explanation ?? "") : ""} onChange={(e) => setForm((f) => {
+                  if (!f || f.cardType !== "quiz") return f;
+                  const next = { ...f, explanation: e.target.value } as SaveCardDraftInput;
+                  workspaceStore.setDraft(next);
+                  return next;
+                })} />
               </div>
             </div>
           )}
@@ -221,25 +277,43 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
             <div className="grid grid-cols-1 gap-2">
               <div>
                 <label className="block text-sm mb-1">テキスト（[[1]] 形式）</label>
-                <Textarea value={form.cardType === "fill-blank" ? form.text : ""} onChange={(e) => setForm((f) => (f && f.cardType === "fill-blank" ? { ...f, text: e.target.value } : f))} />
+                <Textarea value={form.cardType === "fill-blank" ? form.text : ""} onChange={(e) => setForm((f) => {
+                  if (!f || f.cardType !== "fill-blank") return f;
+                  const next = { ...f, text: e.target.value } as SaveCardDraftInput;
+                  workspaceStore.setDraft(next);
+                  return next;
+                })} />
               </div>
               <div>
                 <label className="block text-sm mb-1">回答（k:value 改行区切り）</label>
-                <Textarea value={Object.entries(form.cardType === "fill-blank" ? (form.answers ?? {}) : {}).map(([k,v]) => `${k}:${v}`).join("\n")} onChange={(e) => {
-                  const obj: Record<string,string> = {};
-                  e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean).forEach((line)=>{
-                    const [k,...rest] = line.split(":");
-                    const v = rest.join(":").trim();
-                    if (k && v) obj[k.trim()] = v;
-                  });
-                  setForm((f)=> (f && f.cardType === "fill-blank" ? { ...f, answers: obj } : f));
-                }} />
+                <Textarea
+                  value={answersText}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setAnswersText(raw);
+                    const obj: Record<string, string> = {};
+                    raw.split("\n").forEach((line) => {
+                      const s = line.trim();
+                      if (!s) return;
+                      const [k, ...rest] = s.split(":");
+                      const v = rest.join(":");
+                      if (!k) return;
+                      obj[k.trim()] = v ?? "";
+                    });
+                    setForm((f)=> {
+                      if (!f || f.cardType !== "fill-blank") return f;
+                      const next = { ...f, answers: obj } as SaveCardDraftInput;
+                      workspaceStore.setDraft(next);
+                      return next;
+                    });
+                  }}
+                />
               </div>
             </div>
           )}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setForm((f) => f ? ({ ...f }) : f)} disabled={saving === "saving"}>下書き保存済み</Button>
-            <Button onClick={async () => { if (card) { await publishCard(card.id); setSaving("idle"); } }}>公開（反映）</Button>
+            <Button onClick={async () => { if (card) { await publishCard(card.id); workspaceStore.clearDraft(card.id); workspaceStore.bumpVersion(); setSaving("idle"); } }}>公開（反映）</Button>
           </div>
         </section>
       )}

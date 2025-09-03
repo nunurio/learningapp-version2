@@ -12,15 +12,56 @@ const Inspector = dynamic(() => import("@/components/workspace/Inspector").then(
 const CardPlayer = dynamic(() => import("@/components/workspace/CardPlayer").then((m) => m.CardPlayer), { ssr: false, loading: () => <SkeletonPlayer /> });
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from "@/components/ui/sheet";
 import { listCards as listCardsApi } from "@/lib/client-api";
+import { workspaceStore } from "@/lib/state/workspace-store";
+import { useHydrateDraftsOnce } from "@/lib/state/useHydrateDrafts";
 
 type Props = { courseId: UUID; defaultLayout?: number[]; cookieKey?: string };
 
 export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
   const router = useRouter();
+  useHydrateDraftsOnce();
   const [selId, setSelId] = React.useState<string | undefined>(undefined);
   const [selKind, setSelKind] = React.useState<"lesson" | "card" | undefined>(undefined);
   const [openNav, setOpenNav] = React.useState(false);
   const [openInspector, setOpenInspector] = React.useState(false);
+
+  const handleSelect = React.useCallback(async (
+    id: UUID,
+    kind: "course" | "lesson" | "card" | "lesson-edit",
+    opts?: { context?: "desktop" | "mobile" }
+  ) => {
+    const ctx = opts?.context ?? "desktop";
+    if (kind === "course") {
+      if (id !== courseId) {
+        router.push(`/courses/${id}/workspace`);
+      } else {
+        setSelId(undefined);
+        setSelKind(undefined);
+      }
+      if (ctx === "mobile") setOpenNav(false);
+      return;
+    }
+    if (kind === "lesson-edit") {
+      setSelId(id);
+      setSelKind("lesson");
+      if (ctx === "mobile") {
+        setOpenNav(false);
+        setOpenInspector(true);
+      }
+      return;
+    }
+    if (kind === "lesson") {
+      const first = (await listCardsApi(id))[0];
+      if (first) { setSelId(first.id); setSelKind("card"); }
+      else { setSelId(undefined); setSelKind(undefined); }
+      if (ctx === "mobile") setOpenNav(false);
+      return;
+    }
+    // card
+    setSelId(id);
+    setSelKind("card");
+    if (ctx === "mobile") setOpenNav(false);
+  }, [courseId, router]);
 
   return (
     <div className="min-h-screen">
@@ -29,42 +70,27 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
         <div className="hidden md:block h-full">
             <ResizablePanelGroup
             direction="horizontal"
-            autoSaveId={`workspace:${courseId}`}
+            autoSaveId={cookieKey ?? `workspace:${courseId}`}
           >
-            <ResizablePanel defaultSize={defaultLayout?.[0] ?? 24} minSize={16} className="border-r">
+            <ResizablePanel
+              defaultSize={defaultLayout?.[0] ?? 24}
+              minSize={16}
+              className="border-r"
+              onPointerDownCapture={() => workspaceStore.setActivePane("nav")}
+            >
               <NavTree
                 courseId={courseId}
                 selectedId={selId}
-                onSelect={(id, kind) => {
-                  if (kind === "course") {
-                    if (id !== courseId) {
-                      router.push(`/courses/${id}/workspace`);
-                    } else {
-                      setSelId(undefined);
-                      setSelKind(undefined);
-                    }
-                    return;
-                  }
-                  if (kind === "lesson-edit") {
-                    setSelId(id);
-                    setSelKind("lesson");
-                    return;
-                  }
-                  if (kind === "lesson") {
-                    (async () => {
-                      const first = (await listCardsApi(id))[0];
-                      if (first) { setSelId(first.id); setSelKind("card"); }
-                      else { setSelId(undefined); setSelKind(undefined); }
-                    })();
-                  } else {
-                    setSelId(id);
-                    setSelKind("card");
-                  }
-                }}
+                onSelect={(id, kind) => { void handleSelect(id, kind, { context: "desktop" }); }}
               />
             </ResizablePanel>
             <ResizableHandle withHandle aria-label="ナビをリサイズ" />
-            <ResizablePanel defaultSize={defaultLayout?.[1] ?? 48} minSize={40} className="">
+            <ResizablePanel
+              defaultSize={defaultLayout?.[1] ?? 48}
+              minSize={40}
+              className=""
+              onPointerDownCapture={() => workspaceStore.setActivePane("center")}
+            >
               <CenterPanel
                 courseId={courseId}
                 selId={selId}
@@ -73,7 +99,12 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
               />
             </ResizablePanel>
             <ResizableHandle withHandle aria-label="エディタをリサイズ" />
-            <ResizablePanel defaultSize={defaultLayout?.[2] ?? 28} minSize={18} className="border-l">
+            <ResizablePanel
+              defaultSize={defaultLayout?.[2] ?? 28}
+              minSize={18}
+              className="border-l"
+              onPointerDownCapture={() => workspaceStore.setActivePane("inspector")}
+            >
               <Inspector courseId={courseId} selectedId={selId} selectedKind={selKind} />
             </ResizablePanel>
           </ResizablePanelGroup>
@@ -96,32 +127,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
                     <NavTree
                       courseId={courseId}
                       selectedId={selId}
-                      onSelect={(id, kind) => {
-                        if (kind === "course") {
-                          setOpenNav(false);
-                          if (id !== courseId) router.push(`/courses/${id}/workspace`);
-                          else { setSelId(undefined); setSelKind(undefined); }
-                          return;
-                        }
-                        if (kind === "lesson-edit") {
-                          setSelId(id);
-                          setSelKind("lesson");
-                          setOpenNav(false);
-                          setOpenInspector(true);
-                          return;
-                        }
-                        if (kind === "lesson") {
-                          (async () => {
-                            const first = (await listCardsApi(id))[0];
-                            if (first) { setSelId(first.id); setSelKind("card"); }
-                            else { setSelId(undefined); setSelKind(undefined); }
-                          })();
-                        } else {
-                          setSelId(id);
-                          setSelKind("card");
-                        }
-                        setOpenNav(false);
-                      }}
+                      onSelect={(id, kind) => { void handleSelect(id, kind, { context: "mobile" }); }}
                     />
                   </div>
                 </SheetContent>

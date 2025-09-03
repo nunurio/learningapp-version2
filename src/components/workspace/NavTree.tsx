@@ -3,6 +3,7 @@ import * as React from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { snapshot as fetchSnapshot, listFlaggedByCourse } from "@/lib/client-api";
 import type { UUID, Card, Lesson, CardType, Course, QuizCardContent, FillBlankCardContent, Progress } from "@/lib/types";
+import type { SaveCardDraftInput } from "@/lib/data";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ProgressRing } from "@/components/ui/progress-ring";
@@ -13,6 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { useWorkspace } from "@/lib/state/workspace-store";
 
 type Props = {
   courseId: UUID;
@@ -21,6 +23,7 @@ type Props = {
 };
 
 export function NavTree({ courseId, selectedId, onSelect }: Props) {
+  const { drafts, version } = useWorkspace();
   const [q, setQ] = React.useState("");
   const [courses, setCourses] = React.useState<Course[]>([]);
   const [lessons, setLessons] = React.useState<Lesson[]>([]);
@@ -49,7 +52,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
       setExpanded((m) => (m[`co:${courseId}`] ? m : { ...m, [`co:${courseId}`]: true }));
     })();
     return () => { mounted = false; };
-  }, [courseId]);
+  }, [courseId, version]);
 
   // ロービング tabindex 用の"アクティブ"項目管理
   const [activeId, setActiveId] = React.useState<string | undefined>(undefined);
@@ -80,7 +83,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
 
   // 可視行をフラット化
   type Row = { key: string; type: "course" | "lesson" | "card"; id: string; level: number; title: string; tags?: string[]; completed?: boolean; expanded?: boolean };
-  const rows: Row[] = (() => {
+  const rows: Row[] = React.useMemo(() => {
     const out: Row[] = [];
     const match = (s: string) => (q ? s.toLowerCase().includes(q.toLowerCase()) : true);
     // コース → レッスン → カード
@@ -110,7 +113,9 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
               if (typeFilter !== "all" && c.cardType !== typeFilter) return false;
               if (onlyFlagged && !flaggedSet.has(c.id)) return false;
               if (onlyUnlearned && getProgressLocal(c.id)?.completed) return false;
-              return match(c.title ?? "") || match(c.cardType);
+              const d: SaveCardDraftInput | undefined = drafts[c.id as UUID];
+              const displayTitle = d?.title != null ? d.title : (c.title ?? "");
+              return match(displayTitle) || match(c.cardType);
             });
           })();
           if (!(match(l.title) || childAny)) return;
@@ -121,15 +126,18 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
               if (typeFilter !== "all" && c.cardType !== typeFilter) return;
               if (onlyFlagged && !flaggedSet.has(c.id)) return;
               if (onlyUnlearned && getProgressLocal(c.id)?.completed) return;
-              if (match(c.title ?? "") || match(c.cardType))
-                out.push({ key: `c:${c.id}`, type: "card", id: c.id, level: 3, title: labelForCard(c), tags: c.tags ?? [], completed: !!getProgressLocal(c.id)?.completed });
+              const d: SaveCardDraftInput | undefined = drafts[c.id as UUID];
+              const title = labelForCardWithDraft(c, d);
+              const t: string[] = d?.tags ?? (c.tags ?? []);
+              if (match(title) || match(c.cardType))
+                out.push({ key: `c:${c.id}`, type: "card", id: c.id, level: 3, title, tags: t, completed: !!getProgressLocal(c.id)?.completed });
             });
           }
         });
       }
     });
     return out;
-  })();
+  }, [courses, lessonsByCourse, cardsByLesson, drafts, expanded, flaggedSet, q, typeFilter, onlyFlagged, onlyUnlearned, getProgressLocal]);
 
   // レッスン単位の進捗率
   const lessonProgress = (() => {
@@ -238,7 +246,10 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
       }
       case "Enter": {
         e.preventDefault();
-        if (cur) onSelect(cur.id as UUID, cur.type);
+        if (cur) {
+          const kind = cur.type === "lesson" ? "lesson-edit" : cur.type;
+          onSelect(cur.id as UUID, kind);
+        }
         break;
       }
       case " ": {
@@ -317,7 +328,11 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
                     selected={selectedId === r.id}
                     active={activeId === r.id}
                     progressPct={lessonProgress.get(r.id) ?? 0}
-                    onClick={() => onSelect(r.id as UUID, "lesson")}
+                    onClick={() => {
+                      // レッスン名クリック時: 必ず展開し、右ペインにレッスンツール（編集）を開く
+                      setExpanded((m) => (m[`le:${r.id}`] ? m : { ...m, [`le:${r.id}`]: true }));
+                      onSelect(r.id as UUID, "lesson-edit");
+                    }}
                     onToggle={() => setExpanded((m) => ({ ...m, [`le:${r.id}`]: !m[`le:${r.id}`] }))}
                     onActive={() => setActiveId(r.id)}
                     onEdit={() => onSelect(r.id as UUID, "lesson-edit")}
@@ -431,7 +446,7 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
         <span aria-hidden className="pointer-events-none absolute left-0 top-1 bottom-1 w-1 rounded bg-[hsl(var(--primary))]/30 origin-left scale-x-0 group-hover:scale-x-100 group-focus-within:scale-x-100 transition-transform duration-150" />
         <button
           aria-label={expanded ? "折りたたむ" : "展開"}
-          onClick={(e) => { e.stopPropagation(); onToggle(); }}
+          onClick={(e) => { e.stopPropagation(); onToggle(); onEdit(); }}
           className="inline-flex items-center justify-center size-6 rounded hover:bg-black/5"
         >
           <Chevron open={expanded} />
@@ -509,4 +524,18 @@ function labelForCard(card: Card): string {
   if (card.cardType === "text") return "テキスト";
   if (card.cardType === "quiz") return (card.content as QuizCardContent).question ?? "クイズ";
   return (card.content as FillBlankCardContent).text?.replace(/\[\[(\d+)\]\]/g, "□") ?? "穴埋め";
+}
+
+function labelForCardWithDraft(card: Card, draft?: SaveCardDraftInput): string {
+  if (draft && draft.cardType === "text" && card.cardType === "text") {
+    return (draft.body ?? "").slice(0, 18) || "テキスト";
+  }
+  if (draft && draft.cardType === "quiz" && card.cardType === "quiz") {
+    return draft.question || "クイズ";
+  }
+  if (draft && draft.cardType === "fill-blank" && card.cardType === "fill-blank") {
+    const text = draft.text ?? "";
+    return text.replace(/\[\[(\d+)\]\]/g, "□") || "穴埋め";
+  }
+  return labelForCard(card);
 }
