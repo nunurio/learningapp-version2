@@ -12,15 +12,15 @@ vi.mock("next/navigation", () => {
 const toastSpy = vi.fn();
 vi.mock("@/components/ui/toaster", () => {
   const listeners = new Set<() => void>();
-  const history: any[] = [];
+  const history: Array<{ id: string; createdAt: number; state: string } & Record<string, unknown>> = [];
   return {
-    toast: (...args: any[]) => {
+    toast: (...args: unknown[]) => {
       toastSpy(...args);
-      const t = args?.[0] ?? {};
+      const t = (args?.[0] ?? {}) as Record<string, unknown>;
       history.push({ id: String(history.length + 1), createdAt: Date.now(), state: "shown", ...t });
       listeners.forEach((fn) => fn());
     },
-    getToastHistory: () => [...history],
+    getToastHistory: () => history.slice(),
     subscribeToastHistory: (cb: () => void) => { listeners.add(cb); return () => listeners.delete(cb); },
   };
 });
@@ -81,13 +81,14 @@ describe("app/courses/plan/page", () => {
 
     // saveDraft → commitCoursePlan が呼ばれ、router.replace が実行される
     expect(api.saveDraft).toHaveBeenCalled();
-    const draftArg = (api.saveDraft as any).mock.calls[0]?.[1];
-    expect(draftArg?.course).toBeTruthy();
+    const draftCalls = vi.mocked(api.saveDraft).mock.calls;
+    const draftArg = draftCalls[0]?.[1] as unknown;
+    expect((draftArg as { course?: unknown }).course).toBeTruthy();
     await waitFor(() => expect(api.commitCoursePlan).toHaveBeenCalledWith("D1"));
 
     // toast に action が渡される。action を呼ぶと deleteCourse が呼ばれ得る
-    const toastArg = toastSpy.mock.calls[0]?.[0] ?? {};
-    expect(toastArg?.onAction).toBeTypeOf("function");
+    const toastArg = (toastSpy.mock.calls[0]?.[0] ?? {}) as { onAction?: () => Promise<void> | void };
+    expect(typeof toastArg.onAction).toBe("function");
     await toastArg.onAction?.();
     expect(api.deleteCourse).toHaveBeenCalledWith("COURSE-1");
   }, 5000);

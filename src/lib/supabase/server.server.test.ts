@@ -41,15 +41,15 @@ describe("supabase/server createClient", () => {
     const store = {
       getAll: vi.fn(() => [{ name: "a", value: "1" }]),
       set: vi.fn(),
-    } as any;
-    vi.mocked(cookiesFn).mockResolvedValue(store);
+    } as { getAll: () => unknown[]; set: (...args: unknown[]) => void };
+    vi.mocked(cookiesFn).mockResolvedValue(store as unknown as never);
 
-    let capturedOpts: any;
-    vi.mocked(createServerClient as any).mockImplementation((url: string, key: string, opts: any) => {
+    let capturedOpts!: { cookies: { getAll: () => { name: string; value: string }[] | null | Promise<{ name: string; value: string }[] | null>; setAll: (items: Array<{ name: string; value: string; options?: Record<string, unknown> }>) => void } };
+    vi.mocked(createServerClient).mockImplementation((url: string, key: string, opts: unknown) => {
       expect(url).toBe("https://example.supabase.co");
       expect(key).toBe("anon_key");
-      capturedOpts = opts;
-      return { auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u-1" } } })) } } as any;
+      capturedOpts = opts as typeof capturedOpts;
+      return { auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u-1" } } })) } } as { auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } };
     });
 
     await createClient();
@@ -67,7 +67,8 @@ describe("supabase/server createClient", () => {
     expect(store.set).toHaveBeenCalledTimes(2);
 
     // When set() throws, setAll must not rethrow
-    store.set.mockImplementationOnce(() => { throw new Error("readonly"); });
+    // Simulate failure by overwriting set()
+    (store as { set: (...args: unknown[]) => void }).set = vi.fn(() => { throw new Error("readonly"); });
     expect(() =>
       capturedOpts.cookies.setAll([
         { name: "x", value: "y", options: { path: "/" } },
@@ -80,9 +81,9 @@ describe("getCurrentUserId", () => {
   it("returns user id when session exists", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon_key";
-    vi.mocked(cookiesFn).mockResolvedValue({ getAll: vi.fn(() => []), set: vi.fn() } as any);
-    vi.mocked(createServerClient as any).mockImplementation((_u: string, _k: string) => {
-      return { auth: { getUser: vi.fn(async () => ({ data: { user: { id: "user-123" } } })) } } as any;
+    vi.mocked(cookiesFn).mockResolvedValue({ getAll: vi.fn(() => []), set: vi.fn() } as unknown as never);
+    vi.mocked(createServerClient).mockImplementation((_u: string, _k: string) => {
+      return { auth: { getUser: vi.fn(async () => ({ data: { user: { id: "user-123" } } })) } } as { auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } };
     });
     const uid = await getCurrentUserId();
     expect(uid).toBe("user-123");
@@ -91,12 +92,11 @@ describe("getCurrentUserId", () => {
   it("returns undefined when no user", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon_key";
-    vi.mocked(cookiesFn).mockResolvedValue({ getAll: vi.fn(() => []), set: vi.fn() } as any);
-    vi.mocked(createServerClient as any).mockImplementation((_u: string, _k: string) => {
-      return { auth: { getUser: vi.fn(async () => ({ data: { user: null } })) } } as any;
+    vi.mocked(cookiesFn).mockResolvedValue({ getAll: vi.fn(() => []), set: vi.fn() } as unknown as never);
+    vi.mocked(createServerClient).mockImplementation((_u: string, _k: string) => {
+      return { auth: { getUser: vi.fn(async () => ({ data: { user: null } })) } } as { auth: { getUser: () => Promise<{ data: { user: null } }> } };
     });
     const uid = await getCurrentUserId();
     expect(uid).toBeUndefined();
   });
 });
-

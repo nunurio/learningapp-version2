@@ -14,11 +14,11 @@ import * as supaServer from "@/lib/supabase/server";
 
 type UUID = string;
 
-function makeSupaMock(impl: Record<string, any>) {
+function makeSupaMock(impl: Record<string, () => unknown>) {
   return {
     from(table: string) {
       if (!(table in impl)) throw new Error(`No mock for table: ${table}`);
-      const handler = impl[table];
+      const handler = impl[table] as () => unknown;
       return handler();
     },
   } as const;
@@ -42,7 +42,9 @@ describe("listFlaggedByCourse", () => {
       }),
     });
 
-    vi.mocked(supaServer.createClient).mockResolvedValue(supa as any);
+    vi.mocked(supaServer.createClient).mockResolvedValue(
+      supa as unknown as Awaited<ReturnType<typeof supaServer.createClient>>
+    );
 
     const out = await listFlaggedByCourse("course-1");
     expect(out).toEqual(["card-1", "card-2"]);
@@ -66,7 +68,9 @@ describe("getProgress", () => {
         }),
       }),
     });
-    vi.mocked(supaServer.createClient).mockResolvedValue(supa as any);
+    vi.mocked(supaServer.createClient).mockResolvedValue(
+      supa as unknown as Awaited<ReturnType<typeof supaServer.createClient>>
+    );
 
     const out = await getProgress("card-x");
     expect(out).toEqual({
@@ -93,7 +97,9 @@ describe("getProgress", () => {
         }),
       }),
     });
-    vi.mocked(supaServer.createClient).mockResolvedValue(supa as any);
+    vi.mocked(supaServer.createClient).mockResolvedValue(
+      supa as unknown as Awaited<ReturnType<typeof supaServer.createClient>>
+    );
 
     const out = await getProgress("card-y");
     expect(out).toEqual({
@@ -114,7 +120,9 @@ describe("getProgress", () => {
         }),
       }),
     });
-    vi.mocked(supaServer.createClient).mockResolvedValue(supa as any);
+    vi.mocked(supaServer.createClient).mockResolvedValue(
+      supa as unknown as Awaited<ReturnType<typeof supaServer.createClient>>
+    );
 
     const out = await getProgress("card-z");
     expect(out).toBeUndefined();
@@ -123,19 +131,19 @@ describe("getProgress", () => {
 
 describe("upsertSrs", () => {
   it("正常系: dueをYYYY-MM-DDにして送信し、ISOで返す。lastRatingはnull→undefined", async () => {
-    const captured: { value?: any } = {};
+    const captured: { value?: unknown } = {};
     const supa = makeSupaMock({
       srs: () => ({
-        upsert: (payload: any) => {
+        upsert: (payload: unknown) => {
           captured.value = payload;
           return {
             select: () => ({
               maybeSingle: async () => ({
                 data: {
-                  card_id: payload.card_id,
-                  ease: payload.ease,
-                  interval: payload.interval,
-                  due: payload.due, // サーバーからは日付文字列が返る想定
+                  card_id: (payload as { card_id: string }).card_id,
+                  ease: (payload as { ease: number }).ease,
+                  interval: (payload as { interval: number }).interval,
+                  due: (payload as { due: string }).due, // サーバーからは日付文字列が返る想定
                   last_rating: null,
                 },
                 error: null,
@@ -145,7 +153,9 @@ describe("upsertSrs", () => {
         },
       }),
     });
-    vi.mocked(supaServer.createClient).mockResolvedValue(supa as any);
+    vi.mocked(supaServer.createClient).mockResolvedValue(
+      supa as unknown as Awaited<ReturnType<typeof supaServer.createClient>>
+    );
     vi.mocked(supaServer.getCurrentUserId).mockResolvedValue("user-1");
 
     const input = {
@@ -192,7 +202,9 @@ describe("upsertSrs", () => {
         }),
       }),
     });
-    vi.mocked(supaServer.createClient).mockResolvedValue(supa as any);
+    vi.mocked(supaServer.createClient).mockResolvedValue(
+      supa as unknown as Awaited<ReturnType<typeof supaServer.createClient>>
+    );
     vi.mocked(supaServer.getCurrentUserId).mockResolvedValue("user-2");
 
     await expect(

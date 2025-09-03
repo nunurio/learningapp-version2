@@ -67,19 +67,14 @@ describe("uid", () => {
 
   it("randomUUID が例外を投げてもフォールバックする", () => {
     // Ensure we have a crypto object first
-    if (!globalThis.crypto) {
-      Object.defineProperty(globalThis, "crypto", {
-        value: {},
-        configurable: true,
-      });
-    }
-    // Stub randomUUID to throw
-    Object.defineProperty(globalThis.crypto as any, "randomUUID", {
-      value: () => {
-        throw new Error("boom");
+    // 例外を投げるrandomUUIDを持つcryptoに差し替える
+    Object.defineProperty(globalThis, "crypto", {
+      value: {
+        randomUUID: () => {
+          throw new Error("boom");
+        },
       },
       configurable: true,
-      writable: true,
     });
 
     const id = uid();
@@ -123,4 +118,3 @@ function cryptoLikeUUID(): string {
   const vv = ((8 + Math.floor(Math.random() * 4)) as 8 | 9 | 10 | 11).toString(16);
   return `${s(8)}-${s(4)}-${v}${s(3)}-${vv}${s(3)}-${s(12)}`;
 }
-

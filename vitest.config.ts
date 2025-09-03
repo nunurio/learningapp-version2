@@ -24,10 +24,8 @@ export default defineConfig({
     },
     projects: [
       {
-        name: "client",
         plugins: [tsconfigPaths()],
         test: {
-          extends: true,
           environment: "jsdom",
           setupFiles: ["./tests/setup.client.ts"],
           include: [
@@ -39,10 +37,8 @@ export default defineConfig({
         },
       },
       {
-        name: "server",
         plugins: [tsconfigPaths()],
         test: {
-          extends: true,
           environment: "node",
           setupFiles: ["./tests/setup.server.ts"],
           include: [

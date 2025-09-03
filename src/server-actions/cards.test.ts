@@ -1,5 +1,6 @@
 /* @vitest-environment node */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { UUID, Card } from "@/lib/types";
 
 describe("server-actions/cards", () => {
   beforeEach(() => {
@@ -7,8 +8,8 @@ describe("server-actions/cards", () => {
   });
 
   it("addCardAction: siblingsの最大index+1で挿入→コースworkspace再検証", async () => {
-    const calls: any[] = [];
-    const supa: any = {
+    const calls: Array<{ op: string; payload: unknown }> = [];
+    const supa = {
       from: vi.fn((table: string) => {
         if (table === "lessons") {
           return {
@@ -16,38 +17,42 @@ describe("server-actions/cards", () => {
           };
         }
         if (table === "cards") {
-          const q: any = {};
-          q.select = vi.fn(() => q);
-          q.eq = vi.fn(() => q);
-          q.order = vi.fn(() => q);
-          q.limit = vi.fn(async () => ({ data: [{ order_index: 7 }], error: null }));
-          q.insert = vi.fn((payload: any) => {
-            calls.push({ op: "insert", payload });
-            return { select: () => ({ single: async () => ({ data: { id: "CARD_NEW" }, error: null }) }) };
-          });
+          const q = {
+            select: vi.fn(() => q),
+            eq: vi.fn(() => q),
+            order: vi.fn(() => q),
+            limit: vi.fn(async () => ({ data: [{ order_index: 7 }], error: null })),
+            insert: vi.fn((payload: unknown) => {
+              calls.push({ op: "insert", payload });
+              return { select: () => ({ single: async () => ({ data: { id: "CARD_NEW" }, error: null }) }) };
+            }),
+          };
           return q;
         }
         throw new Error("unexpected table: " + table);
       }),
-    };
+    } as const;
     const reval = vi.fn();
     vi.doMock("next/cache", () => ({ revalidatePath: reval }));
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
     const { addCardAction } = await import("./cards");
-    const id = await addCardAction("LESSON_X" as any, { cardType: "text", content: { body: "b" }, title: null });
+    const id = await addCardAction(
+      "LESSON_X" as UUID,
+      { cardType: "text", content: { body: "b" }, title: null } as Omit<Card, "id" | "lessonId" | "createdAt" | "orderIndex">,
+    );
     expect(id).toBe("CARD_NEW");
     expect(calls[0].payload).toMatchObject({ lesson_id: "LESSON_X", order_index: 8 });
     expect(reval).toHaveBeenCalledWith(`/courses/COURSE1/workspace`, "page");
   });
 
   it("updateCardAction: 差分のみ更新し、workspace を再検証", async () => {
-    const updates: any[] = [];
-    const supa: any = {
+    const updates: Array<Record<string, unknown>> = [];
+    const supa = {
       from: vi.fn((table: string) => {
         if (table === "cards") {
           return {
             select: () => ({ eq: () => ({ single: async () => ({ data: { lesson_id: "LESSON_A" }, error: null }) }) }),
-            update: (payload: any) => ({ eq: async () => { updates.push(payload); return { error: null }; } }),
+            update: (payload: unknown) => ({ eq: async () => { updates.push(payload as Record<string, unknown>); return { error: null }; } }),
           };
         }
         if (table === "lessons") {
@@ -55,18 +60,18 @@ describe("server-actions/cards", () => {
         }
         throw new Error("unexpected table: " + table);
       }),
-    };
+    } as const;
     const reval = vi.fn();
     vi.doMock("next/cache", () => ({ revalidatePath: reval }));
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
     const { updateCardAction } = await import("./cards");
-    await updateCardAction("CARD_1" as any, { title: "T", orderIndex: 3 });
+    await updateCardAction("CARD_1" as UUID, { title: "T", orderIndex: 3 });
     expect(updates[0]).toEqual({ title: "T", order_index: 3 });
     expect(reval).toHaveBeenCalledWith(`/courses/COURSE_A/workspace`, "page");
   });
 
   it("deleteCardAction: 削除後に再検証（lessonsの取得が失敗したらrevalidateしない）", async () => {
-    const supa: any = {
+    const supa = {
       from: vi.fn((table: string) => {
         if (table === "cards") {
           return {
@@ -79,17 +84,17 @@ describe("server-actions/cards", () => {
         }
         throw new Error("unexpected table: " + table);
       }),
-    };
+    } as const;
     const reval = vi.fn();
     vi.doMock("next/cache", () => ({ revalidatePath: reval }));
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
     const { deleteCardAction } = await import("./cards");
-    await deleteCardAction("CARD_DEL" as any);
+    await deleteCardAction("CARD_DEL" as UUID);
     expect(reval).not.toHaveBeenCalled();
   });
 
   it("deleteCardsAction: 空配列なら何もしない", async () => {
-    const supa: any = { from: vi.fn() };
+    const supa = { from: vi.fn() } as const;
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
     const { deleteCardsAction } = await import("./cards");
     await deleteCardsAction([]);
@@ -97,7 +102,7 @@ describe("server-actions/cards", () => {
   });
 
   it("deleteCardsAction: 一括削除→workspace再検証（最初のレッスンからコース解決）", async () => {
-    const supa: any = {
+    const supa = {
       from: vi.fn((table: string) => {
         if (table === "cards") {
           return {
@@ -110,17 +115,17 @@ describe("server-actions/cards", () => {
         }
         throw new Error("unexpected table: " + table);
       }),
-    };
+    } as const;
     const reval = vi.fn();
     vi.doMock("next/cache", () => ({ revalidatePath: reval }));
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
     const { deleteCardsAction } = await import("./cards");
-    await deleteCardsAction(["A", "B"] as any);
+    await deleteCardsAction(["A" as UUID, "B" as UUID]);
     expect(reval).toHaveBeenCalledWith(`/courses/COURSE_Z/workspace`, "page");
   });
 
   it("reorderCardsAction: 集合不一致ならエラー", async () => {
-    const supa: any = {
+    const supa = {
       from: vi.fn((table: string) => {
         if (table === "lessons") return { select: () => ({ eq: () => ({ single: async () => ({ data: { course_id: "C1" }, error: null }) }) }) };
         if (table === "cards") {
@@ -128,15 +133,15 @@ describe("server-actions/cards", () => {
         }
         throw new Error("unexpected table: " + table);
       }),
-    };
+    } as const;
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
     const { reorderCardsAction } = await import("./cards");
-    await expect(reorderCardsAction("L1" as any, ["X", "Y"] as any)).rejects.toBeInstanceOf(Error);
+    await expect(reorderCardsAction("L1" as UUID, ["X" as UUID, "Y" as UUID])).rejects.toBeInstanceOf(Error);
   });
 
   it("reorderCardsAction: 正常系は2段階更新→workspace再検証", async () => {
-    const updates: any[] = [];
-    const supa: any = {
+    const updates: Array<{ id: string; oi: number }> = [];
+    const supa = {
       from: vi.fn((table: string) => {
         if (table === "lessons") return { select: () => ({ eq: () => ({ single: async () => ({ data: { course_id: "COURSE_R" }, error: null }) }) }) };
         if (table === "cards") {
@@ -146,17 +151,17 @@ describe("server-actions/cards", () => {
               { id: "B", order_index: 1 },
               { id: "C", order_index: 2 },
             ], error: null }) }) }),
-            update: (payload: any) => ({ eq: (_k: string, v: string) => ({ eq: async () => { updates.push({ id: v, oi: payload.order_index }); return { error: null }; } }) }),
+            update: (payload: { order_index: number }) => ({ eq: (_k: string, v: string) => ({ eq: async () => { updates.push({ id: v, oi: payload.order_index }); return { error: null }; } }) }),
           };
         }
         throw new Error("unexpected table: " + table);
       }),
-    };
+    } as const;
     const reval = vi.fn();
     vi.doMock("next/cache", () => ({ revalidatePath: reval }));
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
     const { reorderCardsAction } = await import("./cards");
-    await reorderCardsAction("L1" as any, ["C", "A", "B"] as any);
+    await reorderCardsAction("L1" as UUID, ["C" as UUID, "A" as UUID, "B" as UUID]);
     expect(updates.length).toBe(6); // 3 + 3
     expect(updates.some((u) => u.oi === 0)).toBe(true);
     expect(updates.some((u) => u.oi === 1)).toBe(true);
@@ -165,9 +170,9 @@ describe("server-actions/cards", () => {
   });
 
   it("reorderCardsAction: Phase2で失敗→ロールバックを試みてthrow", async () => {
-    const updates: any[] = [];
+    const updates: Array<{ id: string; oi: number }> = [];
     let hitPhase2 = false;
-    const supa: any = {
+    const supa = {
       from: vi.fn((table: string) => {
         if (table === "lessons") return { select: () => ({ eq: () => ({ single: async () => ({ data: { course_id: "COURSE_R" }, error: null }) }) }) };
         if (table === "cards") {
@@ -176,7 +181,7 @@ describe("server-actions/cards", () => {
               { id: "A", order_index: 0 },
               { id: "B", order_index: 1 },
             ], error: null }) }) }),
-            update: (payload: any) => ({
+            update: (payload: { order_index: number }) => ({
               eq: (_k: string, v: string) => ({
                 eq: async () => {
                   // Phase2 は小さな index(0,1) を設定する更新
@@ -193,14 +198,13 @@ describe("server-actions/cards", () => {
         }
         throw new Error("unexpected table: " + table);
       }),
-    };
+    } as const;
     const reval = vi.fn();
     vi.doMock("next/cache", () => ({ revalidatePath: reval }));
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
     const { reorderCardsAction } = await import("./cards");
-    await expect(reorderCardsAction("L1" as any, ["B", "A"] as any)).rejects.toBeInstanceOf(Error);
+    await expect(reorderCardsAction("L1" as UUID, ["B" as UUID, "A" as UUID])).rejects.toBeInstanceOf(Error);
     expect(updates.some((u) => u.oi === 2_000_000)).toBe(true); // ロールバック staging 窓
     expect(reval).not.toHaveBeenCalled();
   });
 });
-

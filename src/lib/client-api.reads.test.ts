@@ -7,7 +7,7 @@ function mockFetchOnce(payload: unknown, init: Partial<ResponseInit> = {}) {
     status: init.status ?? 200,
     headers: { "content-type": "application/json" },
   });
-  const spy = vi.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce(res as any);
+  const spy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(res);
   return spy;
 }
 
@@ -18,11 +18,12 @@ afterEach(() => {
 describe("client-api reads", () => {
   it("getCourse: null→undefined 正規化し、リクエストにUUIDが含まれる", async () => {
     // Arrange
-    const bodySpy = vi.spyOn(globalThis, "fetch" as any).mockImplementationOnce(async (url, init: any) => {
-      const b = JSON.parse(init.body);
+    const bodySpy = vi.spyOn(globalThis, "fetch").mockImplementationOnce(async (_url, init?: RequestInit) => {
+      const bodyStr = init?.body as string;
+      const b = JSON.parse(bodyStr) as { op: string; params: { courseId: UUID } };
       expect(b.op).toBe("getCourse");
       expect(b.params.courseId).toBe("00000000-0000-0000-0000-000000000001");
-      return new Response("null", { status: 200, headers: { "content-type": "application/json" } }) as any;
+      return new Response("null", { status: 200, headers: { "content-type": "application/json" } });
     });
     const { getCourse } = await import("@/lib/client-api");
     const out = await getCourse("00000000-0000-0000-0000-000000000001" as UUID);
@@ -59,12 +60,11 @@ describe("client-api reads", () => {
   });
 
   it("/api/db が 500 を返すと本文を含むエラーを throw", async () => {
-    const spy = vi.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce(
-      new Response("boom", { status: 500, headers: { "content-type": "text/plain" } }) as any
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("boom", { status: 500, headers: { "content-type": "text/plain" } })
     );
     const { listCourses } = await import("@/lib/client-api");
     await expect(listCourses()).rejects.toThrow(/boom/);
     spy.mockRestore();
   });
 });
-

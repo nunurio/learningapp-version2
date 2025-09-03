@@ -25,6 +25,8 @@ const eslintConfig = [
       ".next/**",
       "out/**",
       "build/**",
+      // 生成物は除外
+      "coverage/**",
       "next-env.d.ts",
       // ESLint 自身や各種設定ファイルは対象外
       "eslint.config.*",
@@ -75,6 +77,22 @@ const eslintConfig = [
           ],
         },
       ],
+    },
+  },
+  // テストコードも本番同等に厳格化（段階2: error）
+  {
+    files: [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "tests/**/*.ts",
+      "tests/**/*.tsx",
+    ],
+    rules: {
+      "@typescript-eslint/no-explicit-any": ["error", { "fixToUnknown": true }],
+      "@typescript-eslint/no-unsafe-assignment": "error",
+      "@typescript-eslint/no-unsafe-call": "error",
+      "@typescript-eslint/no-unsafe-member-access": "error",
+      "@typescript-eslint/no-non-null-assertion": "error",
     },
   },
 ];

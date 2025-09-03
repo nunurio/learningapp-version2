@@ -15,19 +15,18 @@ describe("client-api", () => {
   });
 
   it("reads: 非JSONレスポンス時は分かりやすいエラーを投げる", async () => {
-    const orig = globalThis.fetch;
-    globalThis.fetch = vi.fn(async () =>
-      new Response("<html>redirect</html>", { headers: { "content-type": "text/html" } })
-    ) as any;
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("<html>redirect</html>", { headers: { "content-type": "text/html" } }));
     await expect(listCourses()).rejects.toThrow(/Unexpected non-JSON response/);
-    globalThis.fetch = orig;
+    spy.mockRestore();
   });
 
   it("writes: createCourse は Server Action に委譲する", async () => {
     const { createCourse: impl } = await import("@/lib/client-api");
     const res = await impl({ title: "T" });
     const mod = await import("@/server-actions/courses");
-    expect((mod.createCourseAction as any)).toHaveBeenCalledWith({ title: "T" });
+    expect(vi.mocked(mod.createCourseAction)).toHaveBeenCalledWith({ title: "T" });
     expect(res.courseId).toMatch(/^0000/);
   });
 });

@@ -7,9 +7,9 @@ describe("api/ai/lesson-cards POST", () => {
     vi.doMock("@/lib/ai/mock", () => ({ generateLessonCards: gen }));
 
     const { POST } = await import("./route");
-    const res = await POST(new Request("http://local/api/ai/lesson-cards", { method: "POST" } as any) as any);
+    const res = await POST(new Request("http://local/api/ai/lesson-cards", { method: "POST" }));
     expect(res.headers.get("cache-control")).toContain("no-store");
-    const json = (await res.json()) as any;
+    const json = (await res.json()) as unknown as { payload: unknown };
     expect(json.payload).toBeTruthy();
     expect(gen).toHaveBeenCalledWith({ lessonTitle: "レッスン", desiredCount: undefined });
   });
@@ -19,9 +19,9 @@ describe("api/ai/lesson-cards POST", () => {
     vi.resetModules();
     vi.doMock("@/lib/ai/mock", () => ({ generateLessonCards: gen }));
     const { POST } = await import("./route");
-    const res = await POST(new Request("http://local/api/ai/lesson-cards", { method: "POST" } as any) as any);
+    const res = await POST(new Request("http://local/api/ai/lesson-cards", { method: "POST" }));
     expect(res.status).toBe(500);
-    const json = await res.json();
+    const json = (await res.json()) as unknown as { error: string };
     expect(json.error).toContain("fail");
   });
 });

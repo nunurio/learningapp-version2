@@ -43,10 +43,9 @@ if (!hasLocalStorage(globalThis) || !globalThis.localStorage) {
 // next/image を img にスタブ（テストを軽量化）
 vi.mock("next/image", () => {
   return {
-    default: (props: any) => {
-      const { src, alt, ...rest } = props || {};
+    default: (props: React.ImgHTMLAttributes<HTMLImageElement> & { src: string; alt: string }) => {
+      const { src, alt, ...rest } = props || ({} as React.ImgHTMLAttributes<HTMLImageElement> & { src: string; alt: string });
       return React.createElement("img", { src, alt, ...rest });
     },
   };
 });
-

@@ -1,49 +1,50 @@
 /* @vitest-environment node */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// 動的モック: 最小限のメソッドチェーンを提供
-function createSupabaseMock(fixtures: Record<string, any[]>) {
-  const supa: any = {};
-  supa.from = vi.fn((table: string) => {
-    const state: any = { _table: table, _where: [], _order: [] };
-    const q: any = {
-      select: vi.fn((_sel?: string) => q),
-      order: vi.fn((col?: string) => {
-        state._order.push(col);
-        // await チェーンの末尾で {data,error} を返せるよう thenable を提供
-        return q;
-      }),
-      eq: vi.fn((col: string, val: any) => {
-        state._where.push([col, val]);
-        return q;
-      }),
-      in: vi.fn((col: string, arr: any[]) => {
-        state._where.push([col, arr]);
-        return q;
-      }),
-      limit: vi.fn(() => q),
-      single: vi.fn(() => ({ data: { id: "new-id" }, error: null })),
-      maybeSingle: vi.fn(() => {
-        const rows = resolveRows(state);
-        return { data: rows[0] ?? null, error: null };
-      }),
-      then: (resolve: any) => {
-        const rows = resolveRows(state);
-        resolve({ data: rows, error: null });
-      },
-    };
-    function resolveRows(st: any) {
-      let rows = (fixtures[st._table] ?? []).slice();
-      for (const [col, val] of st._where) {
-        rows = rows.filter((r: any) => {
-          if (Array.isArray(val)) return val.includes((r as any)[col]);
-          return (r as any)[col] === val;
-        });
+// 動的モック: 最小限のメソッドチェーンを提供（any を使わず unknown で管理）
+function createSupabaseMock(fixtures: Record<string, unknown[]>) {
+  const supa = {
+    from: vi.fn((table: string) => {
+      const state = { _table: table, _where: [] as Array<[string, unknown]>, _order: [] as string[] };
+      const q = {
+        select: vi.fn((_sel?: string) => q),
+        order: vi.fn((col?: string) => {
+          if (col) state._order.push(col);
+          return q;
+        }),
+        eq: vi.fn((col: string, val: unknown) => {
+          state._where.push([col, val]);
+          return q;
+        }),
+        in: vi.fn((col: string, arr: unknown[]) => {
+          state._where.push([col, arr]);
+          return q;
+        }),
+        limit: vi.fn(() => q),
+        single: vi.fn(() => ({ data: { id: "new-id" }, error: null })),
+        maybeSingle: vi.fn(() => {
+          const rows = resolveRows(state);
+          return { data: (rows[0] ?? null) as unknown, error: null };
+        }),
+        then: (resolve: (arg: { data: unknown[]; error: null }) => void) => {
+          const rows = resolveRows(state);
+          resolve({ data: rows, error: null });
+        },
+      };
+      function resolveRows(st: { _table: string; _where: Array<[string, unknown]> }) {
+        let rows = (fixtures[st._table] ?? []).slice();
+        for (const [col, val] of st._where) {
+          rows = rows.filter((r) => {
+            const rec = r as Record<string, unknown>;
+            if (Array.isArray(val)) return (val as unknown[]).includes(rec[col] as unknown);
+            return rec[col] === val;
+          });
+        }
+        return rows;
       }
-      return rows;
-    }
-    return q;
-  });
+      return q;
+    }),
+  };
   return supa;
 }
 
@@ -72,7 +73,7 @@ describe("lib/db/queries", () => {
       notes: [
         { user_id: "u", card_id: "k1", text: "memo", updated_at: "2024-01-07" },
       ],
-    } as Record<string, any[]>;
+    } as Record<string, unknown[]>;
 
     const supa = createSupabaseMock(fixtures);
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
@@ -91,8 +92,7 @@ describe("lib/db/queries", () => {
     const supa = createSupabaseMock({ notes: [] });
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
     const { getNote } = await import("@/lib/db/queries");
-    const text = await getNote("dead-beef" as any);
+    const text = await getNote("dead-beef");
     expect(text).toBeUndefined();
   });
 });
-

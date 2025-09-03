@@ -32,10 +32,9 @@ describe("supabase/client createClient (browser)", () => {
   it("creates browser client with url and key", () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon_key";
-    vi.mocked(createBrowserClient as any).mockReturnValue({ ok: true });
+    vi.mocked(createBrowserClient).mockReturnValue({ ok: true } as unknown as ReturnType<typeof createBrowserClient>);
     const c = createClient();
     expect(createBrowserClient).toHaveBeenCalledWith("https://example.supabase.co", "anon_key");
     expect(c).toEqual({ ok: true });
   });
 });
-

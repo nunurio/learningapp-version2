@@ -1,40 +1,34 @@
 /* @vitest-environment node */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { UUID } from "@/lib/types";
 
-function makeThenable(data: any, error: any) {
-  return { then: (resolve: any) => resolve({ data, error }) } as any;
+type Thenable<T> = { then: (resolve: (arg: { data: T; error: unknown }) => unknown) => unknown };
+function makeThenable<T>(data: T, error: unknown): Thenable<T> {
+  return { then: (resolve) => resolve({ data, error }) };
 }
 
 function supaForListCoursesNull() {
   return {
-    from: (table: string) => ({
-      select: () => ({
-        order: () => makeThenable(null, null),
-      }),
+    from: (_table: string) => ({
+      select: () => ({ order: () => makeThenable<unknown[]>(null as unknown as unknown[], null) }),
     }),
-  } as any;
+  } as const;
 }
 
-function supaForMaybeSingle(data: any, error: any = null) {
+function supaForMaybeSingle<T>(data: T, error: unknown = null) {
   return {
     from: (_t: string) => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: () => ({ data, error }),
-        }),
-      }),
+      select: () => ({ eq: () => ({ maybeSingle: () => ({ data, error }) }) }),
     }),
-  } as any;
+  } as const;
 }
 
-function supaForList(table: string, rows: any[] | null, error: any = null) {
+function supaForList(table: string, rows: unknown[] | null, error: unknown = null) {
   return {
     from: (t: string) => ({
-      select: () => ({
-        eq: () => ({ order: () => ({ order: () => makeThenable(t === table ? rows : null, t === table ? error : null) }) }),
-      }),
+      select: () => ({ eq: () => ({ order: () => ({ order: () => makeThenable(t === table ? rows : null, t === table ? error : null) }) }) }),
     }),
-  } as any;
+  } as const;
 }
 
 beforeEach(() => {
@@ -53,7 +47,7 @@ describe("db/queries reads (extra)", () => {
   it("getCourse: maybeSingle null -> undefined", async () => {
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supaForMaybeSingle(null) }));
     const { getCourse } = await import("@/lib/db/queries");
-    const row = await getCourse("00000000-0000-0000-0000-000000000001" as any);
+    const row = await getCourse("00000000-0000-0000-0000-000000000001" as UUID);
     expect(row).toBeUndefined();
   });
 
@@ -61,14 +55,14 @@ describe("db/queries reads (extra)", () => {
     // null -> [] for lessons
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supaForList("lessons", null) }));
     let mod = await import("@/lib/db/queries");
-    const l = await mod.listLessons("c1" as any);
+    const l = await mod.listLessons("c1" as UUID);
     expect(l).toEqual([]);
 
     // null -> [] for cards
     vi.resetModules();
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supaForList("cards", null) }));
     mod = await import("@/lib/db/queries");
-    const c = await mod.listCards("l1" as any);
+    const c = await mod.listCards("l1" as UUID);
     expect(c).toEqual([]);
 
     // error passthrough for lessons
@@ -76,7 +70,6 @@ describe("db/queries reads (extra)", () => {
     vi.resetModules();
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supaForList("lessons", null, pgErr) }));
     mod = await import("@/lib/db/queries");
-    await expect(mod.listLessons("c1" as any)).rejects.toBe(pgErr);
+    await expect(mod.listLessons("c1" as UUID)).rejects.toBe(pgErr as unknown);
   });
 });
-

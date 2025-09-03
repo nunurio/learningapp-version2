@@ -1,46 +1,46 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import type { UUID } from "@/lib/types";
+import type { UUID, Course, Card, Progress, SrsEntry, SrsRating } from "@/lib/types";
 
 // Mock all Server Actions that client-api writes delegate to
 vi.mock("@/server-actions/courses", () => ({
-  createCourseAction: vi.fn(async (_input: any) => ({ courseId: "COURSE_NEW" })),
-  updateCourseAction: vi.fn(async (_id: any, _patch: any) => {}),
-  deleteCourseAction: vi.fn(async (_id: any) => {}),
+  createCourseAction: vi.fn(async (_input: { title: string; description?: string; category?: string }) => ({ courseId: "COURSE_NEW" as UUID })),
+  updateCourseAction: vi.fn(async (_id: UUID, _patch: Partial<Pick<Course, "title" | "description" | "category" | "status">>) => {}),
+  deleteCourseAction: vi.fn(async (_id: UUID) => {}),
 }));
 
 vi.mock("@/server-actions/lessons", () => ({
-  addLessonAction: vi.fn(async (_courseId: any, _title: any) => ({ lessonId: "LESSON_NEW" })),
-  deleteLessonAction: vi.fn(async (_lessonId: any) => {}),
-  reorderLessonsAction: vi.fn(async (_courseId: any, _orderedIds: any[]) => {}),
+  addLessonAction: vi.fn(async (_courseId: UUID, _title: string) => ({ lessonId: "LESSON_NEW" as UUID })),
+  deleteLessonAction: vi.fn(async (_lessonId: UUID) => {}),
+  reorderLessonsAction: vi.fn(async (_courseId: UUID, _orderedIds: UUID[]) => {}),
 }));
 
 vi.mock("@/server-actions/cards", () => ({
-  addCardAction: vi.fn(async (_lessonId: any, _card: any) => "CARD_NEW" as UUID),
-  updateCardAction: vi.fn(async (_cardId: any, _patch: any) => {}),
-  deleteCardAction: vi.fn(async (_cardId: any) => {}),
-  deleteCardsAction: vi.fn(async (_ids: any[]) => {}),
-  reorderCardsAction: vi.fn(async (_lessonId: any, _orderedIds: any[]) => {}),
+  addCardAction: vi.fn(async (_lessonId: UUID, _card: Omit<Card, "id" | "lessonId" | "createdAt" | "orderIndex">) => "CARD_NEW" as UUID),
+  updateCardAction: vi.fn(async (_cardId: UUID, _patch: Partial<Card>) => {}),
+  deleteCardAction: vi.fn(async (_cardId: UUID) => {}),
+  deleteCardsAction: vi.fn(async (_ids: UUID[]) => {}),
+  reorderCardsAction: vi.fn(async (_lessonId: UUID, _orderedIds: UUID[]) => {}),
 }));
 
 vi.mock("@/server-actions/progress", () => ({
-  saveProgressAction: vi.fn(async (_input: any) => {}),
-  rateSrsAction: vi.fn(async (cardId: any, rating: any) => ({
+  saveProgressAction: vi.fn(async (_input: Progress) => {}),
+  rateSrsAction: vi.fn(async (cardId: UUID, rating: SrsRating): Promise<SrsEntry> => ({
     cardId,
     ease: 2.5,
     interval: 1,
     due: "2025-01-01T00:00:00.000Z",
     lastRating: rating,
   })),
-  toggleFlagAction: vi.fn(async (_cardId: any) => true),
-  saveNoteAction: vi.fn(async (_cardId: any, _text: any) => {}),
+  toggleFlagAction: vi.fn(async (_cardId: UUID) => true),
+  saveNoteAction: vi.fn(async (_cardId: UUID, _text: string) => {}),
 }));
 
 vi.mock("@/server-actions/ai", () => ({
-  saveDraftAction: vi.fn(async (_kind: any, _payload: any) => ({ id: "DRAFT_NEW" })),
-  commitCoursePlanAction: vi.fn(async (_draftId: any) => ({ courseId: "COURSE_COMMIT" })),
-  commitCoursePlanPartialAction: vi.fn(async (_draftId: any, _idx: any[]) => ({ courseId: "COURSE_COMMIT_PART" })),
-  commitLessonCardsAction: vi.fn(async (_opts: any) => ({ count: 2, cardIds: ["C1", "C2"] })),
-  commitLessonCardsPartialAction: vi.fn(async (_opts: any) => ({ count: 1, cardIds: ["C3"] })),
+  saveDraftAction: vi.fn(async (_kind: "outline" | "lesson-cards", _payload: unknown) => ({ id: "DRAFT_NEW" })),
+  commitCoursePlanAction: vi.fn(async (_draftId: string) => ({ courseId: "COURSE_COMMIT" as UUID })),
+  commitCoursePlanPartialAction: vi.fn(async (_draftId: string, _idx: number[]) => ({ courseId: "COURSE_COMMIT_PART" as UUID })),
+  commitLessonCardsAction: vi.fn(async (_opts: { draftId: string; lessonId: UUID }) => ({ count: 2, cardIds: ["C1" as UUID, "C2" as UUID] })),
+  commitLessonCardsPartialAction: vi.fn(async (_opts: { draftId: string; lessonId: UUID; selectedIndexes: number[] }) => ({ count: 1, cardIds: ["C3" as UUID] })),
 }));
 
 afterEach(() => {
@@ -51,10 +51,10 @@ describe("client-api writes (delegation)", () => {
   it("update/deleteCourse delegates to Server Actions", async () => {
     const { updateCourse, deleteCourse } = await import("@/lib/client-api");
     const courses = await import("@/server-actions/courses");
-    await updateCourse("CID" as UUID, { title: "T", status: "draft" as any });
-    expect((courses.updateCourseAction as any)).toHaveBeenCalledWith("CID", { title: "T", status: "draft" });
+    await updateCourse("CID" as UUID, { title: "T", status: "draft" });
+    expect(vi.mocked(courses.updateCourseAction)).toHaveBeenCalledWith("CID", { title: "T", status: "draft" });
     await deleteCourse("CID" as UUID);
-    expect((courses.deleteCourseAction as any)).toHaveBeenCalledWith("CID");
+    expect(vi.mocked(courses.deleteCourseAction)).toHaveBeenCalledWith("CID");
   });
 
   it("lessons: add/delete/reorder delegates and passes args", async () => {
@@ -62,42 +62,45 @@ describe("client-api writes (delegation)", () => {
     const lessons = await import("@/server-actions/lessons");
     const addRes = await addLesson("COURSE1" as UUID, "Intro");
     expect(addRes.lessonId).toBe("LESSON_NEW");
-    expect((lessons.addLessonAction as any)).toHaveBeenCalledWith("COURSE1", "Intro");
+    expect(vi.mocked(lessons.addLessonAction)).toHaveBeenCalledWith("COURSE1", "Intro");
     await deleteLesson("LESSON1" as UUID);
-    expect((lessons.deleteLessonAction as any)).toHaveBeenCalledWith("LESSON1");
-    await reorderLessons("COURSE1" as UUID, ["L1", "L2"] as any);
-    expect((lessons.reorderLessonsAction as any)).toHaveBeenCalledWith("COURSE1", ["L1", "L2"]);
+    expect(vi.mocked(lessons.deleteLessonAction)).toHaveBeenCalledWith("LESSON1");
+    await reorderLessons("COURSE1" as UUID, ["L1" as UUID, "L2" as UUID]);
+    expect(vi.mocked(lessons.reorderLessonsAction)).toHaveBeenCalledWith("COURSE1", ["L1", "L2"]);
   });
 
   it("cards: add/update/delete/deleteMany/reorder delegates", async () => {
     const { addCard, updateCard, deleteCard, deleteCards, reorderCards } = await import("@/lib/client-api");
     const cards = await import("@/server-actions/cards");
-    const newId = await addCard("LESSON1" as UUID, { cardType: "fill-blank", content: { type: "fill-blank", prompt: "p", answer: "a" }, title: "X", tags: ["t"] } as any);
+    const newId = await addCard(
+      "LESSON1" as UUID,
+      { cardType: "fill-blank", content: { text: "p", answers: { "1": "a" }, caseSensitive: false }, title: "X", tags: ["t"] } as Omit<Card, "id" | "lessonId" | "createdAt" | "orderIndex">
+    );
     expect(newId).toBe("CARD_NEW");
-    expect((cards.addCardAction as any)).toHaveBeenCalled();
-    await updateCard("CARD1" as UUID, { title: "Y", orderIndex: 2 } as any);
-    expect((cards.updateCardAction as any)).toHaveBeenCalledWith("CARD1", { title: "Y", orderIndex: 2 });
+    expect(vi.mocked(cards.addCardAction)).toHaveBeenCalled();
+    await updateCard("CARD1" as UUID, { title: "Y", orderIndex: 2 });
+    expect(vi.mocked(cards.updateCardAction)).toHaveBeenCalledWith("CARD1", { title: "Y", orderIndex: 2 });
     await deleteCard("CARD1" as UUID);
-    expect((cards.deleteCardAction as any)).toHaveBeenCalledWith("CARD1");
-    await deleteCards(["C1", "C2"] as any);
-    expect((cards.deleteCardsAction as any)).toHaveBeenCalledWith(["C1", "C2"]);
-    await reorderCards("LESSON1" as UUID, ["C1", "C2"] as any);
-    expect((cards.reorderCardsAction as any)).toHaveBeenCalledWith("LESSON1", ["C1", "C2"]);
+    expect(vi.mocked(cards.deleteCardAction)).toHaveBeenCalledWith("CARD1");
+    await deleteCards(["C1" as UUID, "C2" as UUID]);
+    expect(vi.mocked(cards.deleteCardsAction)).toHaveBeenCalledWith(["C1", "C2"]);
+    await reorderCards("LESSON1" as UUID, ["C1" as UUID, "C2" as UUID]);
+    expect(vi.mocked(cards.reorderCardsAction)).toHaveBeenCalledWith("LESSON1", ["C1", "C2"]);
   });
 
   it("progress: saveProgress/rateSrs/toggleFlag/saveNote delegates and returns", async () => {
     const { saveProgress, rateSrs, toggleFlag, saveNote } = await import("@/lib/client-api");
     const progress = await import("@/server-actions/progress");
-    await saveProgress({ cardId: "CARD1" as UUID, completed: true } as any);
-    expect((progress.saveProgressAction as any)).toHaveBeenCalledWith({ cardId: "CARD1", completed: true });
-    const srs = await rateSrs("CARD1" as UUID, "good" as any);
-    expect((progress.rateSrsAction as any)).toHaveBeenCalledWith("CARD1", "good");
+    await saveProgress({ cardId: "CARD1" as UUID, completed: true } as Progress);
+    expect(vi.mocked(progress.saveProgressAction)).toHaveBeenCalledWith({ cardId: "CARD1", completed: true });
+    const srs = await rateSrs("CARD1" as UUID, "good" as SrsRating);
+    expect(vi.mocked(progress.rateSrsAction)).toHaveBeenCalledWith("CARD1", "good");
     expect(srs).toMatchObject({ cardId: "CARD1", lastRating: "good" });
     const flagged = await toggleFlag("CARD1" as UUID);
-    expect((progress.toggleFlagAction as any)).toHaveBeenCalledWith("CARD1");
+    expect(vi.mocked(progress.toggleFlagAction)).toHaveBeenCalledWith("CARD1");
     expect(flagged).toBe(true);
     await saveNote("CARD1" as UUID, "memo");
-    expect((progress.saveNoteAction as any)).toHaveBeenCalledWith("CARD1", "memo");
+    expect(vi.mocked(progress.saveNoteAction)).toHaveBeenCalledWith("CARD1", "memo");
   });
 
   it("ai: saveDraft/commit* delegates and passes through results", async () => {
@@ -110,25 +113,24 @@ describe("client-api writes (delegation)", () => {
     } = await import("@/lib/client-api");
     const ai = await import("@/server-actions/ai");
 
-    const d = await saveDraft("outline", { course: { title: "T" }, lessons: [] } as any);
+    const d = await saveDraft("outline", { course: { title: "T" }, lessons: [] });
     expect(d.id).toBe("DRAFT_NEW");
-    expect((ai.saveDraftAction as any)).toHaveBeenCalled();
+    expect(vi.mocked(ai.saveDraftAction)).toHaveBeenCalled();
 
     const c1 = await commitCoursePlan("D1");
     expect(c1?.courseId).toBe("COURSE_COMMIT");
-    expect((ai.commitCoursePlanAction as any)).toHaveBeenCalledWith("D1");
+    expect(vi.mocked(ai.commitCoursePlanAction)).toHaveBeenCalledWith("D1");
 
     const c2 = await commitCoursePlanPartial("D2", [0, 2]);
     expect(c2?.courseId).toBe("COURSE_COMMIT_PART");
-    expect((ai.commitCoursePlanPartialAction as any)).toHaveBeenCalledWith("D2", [0, 2]);
+    expect(vi.mocked(ai.commitCoursePlanPartialAction)).toHaveBeenCalledWith("D2", [0, 2]);
 
     const lc = await commitLessonCards({ draftId: "D3", lessonId: "L1" as UUID });
     expect(lc).toMatchObject({ count: 2, cardIds: ["C1", "C2"] });
-    expect((ai.commitLessonCardsAction as any)).toHaveBeenCalledWith({ draftId: "D3", lessonId: "L1" });
+    expect(vi.mocked(ai.commitLessonCardsAction)).toHaveBeenCalledWith({ draftId: "D3", lessonId: "L1" });
 
     const lcp = await commitLessonCardsPartial({ draftId: "D4", lessonId: "L2" as UUID, selectedIndexes: [1] });
     expect(lcp).toMatchObject({ count: 1, cardIds: ["C3"] });
-    expect((ai.commitLessonCardsPartialAction as any)).toHaveBeenCalledWith({ draftId: "D4", lessonId: "L2", selectedIndexes: [1] });
+    expect(vi.mocked(ai.commitLessonCardsPartialAction)).toHaveBeenCalledWith({ draftId: "D4", lessonId: "L2", selectedIndexes: [1] });
   });
 });
-

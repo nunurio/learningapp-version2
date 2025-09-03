@@ -3,8 +3,12 @@ import { http, HttpResponse } from "msw";
 export const handlers = [
   http.post("/api/db", async ({ request }) => {
     try {
-      const body = await request.json().catch(() => ({} as any));
-      if (body?.op === "listCourses") {
+      const raw = (await request.json().catch(() => ({}))) as unknown;
+      const body = (typeof raw === "object" && raw !== null ? (raw as { op?: string; params?: unknown }) : {}) as {
+        op?: string;
+        params?: unknown;
+      };
+      if (body.op === "listCourses") {
         // /api/db の実装に合わせて素の配列を返す
         return HttpResponse.json([{ id: "c1", title: "Course" }]);
       }

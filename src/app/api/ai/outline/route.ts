@@ -1,4 +1,3 @@
-import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { generateCoursePlan } from "@/lib/ai/mock";
 
@@ -6,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // ストリーミング(SSE)は廃止し、最終結果のみJSONで返す
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   let theme: string | undefined;
   let level: string | undefined;
   let goal: string | undefined;

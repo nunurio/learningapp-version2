@@ -7,9 +7,9 @@ describe("api/ai/outline POST", () => {
     vi.doMock("@/lib/ai/mock", () => ({ generateCoursePlan: gen }));
 
     const { POST } = await import("./route");
-    const res = await POST(new Request("http://local/api/ai/outline", { method: "POST" } as any) as any);
+    const res = await POST(new Request("http://local/api/ai/outline", { method: "POST" }));
     expect(res.headers.get("cache-control")).toContain("no-store");
-    const json = (await res.json()) as any;
+    const json = (await res.json()) as unknown as { plan: unknown };
     expect(json.plan).toBeTruthy();
     expect(gen).toHaveBeenCalledWith({ theme: "コース", level: undefined, goal: undefined, lessonCount: undefined });
   });
@@ -19,9 +19,9 @@ describe("api/ai/outline POST", () => {
     vi.resetModules();
     vi.doMock("@/lib/ai/mock", () => ({ generateCoursePlan: gen }));
     const { POST } = await import("./route");
-    const res = await POST(new Request("http://local/api/ai/outline", { method: "POST" } as any) as any);
+    const res = await POST(new Request("http://local/api/ai/outline", { method: "POST" }));
     expect(res.status).toBe(500);
-    const json = await res.json();
+    const json = (await res.json()) as unknown as { error: string };
     expect(json.error).toContain("boom");
   });
 });
