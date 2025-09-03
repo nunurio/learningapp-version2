@@ -10,9 +10,10 @@ import { saveDraftAction, commitCoursePlanAction, commitCoursePlanPartialAction,
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const op = String(body?.op || "");
-    const p = body?.params ?? {};
+    const bodyUnknown: unknown = await req.json();
+    const parsed = z.object({ op: z.string(), params: z.unknown().optional() }).safeParse(bodyUnknown);
+    const op = parsed.success ? parsed.data.op : "";
+    const p = (parsed.success ? parsed.data.params : {}) ?? {};
     switch (op) {
       case "snapshot": {
         const data = await Q.snapshot();

@@ -61,3 +61,18 @@ export async function draftsDelete(key: string): Promise<void> {
     tx.objectStore("drafts").delete(key);
   });
 }
+
+export async function draftsAll(): Promise<DraftRow[]> {
+  const db = await openDB();
+  return await new Promise<DraftRow[]>((resolve, reject) => {
+    const tx = db.transaction("drafts", "readonly");
+    tx.onerror = () => reject(tx.error);
+    const store = tx.objectStore("drafts");
+    const req = store.getAll() as IDBRequest<unknown[]>;
+    req.onsuccess = () => {
+      const result = (req.result ?? []) as DraftRow[];
+      resolve(result);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}

@@ -1,6 +1,10 @@
 import { dirname } from "path";
 import { fileURLToPath } from "url";
 import { FlatCompat } from "@eslint/eslintrc";
+import nextPlugin from "@next/eslint-plugin-next";
+import tsPlugin from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import reactHooksPlugin from "eslint-plugin-react-hooks";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -10,13 +14,11 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
-  // Next core rules (JS/TS共通)
-  ...compat.extends("next/core-web-vitals"),
-  // TypeScript系はTS/TSXのみに適用（configファイル等への波及を防止）
-  ...compat.extends("next/typescript").map((c) => ({
-    ...c,
-    files: ["**/*.{ts,tsx}"],
-  })),
+  // load plugin object for Next to detect in flat config
+  { plugins: { "@next/next": nextPlugin } },
+  // Next.js rules（FlatCompat経由）
+  ...compat.extends("plugin:@next/next/core-web-vitals"),
+  // 既存設定（型や追加ルール）
   {
     ignores: [
       "node_modules/**",
@@ -36,11 +38,16 @@ const eslintConfig = [
     files: ["**/*.{ts,tsx}"],
     // 型情報を必要とするルールがあっても動くように最小限の設定
     languageOptions: {
+      parser: tsParser,
       parserOptions: {
         // TS v5 + @typescript-eslint v8 での推奨
         projectService: true,
         tsconfigRootDir: __dirname,
       },
+    },
+    plugins: {
+      "@typescript-eslint": tsPlugin,
+      "react-hooks": reactHooksPlugin,
     },
     rules: {
       // 型安全性の向上: any の使用を禁止

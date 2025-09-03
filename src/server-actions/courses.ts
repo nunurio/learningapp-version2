@@ -35,6 +35,7 @@ export async function updateCourseAction(courseId: UUID, patch: Partial<Pick<Cou
   const { error } = await supa.from("courses").update(updates).eq("id", courseId);
   if (error) throw error;
   revalidatePath("/");
+  revalidatePath(`/courses/${courseId}/workspace`, "page");
 }
 
 export async function deleteCourseAction(courseId: UUID) {
@@ -42,4 +43,5 @@ export async function deleteCourseAction(courseId: UUID) {
   const { error } = await supa.from("courses").delete().eq("id", courseId);
   if (error) throw error;
   revalidatePath("/");
+  revalidatePath(`/courses/${courseId}/workspace`, "page");
 }
