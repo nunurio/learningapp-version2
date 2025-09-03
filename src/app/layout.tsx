@@ -15,11 +15,38 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3001"),
   title: {
-    default: "Learnify",
+    default: "Learnify — AI学習プラットフォーム",
     template: "%s | Learnify",
   },
-  description: "Local-first learning app (mock AI)",
+  description:
+    "テーマを入力するだけでAIが学習体験を設計。LangGraph中断復帰・Supabase RLS・CSP対応で安全に学べます。",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "Learnify",
+    title: "Learnify — AI学習プラットフォーム",
+    description:
+      "テーマを入力するだけでAIが学習体験を設計。LangGraph中断復帰・Supabase RLS・CSP対応で安全に学べます。",
+    images: [
+      {
+        url: "/vercel.svg",
+        width: 1200,
+        height: 630,
+        alt: "Learnify",
+      },
+    ],
+    locale: "ja_JP",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Learnify — AI学習プラットフォーム",
+    description:
+      "テーマを入力するだけでAIが学習体験を設計。LangGraph中断復帰・Supabase RLS・CSP対応で安全に学べます。",
+    images: ["/vercel.svg"],
+  },
 };
 
 export const viewport: Viewport = {
@@ -34,7 +61,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ja">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
