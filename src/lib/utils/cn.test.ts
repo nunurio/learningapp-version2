@@ -11,4 +11,3 @@ describe("cn (clsx + tailwind-merge)", () => {
     expect(cn("px-2", "px-4", "px-1")).toBe("px-1");
   });
 });
-

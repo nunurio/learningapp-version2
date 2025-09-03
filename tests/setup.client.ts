@@ -6,46 +6,33 @@ import * as React from "react";
 import { setupServer } from "msw/node";
 import { handlers } from "./msw";
 
-// MSW: API モックサーバを起動
+// MSW: API モックサーバ（jsdomでもnodeサーバを利用）
 const server = setupServer(...handlers);
 beforeAll(() => server.listen());
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-// Reset DOM and mocks after each test
+// 各テスト後の後始末
 afterEach(() => {
   cleanup();
   try { localStorage.clear(); } catch {}
   vi.useRealTimers();
 });
 
-// Provide a minimal localStorage in jsdom/node if absent
+// jsdomでも localStorage が未定義なケースの保険
 const hasLocalStorage = (obj: unknown): obj is { localStorage: Storage } => {
   return typeof obj === "object" && obj !== null && "localStorage" in obj;
 };
-
 if (!hasLocalStorage(globalThis) || !globalThis.localStorage) {
   const store = new Map<string, string>();
-  
-  // Define the mock storage object with proper typing
   const mockStorage: Storage = {
-    getItem: (k: string) => (store.has(k) ? store.get(k) ?? null : null),
-    setItem: (k: string, v: string) => {
-      store.set(k, String(v));
-    },
-    removeItem: (k: string) => {
-      store.delete(k);
-    },
-    clear: () => {
-      store.clear();
-    },
-    key: (i: number) => Array.from(store.keys())[i] ?? null,
-    get length() {
-      return store.size;
-    },
+    getItem: (k) => (store.has(k) ? store.get(k) ?? null : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); },
+    clear: () => { store.clear(); },
+    key: (i) => Array.from(store.keys())[i] ?? null,
+    get length() { return store.size; },
   };
-
-  // Safely assign to globalThis
   Object.defineProperty(globalThis, "localStorage", {
     value: mockStorage,
     writable: true,
@@ -62,3 +49,4 @@ vi.mock("next/image", () => {
     },
   };
 });
+

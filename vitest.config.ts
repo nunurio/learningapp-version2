@@ -5,11 +5,15 @@ import tsconfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   plugins: [react(), tsconfigPaths()],
   test: {
-    pool: "threads",
-    poolOptions: { threads: { singleThread: true } },
-    environment: "jsdom",
-    setupFiles: ["./tests/setup.ts"],
     css: true,
+    // モックの後始末を自動化
+    restoreMocks: true,
+    clearMocks: true,
+    // CI/サンドボックス環境向け: ワーカー kill の権限エラー回避
+    poolOptions: {
+      threads: { singleThread: true },
+    },
+    exclude: ["node_modules/**", "dist/**", ".next/**", "coverage/**"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
@@ -17,5 +21,36 @@ export default defineConfig({
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/app/**", "**/*.d.ts"],
     },
+    projects: [
+      {
+        name: "client",
+        plugins: [tsconfigPaths()],
+        test: {
+          extends: true,
+          environment: "jsdom",
+          setupFiles: ["./tests/setup.client.ts"],
+          include: [
+            "src/**/*.{test,spec}.{ts,tsx}",
+            "tests/**/*.{test,spec}.{ts,tsx}",
+          ],
+          // サーバ対象を除外
+          exclude: ["src/app/api/**", "src/server-actions/**"],
+        },
+      },
+      {
+        name: "server",
+        plugins: [tsconfigPaths()],
+        test: {
+          extends: true,
+          environment: "node",
+          setupFiles: ["./tests/setup.server.ts"],
+          include: [
+            "src/app/api/**/*.test.{ts,tsx}",
+            "src/server-actions/**/*.test.{ts,tsx}",
+          ],
+          exclude: ["node_modules/**", "dist/**", ".next/**", "coverage/**"],
+        },
+      },
+    ],
   },
 });
