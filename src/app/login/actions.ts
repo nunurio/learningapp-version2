@@ -36,7 +36,8 @@ export async function login(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/");
+  // After successful login, send user to dashboard
+  redirect("/dashboard");
 }
 
 export async function signup(formData: FormData) {
@@ -93,7 +94,8 @@ export async function signinWithGithub() {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "github",
     options: {
-      redirectTo: new URL("/auth/callback", await getBaseUrl()).toString(),
+      // After OAuth, route back via callback with next=/dashboard
+      redirectTo: new URL("/auth/callback?next=/dashboard", await getBaseUrl()).toString(),
     },
   });
   if (error) redirect("/error");
