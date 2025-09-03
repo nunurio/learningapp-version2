@@ -13,6 +13,9 @@ export const handlers = [
       return new HttpResponse("bad request", { status: 400 });
     }
   }),
+  http.post("/api/ai/outline", async () => {
+    return HttpResponse.json({ plan: { course: { title: "MSW" }, lessons: [{ title: "L1" }, { title: "L2" }] } });
+  }),
   http.post("/api/ai/lesson-cards", async () => {
     return HttpResponse.json({ payload: { items: [] } });
   }),

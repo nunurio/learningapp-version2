@@ -1,4 +1,5 @@
 "use client";
+import * as React from "react";
 import { commitCoursePlan, saveDraft, deleteCourse } from "@/lib/client-api";
 import type { CoursePlan } from "@/lib/types";
 import { useRouter } from "next/navigation";
@@ -45,6 +46,7 @@ export default function PlanCoursePage() {
 
   // 進行表示をタイマーで行う（合計 ~60 秒で最終段階）
   function startProgressTimeline() {
+    const scale = Number(process.env.NEXT_PUBLIC_TIMELINE_SCALE ?? "1");
     // クリア
     timersRef.current.forEach((id) => clearTimeout(id));
     timersRef.current = [];
@@ -58,14 +60,15 @@ export default function PlanCoursePage() {
       { atMs: 60000, label: "保存" }, // 最終段階（視覚的に完了）
     ];
     for (const s of steps) {
+      const delay = Math.max(0, Math.round(s.atMs * scale));
       const id = window.setTimeout(() => {
         setLogs((ls) => [...ls, { ts: now + s.atMs, text: s.label }]);
-      }, s.atMs);
+      }, delay);
       timersRef.current.push(id);
     }
     // 60秒後に解決するPromiseを返す
     return new Promise<void>((resolve) => {
-      const id = window.setTimeout(() => resolve(), 60000);
+      const id = window.setTimeout(() => resolve(), Math.max(0, Math.round(60000 * scale)));
       timersRef.current.push(id);
     });
   }
@@ -224,6 +227,7 @@ export default function PlanCoursePage() {
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium mb-1">テーマ</label>
                 <Input
+                  data-testid="theme-input"
                   value={theme}
                   onChange={(e) => setTheme(e.target.value)}
                   placeholder="例: 機械学習 入門"
@@ -257,13 +261,13 @@ export default function PlanCoursePage() {
                 />
               </div>
               <div className="sm:col-span-2 flex items-center gap-2">
-                <Button type="submit" disabled={generating} variant="default">
+                <Button data-testid="generate-btn" type="submit" disabled={generating} variant="default">
                   {generating ? "生成中…" : "コース案を生成"}
                 </Button>
                 {plan && (
                   <>
-                    <Button type="button" onClick={startGenerate}>再生成</Button>
-                    <Button type="button" variant="secondary" onClick={() => setPreviewOpen(true)}>プレビューを開く</Button>
+                    <Button data-testid="regenerate-btn" type="button" onClick={startGenerate}>再生成</Button>
+                    <Button data-testid="open-preview-btn" type="button" variant="secondary" onClick={() => setPreviewOpen(true)}>プレビューを開く</Button>
                   </>
                 )}
               </div>
@@ -397,7 +401,7 @@ export default function PlanCoursePage() {
                   >
                     閉じる
                   </Button>
-                  <Button onClick={onCommit} variant="default">保存して反映</Button>
+                  <Button data-testid="commit-btn" onClick={onCommit} variant="default">保存して反映</Button>
                 </div>
               </DialogContent>
             )}

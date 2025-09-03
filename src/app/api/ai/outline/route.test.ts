@@ -13,5 +13,15 @@ describe("api/ai/outline POST", () => {
     expect(json.plan).toBeTruthy();
     expect(gen).toHaveBeenCalledWith({ theme: "コース", level: undefined, goal: undefined, lessonCount: undefined });
   });
-});
 
+  it("生成で例外発生時は 500 を返す", async () => {
+    const gen = vi.fn(() => { throw new Error("boom"); });
+    vi.resetModules();
+    vi.doMock("@/lib/ai/mock", () => ({ generateCoursePlan: gen }));
+    const { POST } = await import("./route");
+    const res = await POST(new Request("http://local/api/ai/outline", { method: "POST" } as any) as any);
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toContain("boom");
+  });
+});

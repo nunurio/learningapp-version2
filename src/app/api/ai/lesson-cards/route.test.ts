@@ -13,5 +13,15 @@ describe("api/ai/lesson-cards POST", () => {
     expect(json.payload).toBeTruthy();
     expect(gen).toHaveBeenCalledWith({ lessonTitle: "レッスン", desiredCount: undefined });
   });
-});
 
+  it("生成で例外発生時は 500 を返す", async () => {
+    const gen = vi.fn(() => { throw new Error("fail"); });
+    vi.resetModules();
+    vi.doMock("@/lib/ai/mock", () => ({ generateLessonCards: gen }));
+    const { POST } = await import("./route");
+    const res = await POST(new Request("http://local/api/ai/lesson-cards", { method: "POST" } as any) as any);
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toContain("fail");
+  });
+});

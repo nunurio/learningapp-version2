@@ -56,5 +56,43 @@ describe("server-actions/courses", () => {
     expect(reval).toHaveBeenCalledWith("/");
     expect(reval).toHaveBeenCalledWith(`/courses/CID/workspace`, "page");
   });
-});
 
+  it("deleteCourseAction: delete → '/' と workspace を revalidate", async () => {
+    const supa: any = {
+      from: vi.fn((table: string) => {
+        if (table !== "courses") throw new Error("unexpected table: " + table);
+        const q: any = {
+          delete: vi.fn(() => q),
+          eq: vi.fn(() => ({ error: null })),
+        };
+        return q;
+      }),
+    };
+    const reval = vi.fn();
+    vi.doMock("next/cache", () => ({ revalidatePath: reval }));
+    vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
+    const { deleteCourseAction } = await import("./courses");
+    await deleteCourseAction("COURSE_ID" as any);
+    expect(reval).toHaveBeenCalledWith("/");
+    expect(reval).toHaveBeenCalledWith(`/courses/COURSE_ID/workspace`, "page");
+  });
+
+  it("deleteCourseAction: エラー時は throw し revalidate を呼ばない", async () => {
+    const supa: any = {
+      from: vi.fn((table: string) => {
+        if (table !== "courses") throw new Error("unexpected table: " + table);
+        const q: any = {
+          delete: vi.fn(() => q),
+          eq: vi.fn(() => ({ error: Object.assign(new Error("boom"), { code: "23503" }) })),
+        };
+        return q;
+      }),
+    };
+    const reval = vi.fn();
+    vi.doMock("next/cache", () => ({ revalidatePath: reval }));
+    vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
+    const { deleteCourseAction } = await import("./courses");
+    await expect(deleteCourseAction("COURSE_ID" as any)).rejects.toBeInstanceOf(Error);
+    expect(reval).not.toHaveBeenCalled();
+  });
+});
