@@ -62,7 +62,8 @@ export default function PlanCoursePage() {
     for (const s of steps) {
       const delay = Math.max(0, Math.round(s.atMs * scale));
       const id = window.setTimeout(() => {
-        setLogs((ls) => [...ls, { ts: now + s.atMs, text: s.label }]);
+        // タイムライン縮尺に合わせ、ログ時刻もスケール後の時刻で記録する
+        setLogs((ls) => [...ls, { ts: now + delay, text: s.label }]);
       }, delay);
       timersRef.current.push(id);
     }
