@@ -80,31 +80,89 @@ export async function deleteCardsAction(ids: UUID[]) {
 
 export async function reorderCardsAction(lessonId: UUID, orderedIds: UUID[]) {
   const supa = await createClient();
-  const { data: lrow, error: le } = await supa.from("lessons").select("course_id").eq("id", lessonId).single();
+  // 1) Pre-flight: resolve course for revalidate and verify target set
+  const { data: lrow, error: le } = await supa
+    .from("lessons")
+    .select("course_id")
+    .eq("id", lessonId)
+    .single();
   if (le) throw le;
-  // NOTE: Upsert can hit RLS/privilege checks (42501) on some setups
-  // because it requires both INSERT and UPDATE permissions. Additionally,
-  // unique (lesson_id, order_index) can transiently conflict. To avoid
-  // both issues, perform two-phase plain updates with a large offset.
+
+  const { data: currentIdsRows, error: lidErr } = await supa
+    .from("cards")
+    .select("id, order_index")
+    .eq("lesson_id", lessonId)
+    .order("order_index", { ascending: true });
+  if (lidErr) throw lidErr;
+  const currentIds = (currentIdsRows ?? []).map((r) => r.id as string);
+  // 同一集合かを検証（順序は異なってよい）
+  const setEq = currentIds.length === orderedIds.length && new Set(currentIds).size === new Set(orderedIds).size && currentIds.every((id) => orderedIds.includes(id));
+  if (!setEq) {
+    throw new Error(`Invalid reorderCardsAction input: ids do not match lesson ${lessonId}. expected ${currentIds.length}, got ${orderedIds.length}`);
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.debug(`[reorderCards] lesson=${lessonId} size=${orderedIds.length}`);
+  }
+
+  // 2) Two-phase UPDATE to avoid RLS upsert and unique conflicts
   const OFFSET = 1_000_000; // keep within int range and out of normal window
-  // Phase 1: move to provisional window to avoid unique collisions.
-  for (let idx = 0; idx < orderedIds.length; idx++) {
-    const id = orderedIds[idx];
-    const provisional = idx + OFFSET;
-    const { error } = await supa
-      .from("cards")
-      .update({ order_index: provisional })
-      .eq("id", id);
-    if (error) throw error;
+  // Keep original map for best-effort rollback
+  const originalIndexById = new Map<string, number>(currentIdsRows?.map((r) => [r.id as string, Number(r.order_index)]) ?? []);
+
+  try {
+    // Phase 1: move to provisional window to avoid unique collisions.
+    for (let idx = 0; idx < orderedIds.length; idx++) {
+      const id = orderedIds[idx];
+      const provisional = idx + OFFSET;
+      const { error } = await supa
+        .from("cards")
+        .update({ order_index: provisional })
+        .eq("id", id)
+        .eq("lesson_id", lessonId);
+      if (error) {
+        // Surface Postgres code if present
+        const code = (error as { code?: string }).code;
+        throw new Error(`Phase1 update failed for card ${id}${code ? ` (code ${code})` : ""}: ${error.message}`);
+      }
+    }
+    // Phase 2: set final indices 0..n-1.
+    for (let idx = 0; idx < orderedIds.length; idx++) {
+      const id = orderedIds[idx];
+      const { error } = await supa
+        .from("cards")
+        .update({ order_index: idx })
+        .eq("id", id)
+        .eq("lesson_id", lessonId);
+      if (error) {
+        const code = (error as { code?: string }).code;
+        throw new Error(`Phase2 update failed for card ${id}${code ? ` (code ${code})` : ""}: ${error.message}`);
+      }
+    }
+  } catch (err) {
+    // Best-effort rollback to original order using a separate staging window
+    try {
+      const OFFSET2 = 2_000_000;
+      for (let idx = 0; idx < orderedIds.length; idx++) {
+        const id = orderedIds[idx];
+        const { error } = await supa
+          .from("cards")
+          .update({ order_index: OFFSET2 + idx })
+          .eq("id", id)
+          .eq("lesson_id", lessonId);
+        if (error) break; // give up further rollback if this fails
+      }
+      for (const [id, orig] of originalIndexById.entries()) {
+        const { error } = await supa
+          .from("cards")
+          .update({ order_index: orig })
+          .eq("id", id)
+          .eq("lesson_id", lessonId);
+        if (error) break;
+      }
+    } catch {}
+    throw err;
   }
-  // Phase 2: set final indices 0..n-1.
-  for (let idx = 0; idx < orderedIds.length; idx++) {
-    const id = orderedIds[idx];
-    const { error } = await supa
-      .from("cards")
-      .update({ order_index: idx })
-      .eq("id", id);
-    if (error) throw error;
-  }
+
   revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
 }
