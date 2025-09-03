@@ -1,0 +1,27 @@
+/* @vitest-environment node */
+import { describe, it, expect, vi } from "vitest";
+
+describe("api/ai/lesson-cards POST", () => {
+  it("lessonTitle 未指定時は 'レッスン' を使い JSON を返す", async () => {
+    const gen = vi.fn(() => ({ lessonTitle: "X", cards: [] }));
+    vi.doMock("@/lib/ai/mock", () => ({ generateLessonCards: gen }));
+
+    const { POST } = await import("./route");
+    const res = await POST(new Request("http://local/api/ai/lesson-cards", { method: "POST" }));
+    expect(res.headers.get("cache-control")).toContain("no-store");
+    const json = (await res.json()) as unknown as { payload: unknown };
+    expect(json.payload).toBeTruthy();
+    expect(gen).toHaveBeenCalledWith({ lessonTitle: "レッスン", desiredCount: undefined });
+  });
+
+  it("生成で例外発生時は 500 を返す", async () => {
+    const gen = vi.fn(() => { throw new Error("fail"); });
+    vi.resetModules();
+    vi.doMock("@/lib/ai/mock", () => ({ generateLessonCards: gen }));
+    const { POST } = await import("./route");
+    const res = await POST(new Request("http://local/api/ai/lesson-cards", { method: "POST" }));
+    expect(res.status).toBe(500);
+    const json = (await res.json()) as unknown as { error: string };
+    expect(json.error).toContain("fail");
+  });
+});

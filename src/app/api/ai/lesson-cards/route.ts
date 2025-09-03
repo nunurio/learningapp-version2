@@ -1,4 +1,3 @@
-import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { generateLessonCards } from "@/lib/ai/mock";
 import type { LessonCards } from "@/lib/types";
@@ -7,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // ストリーミング(SSE)は廃止し、最終結果のみJSONで返す
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   // 入力の堅牢化: JSON/クエリどちらでも受け取り、未指定は安全にフォールバック
   let lessonTitle: string | undefined;
   let desiredCount: number | undefined;

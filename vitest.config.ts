@@ -5,17 +5,58 @@ import tsconfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   plugins: [react(), tsconfigPaths()],
   test: {
-    pool: "threads",
-    poolOptions: { threads: { singleThread: true } },
-    environment: "jsdom",
-    setupFiles: ["./tests/setup.ts"],
     css: true,
+    // デフォルト（プロジェクト未指定時）
+    restoreMocks: true,
+    clearMocks: true,
+    // CI/サンドボックス環境向け: ワーカー kill の権限エラー回避
+    // 並列実行は環境で切替（デフォルト: singleThread=true）
+    poolOptions: {
+      threads: { singleThread: process.env.VITEST_SINGLE_THREAD !== "false" },
+    },
+    exclude: ["node_modules/**", "dist/**", ".next/**", "coverage/**"],
     coverage: {
       provider: "v8",
-      reporter: ["text", "html"],
+      reporter: ["text", "html", "json-summary"],
       reportsDirectory: "./coverage",
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/app/**", "**/*.d.ts"],
     },
+    projects: [
+      {
+        plugins: [tsconfigPaths()],
+        test: {
+          environment: "jsdom",
+          // マルチプロジェクトではルートの設定が継承されないため個別指定
+          restoreMocks: true,
+          clearMocks: true,
+          setupFiles: ["./tests/setup.client.ts"],
+          include: [
+            "src/**/*.{test,spec}.{ts,tsx}",
+            "tests/**/*.{test,spec}.{ts,tsx}",
+          ],
+          // サーバ対象を除外
+          exclude: ["src/app/api/**", "src/server-actions/**"],
+        },
+      },
+      {
+        plugins: [tsconfigPaths()],
+        test: {
+          environment: "node",
+          // マルチプロジェクトではルートの設定が継承されないため個別指定
+          restoreMocks: true,
+          clearMocks: true,
+          setupFiles: ["./tests/setup.server.ts"],
+          include: [
+            "src/app/api/**/*.test.{ts,tsx}",
+            "src/server-actions/**/*.test.{ts,tsx}",
+            // libやtests下のサーバー向けユニットテストも対象にする
+            "tests/server/**/*.test.{ts,tsx}",
+            "src/lib/**/*.server.test.{ts,tsx}",
+          ],
+          exclude: ["node_modules/**", "dist/**", ".next/**", "coverage/**"],
+        },
+      },
+    ],
   },
 });
