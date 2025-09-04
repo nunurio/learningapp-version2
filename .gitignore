@@ -40,3 +40,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .vscode/settings.json
+
+# playwright auth state / caches
+playwright/.auth
+.playwright
+
+# playwright reports
+playwright-report/
+test-results/
+blob-report/
