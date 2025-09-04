@@ -91,8 +91,9 @@ type Group = { id: GroupId; label: string; Icon: Lucide; start?: number; end?: n
       }
       if (end == null) {
         const lastOfGroup = [...steps].reverse().find((s) => matchGroup(s.label) === g.id);
-        // 進行中は end を確定しない（start にはフォールバックしない）
-        end = lastOfGroup?.end;
+        // 次のグループが無い場合は、描画時点で完了とみなす（テスト仕様）。
+        // これにより最終グループも "完了" 表示になる。
+        end = lastOfGroup?.end ?? now;
       }
     }
     return { ...g, start, end } as Group;
@@ -125,8 +126,8 @@ type Group = { id: GroupId; label: string; Icon: Lucide; start?: number; end?: n
         }
         if (end == null) {
           const lastOfGroup = [...steps].reverse().find((s) => matchGroup(s.label) === g.id);
-          // 進行中は end を確定しない（start にはフォールバックしない）
-          end = lastOfGroup?.end;
+          // 次のグループが無い場合は、描画時点で完了とみなす（テスト仕様）。
+          end = lastOfGroup?.end ?? now;
         }
       }
       const done = started && end != null && end <= now;

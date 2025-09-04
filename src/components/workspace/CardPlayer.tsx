@@ -70,8 +70,11 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
   const [showHelp, setShowHelp] = React.useState(false);
 
   // 進捗ローカル更新 + 永続化のヘルパ
+  // 同一 cardId への保存は直列化してサーバーの最終状態逆転を防ぐ
+  const saveQueueRef = React.useRef<Map<UUID, Promise<void>>>(new Map());
   const saveAndSetProgress = React.useCallback((input: Progress) => {
-    void saveProgressApi(input).then(() => setProgress((arr) => {
+    // 1) 楽観的にローカル state を即時更新（最新の入力が UI に残る）
+    setProgress((arr) => {
       const idx = arr.findIndex((p) => p.cardId === input.cardId);
       if (idx === -1) return [...arr, input];
       const copy = arr.slice();
@@ -80,12 +83,31 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
       copy[idx] = {
         ...prev,
         ...input,
-        answer: typeof prev?.answer === "object" && prev?.answer
-          ? { ...(prev.answer as Record<string, unknown>), ...(input.answer as Record<string, unknown> | undefined) }
-          : input.answer,
+        answer:
+          typeof prev?.answer === "object" && prev?.answer
+            ? { ...(prev.answer as Record<string, unknown>), ...(input.answer as Record<string, unknown> | undefined) }
+            : input.answer,
       } as Progress;
       return copy;
-    }));
+    });
+
+    // 2) カード単位で保存を直列化（先に投げた保存が遅延で上書きしないように）
+    const key = input.cardId as UUID;
+    const prev = saveQueueRef.current.get(key) ?? Promise.resolve();
+    const next = prev
+      .catch((e) => {
+        // 直列化維持のため握りつぶして次へ（エラーは個別に記録）
+        console.error("saveProgress queue previous failed:", e);
+      })
+      .then(async () => {
+        try {
+          await saveProgressApi(input);
+        } catch (e) {
+          console.error("saveProgress failed:", e);
+          // TODO: トーストなどでユーザー通知するならここ
+        }
+      });
+    saveQueueRef.current.set(key, next);
   }, []);
 
   React.useEffect(() => {
