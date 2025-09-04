@@ -358,10 +358,14 @@ type LessonToolsProps = {
 
 function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, onSaveAll, onRefresh, selectedKind }: LessonToolsProps) {
   const [aiMode, setAiMode] = React.useState<"batch" | "single">("batch");
-  // 左ペインの選択に応じて既定値を切替（レッスン=一式 / カード=単体）
+  // 実行開始時点のモードをロックして保持（実行中のモード変更で再マウントさせない）
+  const [runningMode, setRunningMode] = React.useState<"batch" | "single" | null>(null);
+  const isRunning = !!runningLesson && runningLesson.id === lesson.id;
+  // 左ペインの選択に応じて既定値を切替（レッスン=一式 / カード=単体）。実行中は変更しない。
   React.useEffect(() => {
+    if (isRunning) return; // 実行中は現在の選択に影響させない
     setAiMode(selectedKind === "card" ? "single" : "batch");
-  }, [selectedKind, lesson.id]);
+  }, [selectedKind, lesson.id, isRunning]);
   return (
     <section className="mb-4 rounded-md border border-[hsl(var(--border))] p-4 md:p-5 space-y-3">
       <div className="flex items-start justify-between gap-3 mb-1">
@@ -371,7 +375,7 @@ function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, se
       <div className="grid grid-cols-1 gap-3 w-full">
         <div className="w-full">
           <SelectMenu value={aiMode} onValueChange={(v) => setAiMode(v as "batch" | "single") }>
-            <SelectMenuTrigger className="h-10 w-full">
+            <SelectMenuTrigger className="h-10 w-full" disabled={isRunning}>
               <SelectMenuValue placeholder="AIモードを選択" />
             </SelectMenuTrigger>
             <SelectMenuContent>
@@ -381,19 +385,24 @@ function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, se
           </SelectMenu>
         </div>
         <div className="w-full">
-          <Button className="h-10 w-full" size="md" onClick={() => setRunningLesson(lesson)} disabled={!!runningLesson && runningLesson.id === lesson.id}>
+          <Button
+            className="h-10 w-full"
+            size="md"
+            onClick={() => { setRunningMode(aiMode); setRunningLesson(lesson); }}
+            disabled={isRunning}
+          >
             {runningLesson?.id === lesson.id ? "生成中…" : "AIで生成"}
           </Button>
         </div>
       </div>
-      {runningLesson?.id === lesson.id && (
-        aiMode === "batch" ? (
+      {isRunning && (
+        (runningMode ?? aiMode) === "batch" ? (
           <LessonCardsRunner
             lessonId={lesson.id}
             lessonTitle={lesson.title}
             onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
             onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
-            onFinish={() => { setRunningLesson(null); onRefresh(); workspaceStore.bumpVersion(); }}
+            onFinish={() => { setRunningLesson(null); setRunningMode(null); onRefresh(); workspaceStore.bumpVersion(); }}
           />
         ) : (
           <SingleCardRunner
@@ -401,7 +410,7 @@ function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, se
             lessonTitle={lesson.title}
             onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
             onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
-            onFinish={() => { setRunningLesson(null); onRefresh(); workspaceStore.bumpVersion(); }}
+            onFinish={() => { setRunningLesson(null); setRunningMode(null); onRefresh(); workspaceStore.bumpVersion(); }}
           />
         )
       )}
