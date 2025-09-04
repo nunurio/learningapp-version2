@@ -17,9 +17,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { SSETimeline } from "@/components/ui/SSETimeline";
 import { LessonCardsRunner } from "@/components/ai/LessonCardsRunner";
+import { SingleCardRunner } from "@/components/ai/SingleCardRunner";
 import { Confirm } from "@/components/ui/confirm";
 import { Select } from "@/components/ui/select";
+import {
+  ShadSelect as SelectMenu,
+  ShadSelectTrigger as SelectMenuTrigger,
+  ShadSelectContent as SelectMenuContent,
+  ShadSelectItem as SelectMenuItem,
+  ShadSelectValue as SelectMenuValue,
+} from "@/components/ui/shadcn-select";
+import { Label } from "@/components/ui/label";
 import { SortableList } from "@/components/dnd/SortableList";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { saveCardDraft, loadCardDraft, publishCard, type SaveCardDraftInput } from "@/lib/data";
 import { workspaceStore, useWorkspace } from "@/lib/state/workspace-store";
 
@@ -154,6 +164,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
           setPreviews={setPreviews}
           selectedIndexes={selectedIndexes}
           setSelectedIndexes={setSelectedIndexes}
+          selectedKind={selectedKind}
           onSaveAll={async (lessonId, payload, selected) => {
             const idxs = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
             const res = idxs.length > 0
@@ -161,8 +172,11 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
               : await commitLessonCardsApi({ draftId: payload.draftId, lessonId });
             if (!res) return alert("保存に失敗しました");
             refreshLists();
+            // 左ペイン（NavTree）のデータを即時更新させるため、外部ストアのバージョンを更新
+            workspaceStore.bumpVersion();
             setPreviews((prev) => { const copy = { ...prev }; delete copy[lessonId]; return copy; });
           }}
+          onRefresh={refreshLists}
         />
       )}
       {!selectedId && (
@@ -338,54 +352,63 @@ type LessonToolsProps = {
   selectedIndexes: Record<string, Record<number, boolean>>;
   setSelectedIndexes: React.Dispatch<React.SetStateAction<Record<string, Record<number, boolean>>>>;
   onSaveAll: (lessonId: UUID, payload: { draftId: string; payload: LessonCards }, selected: Record<number, boolean>) => void;
+  onRefresh: () => void;
+  selectedKind?: "lesson" | "card";
 };
 
-function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, onSaveAll }: LessonToolsProps) {
+function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, onSaveAll, onRefresh, selectedKind }: LessonToolsProps) {
+  const [aiMode, setAiMode] = React.useState<"batch" | "single">("batch");
+  // 左ペインの選択に応じて既定値を切替（レッスン=一式 / カード=単体）
+  React.useEffect(() => {
+    setAiMode(selectedKind === "card" ? "single" : "batch");
+  }, [selectedKind, lesson.id]);
   return (
-    <section className="mb-3 rounded-md border border-[hsl(var(--border))] p-3">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-medium">レッスンツール</div>
-        <div className="text-xs text-gray-600 truncate max-w-[60%]" title={lesson.title}>{lesson.title}</div>
+    <section className="mb-4 rounded-md border border-[hsl(var(--border))] p-4 md:p-5 space-y-3">
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <div className="text-sm font-medium leading-6">レッスンツール</div>
+        <div className="text-xs text-gray-600 truncate max-w-[70%] md:max-w-[60%]" title={lesson.title}>{lesson.title}</div>
       </div>
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-gray-700">AIでこのレッスンのカードを生成</div>
-        <Button size="sm" onClick={() => setRunningLesson(lesson)} disabled={!!runningLesson && runningLesson.id === lesson.id}>
-          {runningLesson?.id === lesson.id ? "生成中…" : "AIで生成"}
-        </Button>
+      <div className="grid grid-cols-1 gap-3 w-full">
+        <div className="w-full">
+          <SelectMenu value={aiMode} onValueChange={(v) => setAiMode(v as "batch" | "single") }>
+            <SelectMenuTrigger className="h-10 w-full">
+              <SelectMenuValue placeholder="AIモードを選択" />
+            </SelectMenuTrigger>
+            <SelectMenuContent>
+              <SelectMenuItem value="batch">カード一式をAI生成</SelectMenuItem>
+              <SelectMenuItem value="single">カード単体をAI生成</SelectMenuItem>
+            </SelectMenuContent>
+          </SelectMenu>
+        </div>
+        <div className="w-full">
+          <Button className="h-10 w-full" size="md" onClick={() => setRunningLesson(lesson)} disabled={!!runningLesson && runningLesson.id === lesson.id}>
+            {runningLesson?.id === lesson.id ? "生成中…" : "AIで生成"}
+          </Button>
+        </div>
       </div>
       {runningLesson?.id === lesson.id && (
-        <LessonCardsRunner
-          lessonId={lesson.id}
-          lessonTitle={lesson.title}
-          onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
-          onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
-          onFinish={() => setRunningLesson(null)}
-        />
+        aiMode === "batch" ? (
+          <LessonCardsRunner
+            lessonId={lesson.id}
+            lessonTitle={lesson.title}
+            onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
+            onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
+            onFinish={() => { setRunningLesson(null); onRefresh(); workspaceStore.bumpVersion(); }}
+          />
+        ) : (
+          <SingleCardRunner
+            lessonId={lesson.id}
+            lessonTitle={lesson.title}
+            onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
+            onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
+            onFinish={() => { setRunningLesson(null); onRefresh(); workspaceStore.bumpVersion(); }}
+          />
+        )
       )}
-      <SSETimeline logs={logsByLesson[lesson.id] ?? []} />
-      {previews[lesson.id] && (
-        <div className="mt-3">
-          <div className="text-sm text-gray-600 mb-2">プレビュー: {previews[lesson.id].payload.cards.length} 件（反映するカードを選択、未選択なら全件）</div>
-          <ol className="text-sm space-y-1 list-decimal list-inside">
-            {previews[lesson.id].payload.cards.map((c, idx) => (
-              <li key={idx} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  aria-label={`カード #${idx + 1} を選択`}
-                  checked={!!(selectedIndexes[lesson.id]?.[idx])}
-                  onChange={(e) => setSelectedIndexes((m) => ({ ...m, [lesson.id]: { ...(m[lesson.id] || {}), [idx]: e.target.checked } }))}
-                />
-                <span className="px-1 py-0.5 rounded bg-black/5 mr-2">{c.type}</span>
-                {"title" in c && c.title ? c.title : c.type === "text" ? "テキスト" : "カード"}
-              </li>
-            ))}
-          </ol>
-          <div className="mt-3 flex justify-end gap-2">
-            <Button onClick={() => onSaveAll(lesson.id, previews[lesson.id], selectedIndexes[lesson.id] || {})}>保存</Button>
-            <Button onClick={() => setPreviews((prev) => { const copy = { ...prev }; delete copy[lesson.id]; return copy; })}>破棄</Button>
-          </div>
-        </div>
-      )}
+      <div className="pt-1 md:pt-2">
+        <SSETimeline layout="inline" size="compact" logs={logsByLesson[lesson.id] ?? []} />
+      </div>
+      {/* プレビュー表示は要件により廃止 */}
     </section>
   );
 }
@@ -402,14 +425,14 @@ function CourseInspector({ course, lessons, onRefresh }: { course: Course; lesso
       <h3 className="font-medium">コース: {course.title}</h3>
       <div className="flex gap-2">
         <Input placeholder="新規レッスン名" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <Button onClick={async () => { if (!title.trim()) return; await addLessonApi(course.id, title); setTitle(""); onRefresh(); }}>レッスン追加</Button>
+        <Button onClick={async () => { if (!title.trim()) return; await addLessonApi(course.id, title); setTitle(""); onRefresh(); workspaceStore.bumpVersion(); }}>レッスン追加</Button>
       </div>
       <div>
         <h4 className="text-sm text-gray-700 mb-2">レッスン並び替え</h4>
         <SortableList
           ids={lessons.map((l) => l.id)}
           label="レッスンの並び替え"
-          onReorder={async (ids) => { await reorderLessonsApi(course.id, ids); onRefresh(); }}
+          onReorder={async (ids) => { await reorderLessonsApi(course.id, ids); onRefresh(); workspaceStore.bumpVersion(); }}
           renderItem={(id) => {
             const l = lessons.find((x) => x.id === id);
             if (!l) return <div className="text-xs text-gray-400">更新中…</div>;
@@ -421,7 +444,7 @@ function CourseInspector({ course, lessons, onRefresh }: { course: Course; lesso
                   description="この操作は元に戻せません。配下のカードも削除されます。"
                   confirmLabel="削除する"
                   cancelLabel="キャンセル"
-                  onConfirm={async () => { await deleteLessonApi(l.id); onRefresh(); }}
+                  onConfirm={async () => { await deleteLessonApi(l.id); onRefresh(); workspaceStore.bumpVersion(); }}
                 >
                   <Button variant="destructive" size="sm">削除</Button>
                 </Confirm>
@@ -473,52 +496,26 @@ function LessonInspector(props: {
             lessonTitle={lesson.title}
             onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
             onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
-            onFinish={() => setRunningLesson(null)}
+            onFinish={() => { setRunningLesson(null); onRefresh(); workspaceStore.bumpVersion(); }}
           />
         )}
-        <SSETimeline logs={logsByLesson[lesson.id] ?? []} />
-        {previews[lesson.id] && (
-          <div className="mt-3">
-            <div className="text-sm text-gray-600 mb-2">プレビュー: {previews[lesson.id].payload.cards.length} 件（反映するカードを選択、未選択なら全件）</div>
-            <ol className="text-sm space-y-1 list-decimal list-inside">
-              {previews[lesson.id].payload.cards.map((c, idx) => (
-                <li key={idx} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    aria-label={`カード #${idx + 1} を選択`}
-                    checked={!!(selectedIndexes[lesson.id]?.[idx])}
-                    onChange={(e) => setSelectedIndexes((m) => ({ ...m, [lesson.id]: { ...(m[lesson.id] || {}), [idx]: e.target.checked } }))}
-                  />
-                  <span className="px-1 py-0.5 rounded bg-black/5 mr-2">{c.type}</span>
-                  {"title" in c && c.title ? c.title : c.type === "text" ? "テキスト" : "カード"}
-                </li>
-              ))}
-            </ol>
-            <div className="mt-3 flex justify-end gap-2">
-              <Button
-                onClick={async () => {
-                  const p = previews[lesson.id];
-                  if (!p) return;
-                  const selected = selectedIndexes[lesson.id] || {};
-                  const idxs = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
-                  const res = idxs.length > 0
-                    ? await commitLessonCardsPartialApi({ draftId: p.draftId, lessonId: lesson.id, selectedIndexes: idxs })
-                    : await commitLessonCardsApi({ draftId: p.draftId, lessonId: lesson.id });
-                  if (res) { onRefresh(); }
-                  setPreviews((prev) => { const copy = { ...prev }; delete copy[lesson.id]; return copy; });
-                }}
-              >保存</Button>
-              <Button onClick={() => setPreviews((prev) => { const copy = { ...prev }; delete copy[lesson.id]; return copy; })}>破棄</Button>
-            </div>
-          </div>
-        )}
+        <SSETimeline layout="inline" size="compact" logs={logsByLesson[lesson.id] ?? []} />
+        {/* プレビュー表示は要件により廃止 */}
       </div>
       )}
 
-      {/* 手動でカード追加 */}
-      <div className="rounded-md border border-[hsl(var(--border))] p-3">
-        <div className="text-sm font-medium mb-2">新規カード</div>
-        <NewCardForm lessonId={lesson.id} onDone={onRefresh} />
+      {/* 手動でカード追加（開閉可能） */}
+      <div className="rounded-md border border-[hsl(var(--border))]">
+        <Accordion type="single" collapsible>
+          <AccordionItem value="new-card" className="border-b-0">
+            <AccordionTrigger className="px-3 py-3 text-sm font-medium">
+              新規カードを作成
+            </AccordionTrigger>
+            <AccordionContent className="px-3">
+              <NewCardForm lessonId={lesson.id} onDone={onRefresh} />
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
 
       {/* カード一覧（並び替え/削除） */}
@@ -530,7 +527,7 @@ function LessonInspector(props: {
           <SortableList
             ids={cards.map((c) => c.id)}
             label="カードの並び替え"
-            onReorder={async (ids) => { await reorderCardsApi(lesson.id, ids); onRefresh(); }}
+            onReorder={async (ids) => { await reorderCardsApi(lesson.id, ids); onRefresh(); workspaceStore.bumpVersion(); }}
             renderItem={(id) => {
               const c = cards.find((x) => x.id === id);
               if (!c) return <div className="text-xs text-gray-400">更新中…</div>;
@@ -543,7 +540,7 @@ function LessonInspector(props: {
                     description="この操作は元に戻せません。学習履歴も削除されます。"
                     confirmLabel="削除する"
                     cancelLabel="キャンセル"
-                    onConfirm={async () => { await deleteCardApi(c.id); onRefresh(); }}
+                    onConfirm={async () => { await deleteCardApi(c.id); onRefresh(); workspaceStore.bumpVersion(); }}
                   >
                     <Button variant="destructive" size="sm">削除</Button>
                   </Confirm>
@@ -598,17 +595,22 @@ function NewCardForm({ lessonId, onDone }: { lessonId: UUID; onDone: () => void 
         }
         setTitle(""); setBody(""); setQuestion(""); setOptions(""); setAnswerIndex(0); setExplanation(""); setText(""); setAnswers("1:answer"); setCaseSensitive(false);
         onDone();
+        // 左ペインへ即時反映
+        workspaceStore.bumpVersion();
       }}
       className="space-y-3"
     >
-      <div className="flex gap-3 items-center">
-        <label className="text-sm">タイプ</label>
-        <Select value={type} onChange={(e) => setType(e.target.value as CardType)} className="max-w-[160px]">
+      <div>
+        <Label className="mb-1 block">タイトル（任意）</Label>
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="タイトル（任意）" className="w-full" />
+      </div>
+      <div>
+        <Label className="mb-1 block">タイプ</Label>
+        <Select value={type} onChange={(e) => setType(e.target.value as CardType)} className="w-full max-w-[200px]">
           <option value="text">Text</option>
           <option value="quiz">Quiz</option>
           <option value="fill-blank">Fill‑blank</option>
         </Select>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="タイトル（任意）" className="flex-1" />
       </div>
       {type === "text" && (
         <div>

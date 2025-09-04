@@ -48,7 +48,7 @@ export function Header({
             <Button asChild size="sm" variant="default">
               <Link href="/courses/plan">
                 <span className="sm:hidden">AI作成</span>
-                <span className="hidden sm:inline">AIで作る</span>
+                <span className="hidden sm:inline">AIでコースを作成</span>
               </Link>
             </Button>
             <Button asChild size="sm" variant="outline">

@@ -3,7 +3,6 @@ import * as React from "react";
 import {
   snapshot as fetchSnapshot,
   saveProgress as saveProgressApi,
-  rateSrs as rateSrsApi,
   listFlaggedByCourse,
   toggleFlag as toggleFlagApi,
   saveNote as saveNoteApi,
@@ -12,11 +11,13 @@ import {
 import type { UUID, Card, QuizCardContent, FillBlankCardContent, SrsRating, TextCardContent, Progress } from "@/lib/types";
 import type { SaveCardDraftInput } from "@/lib/data";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { QuizOption } from "@/components/player/QuizOption";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { useWorkspaceSelector } from "@/lib/state/workspace-store";
+import { useWorkspaceSelector, workspaceStore } from "@/lib/state/workspace-store";
+import { Star, StickyNote, HelpCircle } from "lucide-react";
 
 type Props = {
   courseId: UUID;
@@ -67,6 +68,25 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
   const [noteOpen, setNoteOpen] = React.useState(false);
   const [note, setNote] = React.useState<string>("");
   const [showHelp, setShowHelp] = React.useState(false);
+
+  // 進捗ローカル更新 + 永続化のヘルパ
+  const saveAndSetProgress = React.useCallback((input: Progress) => {
+    void saveProgressApi(input).then(() => setProgress((arr) => {
+      const idx = arr.findIndex((p) => p.cardId === input.cardId);
+      if (idx === -1) return [...arr, input];
+      const copy = arr.slice();
+      // answer はマージ（level/selected 等を保持）
+      const prev = copy[idx];
+      copy[idx] = {
+        ...prev,
+        ...input,
+        answer: typeof prev?.answer === "object" && prev?.answer
+          ? { ...(prev.answer as Record<string, unknown>), ...(input.answer as Record<string, unknown> | undefined) }
+          : input.answer,
+      } as Progress;
+      return copy;
+    }));
+  }, []);
 
   React.useEffect(() => {
     if (!selectedId) { setCard(null); return; }
@@ -137,11 +157,13 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
             }}
             size="sm"
           >
-            {flag ? "⭐" : "☆"}
+            <Star className={flag ? "h-4 w-4 fill-current" : "h-4 w-4"} />
           </Button>
           <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" aria-label="ノート">📝</Button>
+              <Button size="sm" aria-label="ノート">
+                <StickyNote className="h-4 w-4" />
+              </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -154,7 +176,9 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
               </div>
             </DialogContent>
           </Dialog>
-          <Button onClick={() => setShowHelp((s) => !s)} size="sm" aria-label="キーボードヘルプ">?</Button>
+          <Button onClick={() => setShowHelp((s) => !s)} size="sm" aria-label="キーボードヘルプ">
+            <HelpCircle className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
@@ -179,18 +203,24 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
 
       {/* 本文 */}
       {view.cardType === "text" && (
-        <TextLearn content={view.content as TextCardContent} cardId={view.id} />
+        <TextLearn
+          content={view.content as TextCardContent}
+          cardId={view.id}
+          initialLevel={getLevelFromAnswer(progress.find((p) => p.cardId === view.id)?.answer)}
+          onSave={saveAndSetProgress}
+        />
       )}
       {view.cardType === "quiz" && (
         <QuizLearn
           content={view.content as QuizCardContent}
           cardId={view.id}
+          initialLevel={getLevelFromAnswer(progress.find((p) => p.cardId === view.id)?.answer)}
           onResult={(r) => {
             const d = Date.now() - cardStartRef.current;
             setDurations((m) => ({ ...m, [view.id]: d }));
             setResults((m) => ({ ...m, [view.id]: r }));
           }}
-          onRated={(rating) => setRatings((m) => ({ ...m, [view.id]: rating }))}
+          onSave={saveAndSetProgress}
           gotoNext={() => { if (nextId && onNavigate) onNavigate(nextId); }}
         />
       )}
@@ -198,12 +228,13 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         <FillBlankLearn
           content={view.content as FillBlankCardContent}
           cardId={view.id}
+          initialLevel={getLevelFromAnswer(progress.find((p) => p.cardId === view.id)?.answer)}
           onResult={(r) => {
             const d = Date.now() - cardStartRef.current;
             setDurations((m) => ({ ...m, [view.id]: d }));
             setResults((m) => ({ ...m, [view.id]: r }));
           }}
-          onRated={(rating) => setRatings((m) => ({ ...m, [view.id]: rating }))}
+          onSave={saveAndSetProgress}
           gotoNext={() => { if (nextId && onNavigate) onNavigate(nextId); }}
         />
       )}
@@ -223,21 +254,18 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         >
           前へ
         </Button>
-        <div className="text-sm text-gray-600" aria-live="polite">{(progress.find((p) => p.cardId === view.id))?.completed ? "完了" : "未完了"}</div>
+        <div className="text-sm text-gray-600" aria-live="polite">
+          {(() => {
+            const cur = progress.find((p) => p.cardId === view.id);
+            const level = getLevelFromAnswer(cur?.answer);
+            const completed = level != null ? level >= 3 : !!cur?.completed;
+            const label = completed ? "完了" : "未完了";
+            const lvText = level != null ? ` / 理解度 ${level}/5` : " / 理解度 未評価";
+            return label + lvText;
+          })()}
+        </div>
         <Button
-          onClick={() => {
-            if (nextId && onNavigate) {
-              if (view.cardType === "text") {
-                const input = { cardId: view.id, completed: true, completedAt: new Date().toISOString() } as Progress;
-                void saveProgressApi(input).then(() => setProgress((arr) => {
-                  const idx = arr.findIndex((p) => p.cardId === input.cardId);
-                  if (idx === -1) return [...arr, input];
-                  const copy = arr.slice(); copy[idx] = input; return copy;
-                }));
-              }
-              onNavigate(nextId);
-            }
-          }}
+          onClick={() => { if (nextId && onNavigate) onNavigate(nextId); }}
           disabled={!nextId}
           variant="outline"
           aria-label="次のカードへ"
@@ -299,7 +327,10 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
                 if (arr && arr[0] && onNavigate) onNavigate(arr[0] as UUID);
                 setSummaryOpen(false);
               }}
-            >⭐ 要復習のみ再演習</Button>
+            >
+              <Star className="h-4 w-4 fill-current mr-1" />
+              要復習のみ再演習
+            </Button>
             <Button
               onClick={() => {
                 setScopeIds(flatCards.map((c) => c.id));
@@ -350,32 +381,79 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
   );
 }
 
-function SrsPanel({ onSelect }: { onSelect: (r: SrsRating) => void }) {
+// 理解度スライダー（1–5）。3以上で完了ライン。
+function UnderstandingSlider({
+  cardId,
+  initial,
+  onSave,
+  extraAnswer,
+}: {
+  cardId: string;
+  initial?: number;
+  onSave: (p: Progress) => void;
+  extraAnswer?: Record<string, unknown>;
+}) {
+  const [lv, setLv] = React.useState<number>(initial ?? 0);
+  const completed = lv >= 3;
+  const color = React.useMemo(() => {
+    if (!lv || lv <= 0) return undefined;
+    if (lv <= 2) return "hsl(var(--destructive))";
+    if (lv === 3) return "hsl(var(--warning-600))";
+    return "hsl(var(--success-600))"; // 4–5
+  }, [lv]);
+  const labelClass = React.useMemo(() => {
+    if (!lv || lv <= 0) return "text-gray-500 text-sm";
+    if (lv <= 2) return "text-[hsl(var(--destructive))] text-sm";
+    if (lv === 3) return "text-[hsl(var(--warning-600))] text-sm";
+    return "text-[hsl(var(--success-600))] text-sm";
+  }, [lv]);
   return (
-    <div className="mt-4 grid grid-cols-4 gap-2">
-      <Button onClick={() => onSelect("again")} className="w-full" variant="outline" aria-label="Again（もう一度）">Again</Button>
-      <Button onClick={() => onSelect("hard")} className="w-full" variant="outline" aria-label="Hard（難しい）">Hard</Button>
-      <Button onClick={() => onSelect("good")} className="w-full" variant="outline" aria-label="Good（良い）">Good</Button>
-      <Button onClick={() => onSelect("easy")} className="w-full" variant="outline" aria-label="Easy（簡単）">Easy</Button>
-    </div>
-  );
-}
-
-function TextLearn({ content, cardId }: { content: TextCardContent; cardId: string }) {
-  return (
-    <div>
-      <p className="whitespace-pre-wrap text-gray-800">{content.body}</p>
-      <div className="mt-4">
-        <Button onClick={() => {
-          const input = { cardId, completed: true, completedAt: new Date().toISOString() } as Progress;
-          void saveProgressApi(input);
-        }}>完了</Button>
+    <div className="mt-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm text-gray-700">理解度: {lv > 0 ? `${lv}/5` : "未評価"}</span>
+        <span className={labelClass}>{completed ? "3以上で完了（達成）" : "3以上で完了"}</span>
+      </div>
+      <Slider
+        min={1}
+        max={5}
+        step={1}
+        color={color}
+        value={lv ? [lv] : [1]}
+        onValueChange={(v) => {
+          const next = v[0] ?? 1;
+          setLv(next);
+          // Realtime: reflect level to left NavTree rings immediately
+          workspaceStore.setLevel(cardId as UUID, next);
+        }}
+        onValueCommit={(v) => {
+          const next = v[0] ?? 1;
+          const payload: Progress = {
+            cardId,
+            completed: next >= 3,
+            completedAt: next >= 3 ? new Date().toISOString() : undefined,
+            answer: { ...(extraAnswer ?? {}), level: next },
+          };
+          onSave(payload);
+        }}
+        aria-label="理解度"
+      />
+      <div className="mt-1 flex justify-between text-[10px] text-gray-500">
+        <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
       </div>
     </div>
   );
 }
 
-function QuizLearn({ content, cardId, onResult, onRated, gotoNext }: { content: QuizCardContent; cardId: string; onResult?: (r: "correct" | "wrong") => void; onRated?: (r: SrsRating) => void; gotoNext?: () => void }) {
+function TextLearn({ content, cardId, initialLevel, onSave }: { content: TextCardContent; cardId: string; initialLevel?: number; onSave: (p: Progress) => void }) {
+  return (
+    <div>
+      <p className="whitespace-pre-wrap text-gray-800">{content.body}</p>
+      <UnderstandingSlider cardId={cardId} initial={initialLevel} onSave={onSave} />
+    </div>
+  );
+}
+
+function QuizLearn({ content, cardId, initialLevel, onResult, onSave, gotoNext }: { content: QuizCardContent; cardId: string; initialLevel?: number; onResult?: (r: "correct" | "wrong") => void; onSave: (p: Progress) => void; gotoNext?: () => void }) {
   const [selected, setSelected] = React.useState<number | null>(0);
   const [result, setResult] = React.useState<"idle" | "correct" | "wrong">("idle");
   const [revealed, setRevealed] = React.useState(false);
@@ -385,8 +463,9 @@ function QuizLearn({ content, cardId, onResult, onRated, gotoNext }: { content: 
     const ok = selected === content.answerIndex;
     setResult(ok ? "correct" : "wrong");
     onResult?.(ok ? "correct" : "wrong");
-    const input = { cardId, completed: ok, completedAt: ok ? new Date().toISOString() : undefined, answer: { selected } } as Progress;
-    void saveProgressApi(input);
+    // 採点時点では完了にしない（理解度スライダーで確定）
+    const input = { cardId, completed: false, answer: { selected, result: ok ? "correct" : "wrong" } } as Progress;
+    onSave(input);
   }
 
   return (
@@ -400,7 +479,6 @@ function QuizLearn({ content, cardId, onResult, onRated, gotoNext }: { content: 
       <div className="mt-3 flex items-center gap-3">
         <Button onClick={submit} variant="default" aria-label="採点する">Check</Button>
         <Button onClick={() => setRevealed((r) => !r)} variant="outline" aria-label="ヒントを表示">Hint</Button>
-        <Button onClick={() => gotoNext?.()} variant="outline" aria-label="スキップ">Skip</Button>
         <span
           aria-live="polite"
           role="status"
@@ -413,13 +491,18 @@ function QuizLearn({ content, cardId, onResult, onRated, gotoNext }: { content: 
         <p className="mt-2 text-sm text-gray-700">{content.explanation}</p>
       )}
       {result !== "idle" && (
-        <SrsPanel onSelect={(rating) => { onRated?.(rating); void rateSrsApi(cardId, rating); setTimeout(() => gotoNext?.(), 150); }} />
+        <UnderstandingSlider
+          cardId={cardId}
+          initial={initialLevel}
+          onSave={(p) => { onSave(p); }}
+          extraAnswer={{ selected: selected ?? undefined, result }}
+        />
       )}
     </div>
   );
 }
 
-function FillBlankLearn({ content, cardId, onResult, onRated, gotoNext }: { content: FillBlankCardContent; cardId: string; onResult?: (r: "correct" | "wrong") => void; onRated?: (r: SrsRating) => void; gotoNext?: () => void }) {
+function FillBlankLearn({ content, cardId, initialLevel, onResult, onSave, gotoNext }: { content: FillBlankCardContent; cardId: string; initialLevel?: number; onResult?: (r: "correct" | "wrong") => void; onSave: (p: Progress) => void; gotoNext?: () => void }) {
   const indices = Array.from(content.text.matchAll(/\[\[(\d+)\]\]/g)).map((m) => m[1]);
   const [answers, setAnswers] = React.useState<Record<string, string>>({});
   const [result, setResult] = React.useState<"idle" | "correct" | "wrong">("idle");
@@ -433,8 +516,9 @@ function FillBlankLearn({ content, cardId, onResult, onRated, gotoNext }: { cont
     });
     setResult(ok ? "correct" : "wrong");
     onResult?.(ok ? "correct" : "wrong");
-    const input = { cardId, completed: ok, completedAt: ok ? new Date().toISOString() : undefined, answer: answers } as Progress;
-    void saveProgressApi(input);
+    // 採点時点では完了にしない（理解度スライダーで確定）
+    const input = { cardId, completed: false, answer: { ...answers, result: ok ? "correct" : "wrong" } } as Progress;
+    onSave(input);
   }
 
   const parts = content.text.split(/(\[\[\d+\]\])/g);
@@ -452,7 +536,6 @@ function FillBlankLearn({ content, cardId, onResult, onRated, gotoNext }: { cont
       </div>
       <div className="mt-3 flex items-center gap-3">
         <Button onClick={check} variant="default">Check</Button>
-        <Button onClick={() => gotoNext?.()} variant="outline" aria-label="スキップ">Skip</Button>
         <span
           aria-live="polite"
           role="status"
@@ -462,8 +545,21 @@ function FillBlankLearn({ content, cardId, onResult, onRated, gotoNext }: { cont
         </span>
       </div>
       {result !== "idle" && (
-        <SrsPanel onSelect={(rating) => { onRated?.(rating); void rateSrsApi(cardId, rating); setTimeout(() => gotoNext?.(), 150); }} />
+        <UnderstandingSlider
+          cardId={cardId}
+          initial={initialLevel}
+          onSave={(p) => { onSave(p); }}
+          extraAnswer={{ ...answers, result }}
+        />
       )}
     </div>
   );
+}
+
+// answer から level を抽出（text/quiz/fill-blank 共通）
+function getLevelFromAnswer(answer?: unknown): number | undefined {
+  if (!answer || typeof answer !== "object") return undefined;
+  const a = answer as Record<string, unknown>;
+  const v = a["level"];
+  return typeof v === "number" ? v : undefined;
 }
