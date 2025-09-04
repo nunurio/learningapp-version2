@@ -226,8 +226,9 @@ export default function PlanCoursePage() {
             <CardContent>
             <form onSubmit={startGenerate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium mb-1">テーマ</label>
+                <label htmlFor="theme" className="block text-sm font-medium mb-1">テーマ</label>
                 <Input
+                  id="theme"
                   data-testid="theme-input"
                   value={theme}
                   onChange={(e) => setTheme(e.target.value)}
@@ -236,24 +237,27 @@ export default function PlanCoursePage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">レベル（任意）</label>
+                <label htmlFor="level" className="block text-sm font-medium mb-1">レベル（任意）</label>
                 <Input
+                  id="level"
                   value={level}
                   onChange={(e) => setLevel(e.target.value)}
                   placeholder="初級/中級/上級 など"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">目標（任意）</label>
+                <label htmlFor="goal" className="block text-sm font-medium mb-1">目標（任意）</label>
                 <Input
+                  id="goal"
                   value={goal}
                   onChange={(e) => setGoal(e.target.value)}
                   placeholder="例: 3週間で基礎を習得"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">レッスン数</label>
+                <label htmlFor="lessonCount" className="block text-sm font-medium mb-1">レッスン数</label>
                 <Input
+                  id="lessonCount"
                   type="number"
                   min={3}
                   max={30}
@@ -326,16 +330,18 @@ export default function PlanCoursePage() {
 
                 <div className="grid gap-4 px-6 py-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1">コースタイトル</label>
+                    <label htmlFor="courseTitle" className="block text-sm font-medium mb-1">コースタイトル</label>
                     <Input
+                      id="courseTitle"
                       autoFocus
                       value={editedPlan.course.title}
                       onChange={(e) => setEditedPlan((p) => (p ? { ...p, course: { ...p.course, title: e.target.value } } : p))}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">コース説明（任意）</label>
+                    <label htmlFor="courseDescription" className="block text-sm font-medium mb-1">コース説明（任意）</label>
                     <Textarea
+                      id="courseDescription"
                       value={editedPlan.course.description ?? ""}
                       onChange={(e) => setEditedPlan((p) => (p ? { ...p, course: { ...p.course, description: e.target.value } } : p))}
                       placeholder="このコースの概要を入力"
@@ -466,8 +472,8 @@ function SortableLessonItem(props: SortableLessonItemProps) {
             <Button type="button" size="sm" variant="destructive" onClick={onRemove}>削除</Button>
           </div>
         </div>
-        <Input value={title} onChange={(e) => onTitle(e.target.value)} />
-        <Textarea value={summary ?? ""} onChange={(e) => onSummary(e.target.value)} placeholder="このレッスンで学ぶこと" />
+        <Input aria-label={`レッスン ${index + 1} タイトル`} value={title} onChange={(e) => onTitle(e.target.value)} />
+        <Textarea aria-label={`レッスン ${index + 1} 説明`} value={summary ?? ""} onChange={(e) => onSummary(e.target.value)} placeholder="このレッスンで学ぶこと" />
       </div>
     </li>
   );
