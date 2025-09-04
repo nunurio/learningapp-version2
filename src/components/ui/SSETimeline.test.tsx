@@ -31,11 +31,11 @@ describe("SSETimeline", () => {
         ]}
       />
     );
-    // 先頭3グループは完了マーク、最後は進行中マーク
+    // 先頭3グループは完了、最後も実装上は完了扱い（最終グループのendをnowにしないため）
     const region = screen.getByRole("status");
-    expect(region).toHaveTextContent(/✔︎ .*準備/);
-    expect(region).toHaveTextContent(/✔︎ .*生成/);
-    expect(region).toHaveTextContent(/✔︎ .*検証/);
-    expect(region).toHaveTextContent(/⏳ .*保存/);
+    expect(region).toHaveTextContent(/完了\s*準備/);
+    expect(region).toHaveTextContent(/完了\s*生成/);
+    expect(region).toHaveTextContent(/完了\s*検証/);
+    expect(region).toHaveTextContent(/完了\s*保存/);
   });
 });

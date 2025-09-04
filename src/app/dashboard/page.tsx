@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Confirm } from "@/components/ui/confirm";
+import { Sparkles, BookOpen, Trash2 } from "lucide-react";
 
 type StatusFilter = "all" | "draft" | "published";
 
@@ -58,7 +59,7 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button asChild variant="default" size="lg" className="shadow-lg hover:shadow-xl">
                 <Link href="/courses/plan">
-                  <span className="mr-2">✨</span>
+                  <Sparkles className="mr-2 h-4 w-4" aria-hidden />
                   AIでコースを作成
                 </Link>
               </Button>
@@ -98,7 +99,7 @@ export default function Home() {
           <Card variant="elevated" className="p-12 text-center">
             <div className="max-w-md mx-auto">
               <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
-                <span className="text-3xl">📚</span>
+                <BookOpen className="h-10 w-10" aria-hidden />
               </div>
               <h3 className="text-xl font-semibold mb-3">まだコースがありません</h3>
               <p className="text-[hsl(var(--fg))]/60 mb-6">
@@ -107,7 +108,7 @@ export default function Home() {
               </p>
               <Button asChild variant="default" size="lg">
                 <Link href="/courses/plan">
-                  <span className="mr-2">✨</span>
+                  <Sparkles className="mr-2 h-4 w-4" aria-hidden />
                   最初のコースを作る
                 </Link>
               </Button>
@@ -160,7 +161,7 @@ export default function Home() {
                         aria-label="削除"
                         title="削除"
                       >
-                        🗑️
+                        <Trash2 className="h-4 w-4" aria-hidden />
                       </Button>
                     </Confirm>
                   </div>

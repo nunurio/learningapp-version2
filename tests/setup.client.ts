@@ -40,11 +40,38 @@ if (!hasLocalStorage(globalThis) || !globalThis.localStorage) {
   });
 }
 
+// Polyfill: ResizeObserver (Radix Slider 等が使用)
+if (!("ResizeObserver" in globalThis)) {
+  class ResizeObserverPolyfill {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  globalThis.ResizeObserver = ResizeObserverPolyfill;
+}
+
+// Polyfill: matchMedia（NavTree のモバイル判定で使用）
+if (typeof window !== "undefined" && !window.matchMedia) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: (query: string): MediaQueryList => ({
+      media: query,
+      matches: false,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => true,
+    }),
+  });
+}
+
 // next/image を img にスタブ（テストを軽量化）
 vi.mock("next/image", () => {
   return {
     default: (props: React.ImgHTMLAttributes<HTMLImageElement> & { src: string; alt: string }) => {
-      const { src, alt, ...rest } = props || ({} as React.ImgHTMLAttributes<HTMLImageElement> & { src: string; alt: string });
+      const { src, alt, ...rest } = props;
       return React.createElement("img", { src, alt, ...rest });
     },
   };

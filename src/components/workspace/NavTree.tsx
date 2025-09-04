@@ -23,7 +23,7 @@ type Props = {
 };
 
 export function NavTree({ courseId, selectedId, onSelect }: Props) {
-  const { drafts, version } = useWorkspace();
+  const { drafts, version, levels } = useWorkspace();
   const [q, setQ] = React.useState("");
   const [courses, setCourses] = React.useState<Course[]>([]);
   const [lessons, setLessons] = React.useState<Lesson[]>([]);
@@ -35,6 +35,28 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
   const [typeFilter, setTypeFilter] = React.useState<"all" | CardType>("all");
   const [onlyFlagged, setOnlyFlagged] = React.useState(false);
   const [onlyUnlearned, setOnlyUnlearned] = React.useState(false);
+
+  // viewport判定（md未満=モバイル）。Sheet内での挙動分岐に使用
+  const [isMobile, setIsMobile] = React.useState(false);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia("(max-width: 767px)");
+    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    setIsMobile(mql.matches);
+    if (typeof mql.addEventListener === "function") {
+      mql.addEventListener("change", onChange);
+      return () => { mql.removeEventListener("change", onChange); };
+    }
+    const legacy = mql as MediaQueryList & {
+      addListener?: (listener: (e: MediaQueryListEvent) => void) => void;
+      removeListener?: (listener: (e: MediaQueryListEvent) => void) => void;
+    };
+    if (typeof legacy.addListener === "function") {
+      legacy.addListener(onChange);
+      return () => { legacy.removeListener?.(onChange); };
+    }
+    return () => {};
+  }, []);
 
   React.useEffect(() => {
     let mounted = true;
@@ -80,9 +102,24 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
   }, [cards]);
 
   const getProgressLocal = React.useCallback((cardId: UUID) => progress.find((p) => p.cardId === cardId), [progress]);
+  const getLevelFromAnswer = (answer?: unknown): number | undefined => {
+    if (!answer || typeof answer !== "object") return undefined;
+    const a = answer as Record<string, unknown>;
+    const v = a["level"];
+    return typeof v === "number" ? v : undefined;
+  };
+  const getCardPct = (cardId: UUID): number => {
+    // Prefer transient level set from the center pane slider
+    const ov = levels[cardId];
+    if (typeof ov === "number") return Math.min(100, Math.max(0, ov * 20));
+    const p = getProgressLocal(cardId);
+    const lv = getLevelFromAnswer(p?.answer);
+    if (typeof lv === "number") return Math.min(100, Math.max(0, lv * 20));
+    return p?.completed ? 100 : 0;
+  };
 
   // 可視行をフラット化
-  type Row = { key: string; type: "course" | "lesson" | "card"; id: string; level: number; title: string; tags?: string[]; completed?: boolean; expanded?: boolean };
+  type Row = { key: string; type: "course" | "lesson" | "card"; id: string; level: number; title: string; tags?: string[]; progressPct?: number; expanded?: boolean };
   const rows: Row[] = React.useMemo(() => {
     const out: Row[] = [];
     const match = (s: string) => (q ? s.toLowerCase().includes(q.toLowerCase()) : true);
@@ -130,7 +167,8 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
               const title = labelForCardWithDraft(c, d);
               const t: string[] = d?.tags ?? (c.tags ?? []);
               if (match(title) || match(c.cardType))
-                out.push({ key: `c:${c.id}`, type: "card", id: c.id, level: 3, title, tags: t, completed: !!getProgressLocal(c.id)?.completed });
+                // カード行のリング％は描画時に常に再計算するため、ここでは保持しない
+                out.push({ key: `c:${c.id}`, type: "card", id: c.id, level: 3, title, tags: t });
             });
           }
         });
@@ -145,8 +183,8 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
     for (const l of lessons) {
       const cs = cardsByLesson.get(l.id) ?? [];
       if (cs.length === 0) { map.set(l.id, 0); continue; }
-      const done = cs.reduce((acc, c) => acc + (getProgressLocal(c.id)?.completed ? 1 : 0), 0);
-      map.set(l.id, Math.round((done / cs.length) * 100));
+      const sum = cs.reduce((acc, c) => acc + getCardPct(c.id), 0);
+      map.set(l.id, Math.round(sum / cs.length));
     }
     return map;
   })();
@@ -315,7 +353,18 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
                     expanded={!!expanded[`co:${r.id}`]}
                     selected={r.id === courseId}
                     active={activeId === r.id}
-                    onClick={() => onSelect(r.id as UUID, "course")}
+                    onClick={() => {
+                      const key = `co:${r.id}` as const;
+                      if (isMobile) {
+                        // モバイル: タップで展開/折りたたみ
+                        setExpanded((m) => ({ ...m, [key]: !m[key] }));
+                      } else {
+                        // デスクトップ: クリックでトグル。開く時だけコースを選択
+                        const willOpen = !expanded[key];
+                        setExpanded((m) => ({ ...m, [key]: !m[key] }));
+                        if (willOpen) onSelect(r.id as UUID, "course");
+                      }
+                    }}
                     onToggle={() => setExpanded((m) => ({ ...m, [`co:${r.id}`]: !m[`co:${r.id}`] }))}
                     onActive={() => setActiveId(r.id)}
                   />
@@ -329,9 +378,16 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
                     active={activeId === r.id}
                     progressPct={lessonProgress.get(r.id) ?? 0}
                     onClick={() => {
-                      // レッスン名クリック時: 必ず展開し、右ペインにレッスンツール（編集）を開く
-                      setExpanded((m) => (m[`le:${r.id}`] ? m : { ...m, [`le:${r.id}`]: true }));
-                      onSelect(r.id as UUID, "lesson-edit");
+                      const key = `le:${r.id}` as const;
+                      if (isMobile) {
+                        // モバイル: タップで展開/折りたたみ
+                        setExpanded((m) => ({ ...m, [key]: !m[key] }));
+                      } else {
+                        // デスクトップ: クリックでトグル。開く時だけ編集ペインを選択
+                        const willOpen = !expanded[key];
+                        setExpanded((m) => ({ ...m, [key]: !m[key] }));
+                        if (willOpen) onSelect(r.id as UUID, "lesson-edit");
+                      }
                     }}
                     onToggle={() => setExpanded((m) => ({ ...m, [`le:${r.id}`]: !m[`le:${r.id}`] }))}
                     onActive={() => setActiveId(r.id)}
@@ -345,7 +401,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
                     selected={selectedId === r.id}
                     active={activeId === r.id}
                     tags={r.tags ?? []}
-                    completed={!!r.completed}
+                    progressPct={getCardPct(r.id as UUID)}
                     onClick={() => onSelect(r.id as UUID, "card")}
                     onActive={() => setActiveId(r.id)}
                   />
@@ -446,7 +502,7 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
         <span aria-hidden className="pointer-events-none absolute left-0 top-1 bottom-1 w-1 rounded bg-[hsl(var(--primary))]/30 origin-left scale-x-0 group-hover:scale-x-100 group-focus-within:scale-x-100 transition-transform duration-150" />
         <button
           aria-label={expanded ? "折りたたむ" : "展開"}
-          onClick={(e) => { e.stopPropagation(); onToggle(); onEdit(); }}
+          onClick={(e) => { e.stopPropagation(); onToggle(); }}
           className="inline-flex items-center justify-center size-6 rounded hover:bg-black/5"
         >
           <Chevron open={expanded} />
@@ -477,14 +533,14 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
   );
 }
 
-function TreeCardRow({ id, title, level, selected, active, tags, completed, onClick, onActive }:{
+function TreeCardRow({ id, title, level, selected, active, tags, progressPct, onClick, onActive }:{
   id: string;
   title: string;
   level: number;
   selected: boolean;
   active: boolean;
   tags: string[];
-  completed: boolean;
+  progressPct: number;
   onClick: () => void;
   onActive: () => void;
 }) {
@@ -504,7 +560,7 @@ function TreeCardRow({ id, title, level, selected, active, tags, completed, onCl
           data-sel={selected}
         >
           <span aria-hidden className="pointer-events-none absolute left-0 top-1 bottom-1 w-1 rounded bg-[hsl(var(--primary))]/30 origin-left scale-x-0 group-hover:scale-x-100 group-focus-within:scale-x-100 transition-transform duration-150" />
-          <ProgressRing value={completed ? 100 : 0} size={12} stroke={2} title={completed ? "完了" : "未完了"} />
+          <ProgressRing value={progressPct} size={12} stroke={2} title={`進捗 ${progressPct}%`} />
           <span className="truncate">{title}</span>
           {tags?.length ? (
             <span className="ml-2 flex items-center gap-1 overflow-hidden">
