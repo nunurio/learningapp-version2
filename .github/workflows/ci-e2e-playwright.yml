@@ -40,7 +40,7 @@ jobs:
         run: supabase start
 
       - name: Apply migrations (reset local DB)
-        run: supabase db reset --force
+        run: supabase db reset --yes --local
 
       - name: Export Supabase env to Next.js
         shell: bash
