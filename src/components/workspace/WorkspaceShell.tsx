@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { UUID } from "@/lib/types";
 import { Header } from "@/components/ui/header";
 import { Button } from "@/components/ui/button";
@@ -15,9 +16,9 @@ import { listCards as listCardsApi } from "@/lib/client-api";
 import { workspaceStore } from "@/lib/state/workspace-store";
 import { useHydrateDraftsOnce } from "@/lib/state/useHydrateDrafts";
 
-type Props = { courseId: UUID; defaultLayout?: number[]; cookieKey?: string };
+type Props = { courseId: UUID; defaultLayout?: number[]; cookieKey?: string; initialCardId?: string };
 
-export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
+export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCardId }: Props) {
   const router = useRouter();
   useHydrateDraftsOnce();
   const [selId, setSelId] = React.useState<string | undefined>(undefined);
@@ -62,6 +63,14 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey }: Props) {
     setSelKind("card");
     if (ctx === "mobile") setOpenNav(false);
   }, [courseId, router]);
+
+  // 初期選択（学習モードから戻ってきた cardId を反映）
+  React.useEffect(() => {
+    if (!selId && initialCardId) {
+      setSelId(initialCardId);
+      setSelKind("card");
+    }
+  }, [initialCardId]);
 
   return (
     <div className="min-h-screen">
@@ -171,7 +180,12 @@ function CenterPanel({ courseId, selId, selKind, onNavigate }: { courseId: UUID;
     <div className="h-full p-4 overflow-auto">
       <div className="flex items-center justify-between mb-3">
         <h1 className="text-lg font-semibold">学習ワークスペース</h1>
-        <div />
+        <div>
+          {/* 学習モードへ遷移（選択中のカードがあればそのカードから開始） */}
+          <Button asChild size="sm" variant="outline" aria-label="学習モード">
+            <Link href={`/learn/${courseId}${selId ? `?cardId=${selId}` : ""}`}>学習モード</Link>
+          </Button>
+        </div>
       </div>
       {!selId ? (
         <p className="text-sm text-gray-700">左のナビからカードを選択すると、ここで学習できます。</p>

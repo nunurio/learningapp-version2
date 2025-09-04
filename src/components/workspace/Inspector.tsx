@@ -387,7 +387,7 @@ function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, se
         <div className="w-full">
           <Button
             className="h-10 w-full"
-            size="md"
+            size="default"
             onClick={() => { setRunningMode(aiMode); setRunningLesson(lesson); }}
             disabled={isRunning}
           >

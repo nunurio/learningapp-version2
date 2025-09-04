@@ -195,10 +195,12 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
   return (
     <div className="p-2">
       {/* ヘッダー／カードメタ＋フラグ＋ノート */}
-      <div className="mb-2">
-        <span className="px-2 py-1 rounded bg-black/5 text-xs">{view.cardType}</span>
-        {view.title ? <span className="ml-2 font-medium">{view.title}</span> : null}
-        <div className="float-right flex items-center gap-2">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center">
+          <span className="px-2 py-1 rounded bg-black/5 text-xs">{view.cardType}</span>
+          {view.title ? <span className="ml-2 font-medium">{view.title}</span> : null}
+        </div>
+        <div className="flex items-center gap-1">
           <Button
             aria-label={flag ? "フラグ解除" : "フラグ"}
             onClick={async () => {
@@ -210,13 +212,15 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
                 return copy;
               });
             }}
-            size="sm"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
           >
-            <Star className={flag ? "h-4 w-4 fill-current" : "h-4 w-4"} />
+            <Star className={flag ? "h-4 w-4 fill-current text-yellow-500" : "h-4 w-4"} />
           </Button>
           <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" aria-label="ノート">
+              <Button size="icon" variant="ghost" aria-label="ノート" className="h-8 w-8">
                 <StickyNote className="h-4 w-4" />
               </Button>
             </DialogTrigger>
@@ -231,18 +235,29 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
               </div>
             </DialogContent>
           </Dialog>
-          <Button onClick={() => setShowHelp((s) => !s)} size="sm" aria-label="キーボードヘルプ">
+          <Button onClick={() => setShowHelp((s) => !s)} size="icon" variant="ghost" aria-label="キーボードヘルプ" className="h-8 w-8">
             <HelpCircle className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
       {/* 進捗バー */}
-      <div className="mt-2">
+      <div className="mb-4">
         <div className="h-1.5 w-full rounded bg-[hsl(var(--muted))]">
           <div className="h-full rounded bg-[hsl(var(--primary))]" style={{ width: `${activeList.length ? ((activeIndex + 1) / activeList.length) * 100 : 0}%` }} />
         </div>
-        <p className="text-xs text-gray-600 mt-1">{activeIndex + 1} / {activeList.length}</p>
+        <div className="flex items-center justify-between mt-1">
+          <span className="text-xs text-gray-600">
+            {activeIndex + 1} / {activeList.length}
+          </span>
+          <span className="text-xs text-gray-600">
+            理解度: {(() => {
+              const cur = progress.find((p) => p.cardId === view.id);
+              const level = getLevelFromAnswer(cur?.answer);
+              return level != null ? `${level}/5` : "未評価";
+            })()}
+          </span>
+        </div>
       </div>
 
       {showHelp && (
@@ -294,12 +309,7 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         />
       )}
 
-      <div className="mt-3 flex items-center justify-between">
-        <div />
-        <Button onClick={() => setSummaryOpen(true)} aria-label="セッションを終了">セッション終了</Button>
-      </div>
-
-      {/* 学習ビューと同様のナビゲーション */}
+      {/* ナビゲーション */}
       <nav className="mt-6 flex items-center justify-between" aria-label="カードナビゲーション">
         <Button
           onClick={() => { if (prevId && onNavigate) onNavigate(prevId); }}
@@ -309,16 +319,14 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         >
           前へ
         </Button>
-        <div className="text-sm text-gray-600" aria-live="polite">
-          {(() => {
-            const cur = progress.find((p) => p.cardId === view.id);
-            const level = getLevelFromAnswer(cur?.answer);
-            const completed = level != null ? level >= 3 : !!cur?.completed;
-            const label = completed ? "完了" : "未完了";
-            const lvText = level != null ? ` / 理解度 ${level}/5` : " / 理解度 未評価";
-            return label + lvText;
-          })()}
-        </div>
+        <Button 
+          onClick={() => setSummaryOpen(true)} 
+          variant="ghost" 
+          size="sm"
+          aria-label="セッションを終了"
+        >
+          セッション終了
+        </Button>
         <Button
           onClick={() => { if (nextId && onNavigate) onNavigate(nextId); }}
           disabled={!nextId}
@@ -461,7 +469,6 @@ function UnderstandingSlider({
     // Sync transient level to workspace store for realtime UI (NavTree rings)
     const normalized = typeof initial === "number" && initial > 0 ? initial : undefined;
     workspaceStore.setLevel(cardId as UUID, normalized);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cardId, initial]);
   const completed = lv >= 3;
   const color = React.useMemo(() => {
@@ -479,8 +486,8 @@ function UnderstandingSlider({
   return (
     <div className="mt-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-gray-700">理解度: {lv > 0 ? `${lv}/5` : "未評価"}</span>
-        <span className={labelClass}>{completed ? "3以上で完了（達成）" : "3以上で完了"}</span>
+        <span className="text-sm text-gray-700">理解度 {lv > 0 ? `${lv}/5` : "未評価"}</span>
+        <span className={labelClass}>{completed ? `完了 / 理解度 ${lv}/5` : "3以上で完了"}</span>
       </div>
       <Slider
         min={1}

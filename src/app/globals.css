@@ -8,24 +8,24 @@
   --muted: 214 32% 91%;
   --card: 0 0% 100%;
   --border: 214 32% 91%;
-  --primary: 221 83% 53%;
+  --primary: 218 65% 46%;  /* Softer, more comfortable blue */
   --primary-fg: 0 0% 100%;
   --destructive: 0 84.2% 60.2%;
   --accent: 217 92% 95%;
   --focus: 221 83% 53%;
 
   /* Modern color palette (HSL values) */
-  /* Primary Blues - Learning & Growth */
-  --primary-50: 213 100% 97%;
+  /* Primary Blues - Learning & Growth (Refined for visual comfort) */
+  --primary-50: 214 100% 97%;
   --primary-100: 214 95% 93%;
-  --primary-200: 213 97% 87%;
-  --primary-300: 211 96% 78%;
-  --primary-400: 213 94% 68%;
-  --primary-500: 217 91% 60%;  /* Main brand color */
-  --primary-600: 221 83% 53%;
-  --primary-700: 224 76% 48%;
-  --primary-800: 226 71% 40%;
-  --primary-900: 224 64% 33%;
+  --primary-200: 213 92% 85%;
+  --primary-300: 212 88% 75%;
+  --primary-400: 213 78% 63%;
+  --primary-500: 216 70% 52%;  /* Main brand color - softer saturation */
+  --primary-600: 218 65% 46%;  /* Reduced saturation for comfort */
+  --primary-700: 220 62% 40%;
+  --primary-800: 222 58% 34%;
+  --primary-900: 224 54% 28%;
 
   /* Secondary (Amber-like) - Energy & Vitality */
   --secondary-50: 48 100% 96%;
@@ -88,7 +88,7 @@
     --muted: 217 33% 17%;
     --card: 222 84% 5%;
     --border: 217 33% 17%;
-    --primary: 217 91% 60%;
+    --primary: 216 70% 52%;  /* Softer blue for dark mode */
     /* Foreground color used on primary backgrounds */
     --primary-fg: 0 0% 100%;
     --destructive: 0 62.8% 30.6%;
@@ -238,6 +238,165 @@ body {
   background: var(--gradient-card);
 }
 
+/* --- Modern Button Styles ---------------------------------------- */
+@layer utilities {
+  /* Ripple effect for buttons */
+  @keyframes button-ripple {
+    to {
+      transform: scale(4);
+      opacity: 0;
+    }
+  }
+
+  /* Button hover lift effect - subtle */
+  [data-slot="button"]:not(:disabled):hover {
+    transform: translateY(-1px);
+  }
+
+  /* Active press effect - natural feel */
+  [data-slot="button"]:not(:disabled):active {
+    transform: scale(0.97) translateY(0);
+  }
+
+  /* Focus visible improvements - WCAG compliant */
+  [data-slot="button"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px hsl(var(--bg)),
+                0 0 0 4px hsl(var(--primary-500) / 0.4);
+  }
+  
+  @media (prefers-color-scheme: dark) {
+    [data-slot="button"]:focus-visible {
+      box-shadow: 0 0 0 2px hsl(var(--bg)),
+                  0 0 0 4px hsl(var(--primary-400) / 0.3);
+    }
+  }
+
+  /* Smooth color transitions */
+  [data-slot="button"] {
+    position: relative;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    transform-style: preserve-3d;
+    backface-visibility: hidden;
+  }
+
+  /* Primary variant - refined for visual comfort */
+  [data-slot="button"].bg-primary {
+    background: hsl(var(--primary-600));
+    box-shadow: 0 1px 3px hsl(0 0% 0% / 0.12),
+                0 1px 2px hsl(0 0% 0% / 0.06);
+  }
+
+  [data-slot="button"].bg-primary:not(:disabled):hover {
+    background: hsl(var(--primary-700));
+    box-shadow: 0 2px 6px hsl(0 0% 0% / 0.15),
+                0 1px 3px hsl(0 0% 0% / 0.08);
+  }
+
+  /* Secondary variant - refined for visual comfort */
+  [data-slot="button"].bg-secondary {
+    background: hsl(var(--secondary-500));
+    box-shadow: 0 1px 3px hsl(0 0% 0% / 0.12),
+                0 1px 2px hsl(0 0% 0% / 0.06);
+  }
+
+  [data-slot="button"].bg-secondary:not(:disabled):hover {
+    background: hsl(var(--secondary-600));
+    box-shadow: 0 2px 6px hsl(0 0% 0% / 0.15),
+                0 1px 3px hsl(0 0% 0% / 0.08);
+  }
+
+  /* Outline variant glass effect */
+  [data-slot="button"].border {
+    background: hsl(var(--bg) / 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  [data-slot="button"].border:not(:disabled):hover {
+    background: hsl(var(--accent) / 0.8);
+    border-color: hsl(var(--primary-400) / 0.5);
+    box-shadow: 0 2px 8px hsl(var(--primary-500) / 0.1);
+  }
+
+  /* Ghost variant subtle interactions */
+  [data-slot="button"]:not([class*="bg-"]):not(.border):not(.text-primary):hover {
+    background: hsl(var(--accent) / 0.6);
+    box-shadow: 0 1px 3px hsl(0 0% 0% / 0.05);
+  }
+
+  /* Dark mode adjustments */
+  @media (prefers-color-scheme: dark) {
+    [data-slot="button"].bg-primary {
+      background: hsl(var(--primary-500));
+      box-shadow: 0 1px 3px hsl(0 0% 0% / 0.2),
+                  0 1px 2px hsl(0 0% 0% / 0.1);
+    }
+
+    [data-slot="button"].bg-primary:not(:disabled):hover {
+      background: hsl(var(--primary-400));
+      box-shadow: 0 2px 6px hsl(0 0% 0% / 0.25),
+                  0 1px 3px hsl(0 0% 0% / 0.15);
+    }
+
+    [data-slot="button"].border {
+      background: hsl(var(--bg) / 0.05);
+      border-color: hsl(var(--border) / 0.3);
+    }
+
+    [data-slot="button"].border:not(:disabled):hover {
+      background: hsl(var(--accent) / 0.2);
+      border-color: hsl(var(--primary-400) / 0.6);
+      box-shadow: 0 2px 12px hsl(var(--primary-400) / 0.15),
+                  inset 0 0 20px hsl(var(--primary-400) / 0.05);
+    }
+  }
+
+  /* Loading state animation */
+  [data-slot="button"][data-loading="true"] {
+    color: transparent;
+    pointer-events: none;
+  }
+
+  [data-slot="button"][data-loading="true"]::after {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid hsl(var(--primary-fg));
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: button-loading 0.6s linear infinite;
+  }
+
+  @keyframes button-loading {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Pulse animation for important actions */
+  [data-slot="button"][data-pulse="true"] {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.8;
+      transform: scale(1.05);
+    }
+  }
+}
+
+
 .skeleton {
   animation: shimmer 2s infinite;
   background: linear-gradient(
@@ -305,14 +464,18 @@ body {
   opacity: 1;
 }
 
-/* Button enhancements */
+/* Premium button effects - refined */
 .btn-gradient {
-  background: var(--gradient-primary);
+  background: linear-gradient(135deg, 
+              hsl(var(--primary-600)) 0%, 
+              hsl(var(--primary-500)) 100%);
   color: white;
   font-weight: 500;
-  transition: all var(--animation-base);
+  transition: all var(--animation-fast) cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  box-shadow: 0 2px 4px hsl(0 0% 0% / 0.1),
+              0 1px 2px hsl(0 0% 0% / 0.06);
 }
 
 .btn-gradient::before {
@@ -323,14 +486,105 @@ body {
   width: 0;
   height: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.25);
   transform: translate(-50%, -50%);
-  transition: width var(--animation-slow), height var(--animation-slow);
+  transition: width var(--animation-base) ease-out,
+              height var(--animation-base) ease-out;
+  pointer-events: none;
 }
 
 .btn-gradient:active::before {
-  width: 300px;
-  height: 300px;
+  width: 200px;
+  height: 200px;
+}
+
+.btn-gradient:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px hsl(0 0% 0% / 0.15),
+              0 2px 4px hsl(0 0% 0% / 0.08);
+  background: linear-gradient(135deg, 
+              hsl(var(--primary-700)) 0%, 
+              hsl(var(--primary-600)) 100%);
+}
+
+/* Floating action button */
+.btn-float {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--gradient-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px hsl(var(--primary-600) / 0.3),
+              0 2px 6px hsl(var(--primary-600) / 0.2);
+  transition: all var(--animation-base) cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1000;
+}
+
+.btn-float:hover {
+  transform: scale(1.1) rotate(90deg);
+  box-shadow: 0 8px 24px hsl(var(--primary-600) / 0.4),
+              0 4px 12px hsl(var(--primary-600) / 0.3);
+}
+
+.btn-float:active {
+  transform: scale(0.95);
+}
+
+/* Icon button effects */
+.btn-icon {
+  position: relative;
+  transition: all var(--animation-fast) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-icon:hover svg {
+  transform: scale(1.2);
+}
+
+.btn-icon:active svg {
+  transform: scale(0.9);
+}
+
+/* Neumorphic button style */
+.btn-neumorphic {
+  background: hsl(var(--bg));
+  box-shadow: 8px 8px 16px hsl(0 0% 0% / 0.1),
+              -8px -8px 16px hsl(0 0% 100% / 0.7);
+  border: none;
+  transition: all var(--animation-base) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-neumorphic:hover {
+  box-shadow: 10px 10px 20px hsl(0 0% 0% / 0.15),
+              -10px -10px 20px hsl(0 0% 100% / 0.8);
+}
+
+.btn-neumorphic:active {
+  box-shadow: inset 4px 4px 8px hsl(0 0% 0% / 0.1),
+              inset -4px -4px 8px hsl(0 0% 100% / 0.7);
+}
+
+@media (prefers-color-scheme: dark) {
+  .btn-neumorphic {
+    background: hsl(var(--card));
+    box-shadow: 8px 8px 16px hsl(0 0% 0% / 0.3),
+                -8px -8px 16px hsl(0 0% 100% / 0.05);
+  }
+  
+  .btn-neumorphic:hover {
+    box-shadow: 10px 10px 20px hsl(0 0% 0% / 0.4),
+                -10px -10px 20px hsl(0 0% 100% / 0.06);
+  }
+  
+  .btn-neumorphic:active {
+    box-shadow: inset 4px 4px 8px hsl(0 0% 0% / 0.3),
+                inset -4px -4px 8px hsl(0 0% 100% / 0.05);
+  }
 }
 
 /* Accordion animations */
