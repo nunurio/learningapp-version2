@@ -10,7 +10,14 @@ import { saveDraftAction, commitCoursePlanAction, commitCoursePlanPartialAction,
 
 export async function POST(req: Request) {
   try {
-    const bodyUnknown: unknown = await req.json();
+    // req.json() は空ボディで例外を投げるため安全に読み取る
+    let bodyUnknown: unknown = {};
+    try {
+      const raw = await req.text();
+      bodyUnknown = raw ? JSON.parse(raw) : {};
+    } catch {
+      bodyUnknown = {};
+    }
     const parsed = z.object({ op: z.string(), params: z.unknown().optional() }).safeParse(bodyUnknown);
     const op = parsed.success ? parsed.data.op : "";
     const p = (parsed.success ? parsed.data.params : {}) ?? {};
@@ -190,4 +197,13 @@ export async function POST(req: Request) {
     const msg = (e as { message?: string } | undefined)?.message ?? "Internal Error";
     return new NextResponse(msg, { status: 500 });
   }
+}
+
+// ヘルスチェックやツール誤爆用に軽量レスポンスを用意
+export async function GET() {
+  return NextResponse.json({ ok: true });
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204 });
 }
