@@ -64,6 +64,8 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
   const [durations, setDurations] = React.useState<Record<string, number>>({});
   const [ratings, setRatings] = React.useState<Record<string, SrsRating | undefined>>({});
   const [results, setResults] = React.useState<Record<string, "correct" | "wrong">>({});
+  // このセッションで確定した「理解度」(1-5)。サマリーと再演習の基準。
+  const [levels, setLevels] = React.useState<Record<string, number | undefined>>({});
   const [flag, setFlag] = React.useState<boolean>(false);
   const [noteOpen, setNoteOpen] = React.useState(false);
   const [note, setNote] = React.useState<string>("");
@@ -108,6 +110,37 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         }
       });
     saveQueueRef.current.set(key, next);
+
+    // 3) 理解度スライダー確定時（answer.level がある）に SRS を評価して更新
+    try {
+      const level = getLevelFromAnswer(input.answer);
+      if (typeof level === "number") {
+        // セッション内レベル確定
+        setLevels((m) => ({ ...m, [input.cardId]: level }));
+        // レベル→SRS レーティングへ変換し保存（学習スケジュール更新）
+        const rating: SrsRating = level <= 1 ? "again" : level === 2 ? "hard" : level === 5 ? "easy" : "good";
+        setRatings((m) => ({ ...m, [input.cardId]: rating }));
+        // 動的 import ＆ 存在チェックでモック未定義環境（テスト）でも安全に呼び出す
+        void import("@/lib/client-api")
+          .then((m) => {
+            if (
+              "rateSrs" in m &&
+              typeof (m as unknown as { rateSrs?: (id: UUID, r: SrsRating) => Promise<unknown> }).rateSrs === "function"
+            ) {
+              return (m as unknown as { rateSrs: (id: UUID, r: SrsRating) => Promise<unknown> }).rateSrs(
+                input.cardId as UUID,
+                rating
+              );
+            }
+            return undefined;
+          })
+          .catch((e) => {
+            console.error("rateSrs failed:", e);
+          });
+      }
+    } catch (e) {
+      console.error("SRS rating update failed:", e);
+    }
   }, []);
 
   React.useEffect(() => {
@@ -304,43 +337,49 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
             <DialogDescription>このセッションの学習結果</DialogDescription>
           </DialogHeader>
           <ul className="grid grid-cols-2 gap-2 text-sm">
-            <li>正答: {Object.values(results).filter((v) => v === "correct").length}</li>
-            <li>誤答: {Object.values(results).filter((v) => v === "wrong").length}</li>
-            <li>Hard率: {(() => {
-              const vals = Object.values(ratings).filter(Boolean) as SrsRating[];
-              const hard = vals.filter((v) => v === "hard").length;
-              return vals.length ? Math.round((hard / vals.length) * 100) : 0;
-            })()}%</li>
+            <li>完了(≧3): {Object.values(levels).filter((v) => typeof v === "number" && (v as number) >= 3).length}</li>
+            <li>未達(≦2): {Object.values(levels).filter((v) => typeof v === "number" && (v as number) <= 2).length}</li>
+            <li>平均理解度: {(() => {
+              const arr = Object.values(levels).filter((v): v is number => typeof v === "number");
+              if (!arr.length) return "-";
+              const avg = Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10;
+              return `${avg}/5`;
+            })()}</li>
             <li>平均反応時間: {(() => {
               const arr = Object.values(durations);
               if (!arr.length) return "-";
               const avg = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
               return `${Math.round(avg / 100) / 10}s`;
             })()}</li>
+            <li className="col-span-2">分布: {(() => {
+              const dist = [1,2,3,4,5].map((lv) => Object.values(levels).filter((v) => v === lv).length);
+              return dist.map((c, i) => `${i+1}:${c}`).join(" / ");
+            })()}</li>
           </ul>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Button
               onClick={() => {
-                const ids = Object.entries(results)
-                  .filter(([, r]) => r === "wrong")
+                const ids = Object.entries(levels)
+                  .filter(([, lv]) => typeof lv === "number" && (lv as number) <= 2)
                   .map(([id]) => id);
                 const arr = ids.length ? ids : null;
                 setScopeIds(arr);
                 if (arr && arr[0] && onNavigate) onNavigate(arr[0] as UUID);
                 setSummaryOpen(false);
               }}
-            >誤答のみ再演習</Button>
+            >低理解度(≦2)のみ再演習</Button>
             <Button
               onClick={() => {
-                const ids = Object.entries(ratings)
-                  .filter(([, r]) => r === "hard")
-                  .map(([id]) => id);
+                // 現在のアクティブ集合から未評価（levels未登録）のみを抽出
+                const ids = activeList
+                  .map((c) => c.id)
+                  .filter((id) => levels[id] == null);
                 const arr = ids.length ? ids : null;
                 setScopeIds(arr);
                 if (arr && arr[0] && onNavigate) onNavigate(arr[0] as UUID);
                 setSummaryOpen(false);
               }}
-            >Hardのみ再演習</Button>
+            >未評価のみ再演習</Button>
             <Button
               onClick={async () => {
                 const flagged = await listFlaggedByCourse(courseId);
@@ -369,12 +408,11 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
                   courseId,
                   at: new Date().toISOString(),
                   stats: {
-                    correct: Object.values(results).filter((v) => v === "correct").length,
-                    wrong: Object.values(results).filter((v) => v === "wrong").length,
-                    hardRate: (() => {
-                      const vals = Object.values(ratings).filter(Boolean) as SrsRating[];
-                      const hard = vals.filter((v) => v === "hard").length;
-                      return vals.length ? Math.round((hard / vals.length) * 100) : 0;
+                    done: Object.values(levels).filter((v) => typeof v === "number" && (v as number) >= 3).length,
+                    pending: Object.values(levels).filter((v) => typeof v === "number" && (v as number) <= 2).length,
+                    avgLevel: (() => {
+                      const arr = Object.values(levels).filter((v): v is number => typeof v === "number");
+                      return arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : 0;
                     })(),
                     avgMs: (() => {
                       const arr = Object.values(durations);
@@ -383,6 +421,7 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
                     })(),
                   },
                   durations,
+                  levels,
                   results,
                   ratings,
                 };
