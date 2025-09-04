@@ -47,8 +47,6 @@ if (!("ResizeObserver" in globalThis)) {
     unobserve(): void {}
     disconnect(): void {}
   }
-  // 型エラーを抑えつつ安全に代入
-  // @ts-expect-error: jsdom では未定義のため動的に追加
   globalThis.ResizeObserver = ResizeObserverPolyfill;
 }
 

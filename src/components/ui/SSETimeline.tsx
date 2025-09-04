@@ -91,7 +91,8 @@ type Group = { id: GroupId; label: string; Icon: Lucide; start?: number; end?: n
       }
       if (end == null) {
         const lastOfGroup = [...steps].reverse().find((s) => matchGroup(s.label) === g.id);
-        end = (lastOfGroup?.end ?? lastOfGroup?.start);
+        // 進行中は end を確定しない（start にはフォールバックしない）
+        end = lastOfGroup?.end;
       }
     }
     return { ...g, start, end } as Group;
@@ -124,7 +125,8 @@ type Group = { id: GroupId; label: string; Icon: Lucide; start?: number; end?: n
         }
         if (end == null) {
           const lastOfGroup = [...steps].reverse().find((s) => matchGroup(s.label) === g.id);
-          end = (lastOfGroup?.end ?? lastOfGroup?.start);
+          // 進行中は end を確定しない（start にはフォールバックしない）
+          end = lastOfGroup?.end;
         }
       }
       const done = started && end != null && end <= now;
