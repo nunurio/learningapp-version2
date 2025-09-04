@@ -14,6 +14,8 @@ type WorkspaceSnapshot = {
   drafts: Record<UUID, SaveCardDraftInput>;
   activePane: ActivePane;
   version: number;
+  // Transient per-card understanding level (1-5) for realtime UI sync
+  levels: Record<UUID, number | undefined>;
 };
 
 type Listener = () => void;
@@ -22,6 +24,7 @@ let state: WorkspaceSnapshot = {
   drafts: {},
   activePane: "center",
   version: 0,
+  levels: {},
 };
 
 const listeners = new Set<Listener>();
@@ -58,6 +61,18 @@ export const workspaceStore = {
     const copy = { ...state.drafts };
     delete copy[cardId];
     state = { ...state, drafts: copy };
+    emit();
+  },
+  // set transient understanding level for a card (1-5)
+  setLevel(cardId: UUID, level: number | undefined) {
+    // Normalize invalid values to undefined (removes override)
+    const lv = typeof level === "number" && level > 0 ? Math.min(5, Math.max(1, Math.round(level))) : undefined;
+    const prev = state.levels[cardId];
+    if (prev === lv) return;
+    // Avoid creating new object if no change
+    const nextLevels = { ...state.levels } as Record<UUID, number | undefined>;
+    if (lv == null) delete nextLevels[cardId]; else nextLevels[cardId] = lv;
+    state = { ...state, levels: nextLevels };
     emit();
   },
   // bump version to signal consumers to refetch server snapshot

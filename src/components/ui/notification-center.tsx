@@ -3,6 +3,7 @@ import * as React from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { getToastHistory, subscribeToastHistory } from "@/components/ui/toaster";
+import { Bell } from "lucide-react";
 
 export function NotificationCenterButton() {
   const [open, setOpen] = React.useState(false);
@@ -10,7 +11,10 @@ export function NotificationCenterButton() {
   React.useEffect(() => subscribeToastHistory(() => setCount(getToastHistory().length)), []);
   return (
     <>
-      <Button onClick={() => setOpen(true)} aria-label="通知センター" variant="ghost">🔔 {count > 0 ? count : ""}</Button>
+      <Button onClick={() => setOpen(true)} aria-label="通知センター" variant="ghost">
+        <Bell className="mr-2 h-4 w-4" aria-hidden />
+        {count > 0 ? count : ""}
+      </Button>
       {/* SR向けライブリージョンでカウント変化を告知 */}
       <span className="sr-only" aria-live="polite">
         {count > 0 ? `新しい通知が${count}件あります` : "通知はありません"}

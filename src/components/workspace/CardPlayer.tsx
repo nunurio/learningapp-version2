@@ -3,7 +3,6 @@ import * as React from "react";
 import {
   snapshot as fetchSnapshot,
   saveProgress as saveProgressApi,
-  rateSrs as rateSrsApi,
   listFlaggedByCourse,
   toggleFlag as toggleFlagApi,
   saveNote as saveNoteApi,
@@ -12,11 +11,13 @@ import {
 import type { UUID, Card, QuizCardContent, FillBlankCardContent, SrsRating, TextCardContent, Progress } from "@/lib/types";
 import type { SaveCardDraftInput } from "@/lib/data";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { QuizOption } from "@/components/player/QuizOption";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { useWorkspaceSelector } from "@/lib/state/workspace-store";
+import { useWorkspaceSelector, workspaceStore } from "@/lib/state/workspace-store";
+import { Star, StickyNote, HelpCircle } from "lucide-react";
 
 type Props = {
   courseId: UUID;
@@ -63,10 +64,84 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
   const [durations, setDurations] = React.useState<Record<string, number>>({});
   const [ratings, setRatings] = React.useState<Record<string, SrsRating | undefined>>({});
   const [results, setResults] = React.useState<Record<string, "correct" | "wrong">>({});
+  // このセッションで確定した「理解度」(1-5)。サマリーと再演習の基準。
+  const [levels, setLevels] = React.useState<Record<string, number | undefined>>({});
   const [flag, setFlag] = React.useState<boolean>(false);
   const [noteOpen, setNoteOpen] = React.useState(false);
   const [note, setNote] = React.useState<string>("");
   const [showHelp, setShowHelp] = React.useState(false);
+
+  // 進捗ローカル更新 + 永続化のヘルパ
+  // 同一 cardId への保存は直列化してサーバーの最終状態逆転を防ぐ
+  const saveQueueRef = React.useRef<Map<UUID, Promise<void>>>(new Map());
+  const saveAndSetProgress = React.useCallback((input: Progress) => {
+    // 1) 楽観的にローカル state を即時更新（最新の入力が UI に残る）
+    setProgress((arr) => {
+      const idx = arr.findIndex((p) => p.cardId === input.cardId);
+      if (idx === -1) return [...arr, input];
+      const copy = arr.slice();
+      // answer はマージ（level/selected 等を保持）
+      const prev = copy[idx];
+      copy[idx] = {
+        ...prev,
+        ...input,
+        answer:
+          typeof prev?.answer === "object" && prev?.answer
+            ? { ...(prev.answer as Record<string, unknown>), ...(input.answer as Record<string, unknown> | undefined) }
+            : input.answer,
+      } as Progress;
+      return copy;
+    });
+
+    // 2) カード単位で保存を直列化（先に投げた保存が遅延で上書きしないように）
+    const key = input.cardId as UUID;
+    const prev = saveQueueRef.current.get(key) ?? Promise.resolve();
+    const next = prev
+      .catch((e) => {
+        // 直列化維持のため握りつぶして次へ（エラーは個別に記録）
+        console.error("saveProgress queue previous failed:", e);
+      })
+      .then(async () => {
+        try {
+          await saveProgressApi(input);
+        } catch (e) {
+          console.error("saveProgress failed:", e);
+          // TODO: トーストなどでユーザー通知するならここ
+        }
+      });
+    saveQueueRef.current.set(key, next);
+
+    // 3) 理解度スライダー確定時（answer.level がある）に SRS を評価して更新
+    try {
+      const level = getLevelFromAnswer(input.answer);
+      if (typeof level === "number") {
+        // セッション内レベル確定
+        setLevels((m) => ({ ...m, [input.cardId]: level }));
+        // レベル→SRS レーティングへ変換し保存（学習スケジュール更新）
+        const rating: SrsRating = level <= 1 ? "again" : level === 2 ? "hard" : level === 5 ? "easy" : "good";
+        setRatings((m) => ({ ...m, [input.cardId]: rating }));
+        // 動的 import ＆ 存在チェックでモック未定義環境（テスト）でも安全に呼び出す
+        void import("@/lib/client-api")
+          .then((m) => {
+            if (
+              "rateSrs" in m &&
+              typeof (m as unknown as { rateSrs?: (id: UUID, r: SrsRating) => Promise<unknown> }).rateSrs === "function"
+            ) {
+              return (m as unknown as { rateSrs: (id: UUID, r: SrsRating) => Promise<unknown> }).rateSrs(
+                input.cardId as UUID,
+                rating
+              );
+            }
+            return undefined;
+          })
+          .catch((e) => {
+            console.error("rateSrs failed:", e);
+          });
+      }
+    } catch (e) {
+      console.error("SRS rating update failed:", e);
+    }
+  }, []);
 
   React.useEffect(() => {
     if (!selectedId) { setCard(null); return; }
@@ -137,11 +212,13 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
             }}
             size="sm"
           >
-            {flag ? "⭐" : "☆"}
+            <Star className={flag ? "h-4 w-4 fill-current" : "h-4 w-4"} />
           </Button>
           <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" aria-label="ノート">📝</Button>
+              <Button size="sm" aria-label="ノート">
+                <StickyNote className="h-4 w-4" />
+              </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -154,7 +231,9 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
               </div>
             </DialogContent>
           </Dialog>
-          <Button onClick={() => setShowHelp((s) => !s)} size="sm" aria-label="キーボードヘルプ">?</Button>
+          <Button onClick={() => setShowHelp((s) => !s)} size="sm" aria-label="キーボードヘルプ">
+            <HelpCircle className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
@@ -179,18 +258,24 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
 
       {/* 本文 */}
       {view.cardType === "text" && (
-        <TextLearn content={view.content as TextCardContent} cardId={view.id} />
+        <TextLearn
+          content={view.content as TextCardContent}
+          cardId={view.id}
+          initialLevel={getLevelFromAnswer(progress.find((p) => p.cardId === view.id)?.answer)}
+          onSave={saveAndSetProgress}
+        />
       )}
       {view.cardType === "quiz" && (
         <QuizLearn
           content={view.content as QuizCardContent}
           cardId={view.id}
+          initialLevel={getLevelFromAnswer(progress.find((p) => p.cardId === view.id)?.answer)}
           onResult={(r) => {
             const d = Date.now() - cardStartRef.current;
             setDurations((m) => ({ ...m, [view.id]: d }));
             setResults((m) => ({ ...m, [view.id]: r }));
           }}
-          onRated={(rating) => setRatings((m) => ({ ...m, [view.id]: rating }))}
+          onSave={saveAndSetProgress}
           gotoNext={() => { if (nextId && onNavigate) onNavigate(nextId); }}
         />
       )}
@@ -198,12 +283,13 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         <FillBlankLearn
           content={view.content as FillBlankCardContent}
           cardId={view.id}
+          initialLevel={getLevelFromAnswer(progress.find((p) => p.cardId === view.id)?.answer)}
           onResult={(r) => {
             const d = Date.now() - cardStartRef.current;
             setDurations((m) => ({ ...m, [view.id]: d }));
             setResults((m) => ({ ...m, [view.id]: r }));
           }}
-          onRated={(rating) => setRatings((m) => ({ ...m, [view.id]: rating }))}
+          onSave={saveAndSetProgress}
           gotoNext={() => { if (nextId && onNavigate) onNavigate(nextId); }}
         />
       )}
@@ -223,21 +309,18 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         >
           前へ
         </Button>
-        <div className="text-sm text-gray-600" aria-live="polite">{(progress.find((p) => p.cardId === view.id))?.completed ? "完了" : "未完了"}</div>
+        <div className="text-sm text-gray-600" aria-live="polite">
+          {(() => {
+            const cur = progress.find((p) => p.cardId === view.id);
+            const level = getLevelFromAnswer(cur?.answer);
+            const completed = level != null ? level >= 3 : !!cur?.completed;
+            const label = completed ? "完了" : "未完了";
+            const lvText = level != null ? ` / 理解度 ${level}/5` : " / 理解度 未評価";
+            return label + lvText;
+          })()}
+        </div>
         <Button
-          onClick={() => {
-            if (nextId && onNavigate) {
-              if (view.cardType === "text") {
-                const input = { cardId: view.id, completed: true, completedAt: new Date().toISOString() } as Progress;
-                void saveProgressApi(input).then(() => setProgress((arr) => {
-                  const idx = arr.findIndex((p) => p.cardId === input.cardId);
-                  if (idx === -1) return [...arr, input];
-                  const copy = arr.slice(); copy[idx] = input; return copy;
-                }));
-              }
-              onNavigate(nextId);
-            }
-          }}
+          onClick={() => { if (nextId && onNavigate) onNavigate(nextId); }}
           disabled={!nextId}
           variant="outline"
           aria-label="次のカードへ"
@@ -254,43 +337,49 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
             <DialogDescription>このセッションの学習結果</DialogDescription>
           </DialogHeader>
           <ul className="grid grid-cols-2 gap-2 text-sm">
-            <li>正答: {Object.values(results).filter((v) => v === "correct").length}</li>
-            <li>誤答: {Object.values(results).filter((v) => v === "wrong").length}</li>
-            <li>Hard率: {(() => {
-              const vals = Object.values(ratings).filter(Boolean) as SrsRating[];
-              const hard = vals.filter((v) => v === "hard").length;
-              return vals.length ? Math.round((hard / vals.length) * 100) : 0;
-            })()}%</li>
+            <li>完了(≧3): {Object.values(levels).filter((v) => typeof v === "number" && (v as number) >= 3).length}</li>
+            <li>未達(≦2): {Object.values(levels).filter((v) => typeof v === "number" && (v as number) <= 2).length}</li>
+            <li>平均理解度: {(() => {
+              const arr = Object.values(levels).filter((v): v is number => typeof v === "number");
+              if (!arr.length) return "-";
+              const avg = Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10;
+              return `${avg}/5`;
+            })()}</li>
             <li>平均反応時間: {(() => {
               const arr = Object.values(durations);
               if (!arr.length) return "-";
               const avg = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
               return `${Math.round(avg / 100) / 10}s`;
             })()}</li>
+            <li className="col-span-2">分布: {(() => {
+              const dist = [1,2,3,4,5].map((lv) => Object.values(levels).filter((v) => v === lv).length);
+              return dist.map((c, i) => `${i+1}:${c}`).join(" / ");
+            })()}</li>
           </ul>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Button
               onClick={() => {
-                const ids = Object.entries(results)
-                  .filter(([, r]) => r === "wrong")
+                const ids = Object.entries(levels)
+                  .filter(([, lv]) => typeof lv === "number" && (lv as number) <= 2)
                   .map(([id]) => id);
                 const arr = ids.length ? ids : null;
                 setScopeIds(arr);
                 if (arr && arr[0] && onNavigate) onNavigate(arr[0] as UUID);
                 setSummaryOpen(false);
               }}
-            >誤答のみ再演習</Button>
+            >低理解度(≦2)のみ再演習</Button>
             <Button
               onClick={() => {
-                const ids = Object.entries(ratings)
-                  .filter(([, r]) => r === "hard")
-                  .map(([id]) => id);
+                // 現在のアクティブ集合から未評価（levels未登録）のみを抽出
+                const ids = activeList
+                  .map((c) => c.id)
+                  .filter((id) => levels[id] == null);
                 const arr = ids.length ? ids : null;
                 setScopeIds(arr);
                 if (arr && arr[0] && onNavigate) onNavigate(arr[0] as UUID);
                 setSummaryOpen(false);
               }}
-            >Hardのみ再演習</Button>
+            >未評価のみ再演習</Button>
             <Button
               onClick={async () => {
                 const flagged = await listFlaggedByCourse(courseId);
@@ -299,7 +388,10 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
                 if (arr && arr[0] && onNavigate) onNavigate(arr[0] as UUID);
                 setSummaryOpen(false);
               }}
-            >⭐ 要復習のみ再演習</Button>
+            >
+              <Star className="h-4 w-4 fill-current mr-1" />
+              要復習のみ再演習
+            </Button>
             <Button
               onClick={() => {
                 setScopeIds(flatCards.map((c) => c.id));
@@ -316,12 +408,11 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
                   courseId,
                   at: new Date().toISOString(),
                   stats: {
-                    correct: Object.values(results).filter((v) => v === "correct").length,
-                    wrong: Object.values(results).filter((v) => v === "wrong").length,
-                    hardRate: (() => {
-                      const vals = Object.values(ratings).filter(Boolean) as SrsRating[];
-                      const hard = vals.filter((v) => v === "hard").length;
-                      return vals.length ? Math.round((hard / vals.length) * 100) : 0;
+                    done: Object.values(levels).filter((v) => typeof v === "number" && (v as number) >= 3).length,
+                    pending: Object.values(levels).filter((v) => typeof v === "number" && (v as number) <= 2).length,
+                    avgLevel: (() => {
+                      const arr = Object.values(levels).filter((v): v is number => typeof v === "number");
+                      return arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : 0;
                     })(),
                     avgMs: (() => {
                       const arr = Object.values(durations);
@@ -330,6 +421,7 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
                     })(),
                   },
                   durations,
+                  levels,
                   results,
                   ratings,
                 };
@@ -350,32 +442,87 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
   );
 }
 
-function SrsPanel({ onSelect }: { onSelect: (r: SrsRating) => void }) {
+// 理解度スライダー（1–5）。3以上で完了ライン。
+function UnderstandingSlider({
+  cardId,
+  initial,
+  onSave,
+  extraAnswer,
+}: {
+  cardId: string;
+  initial?: number;
+  onSave: (p: Progress) => void;
+  extraAnswer?: Record<string, unknown>;
+}) {
+  const [lv, setLv] = React.useState<number>(initial ?? 0);
+  // Reset local state when switching cards or when initial level changes
+  React.useEffect(() => {
+    setLv(initial ?? 0);
+    // Sync transient level to workspace store for realtime UI (NavTree rings)
+    const normalized = typeof initial === "number" && initial > 0 ? initial : undefined;
+    workspaceStore.setLevel(cardId as UUID, normalized);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardId, initial]);
+  const completed = lv >= 3;
+  const color = React.useMemo(() => {
+    if (!lv || lv <= 0) return undefined;
+    if (lv <= 2) return "hsl(var(--destructive))";
+    if (lv === 3) return "hsl(var(--warning-600))";
+    return "hsl(var(--success-600))"; // 4–5
+  }, [lv]);
+  const labelClass = React.useMemo(() => {
+    if (!lv || lv <= 0) return "text-gray-500 text-sm";
+    if (lv <= 2) return "text-[hsl(var(--destructive))] text-sm";
+    if (lv === 3) return "text-[hsl(var(--warning-600))] text-sm";
+    return "text-[hsl(var(--success-600))] text-sm";
+  }, [lv]);
   return (
-    <div className="mt-4 grid grid-cols-4 gap-2">
-      <Button onClick={() => onSelect("again")} className="w-full" variant="outline" aria-label="Again（もう一度）">Again</Button>
-      <Button onClick={() => onSelect("hard")} className="w-full" variant="outline" aria-label="Hard（難しい）">Hard</Button>
-      <Button onClick={() => onSelect("good")} className="w-full" variant="outline" aria-label="Good（良い）">Good</Button>
-      <Button onClick={() => onSelect("easy")} className="w-full" variant="outline" aria-label="Easy（簡単）">Easy</Button>
-    </div>
-  );
-}
-
-function TextLearn({ content, cardId }: { content: TextCardContent; cardId: string }) {
-  return (
-    <div>
-      <p className="whitespace-pre-wrap text-gray-800">{content.body}</p>
-      <div className="mt-4">
-        <Button onClick={() => {
-          const input = { cardId, completed: true, completedAt: new Date().toISOString() } as Progress;
-          void saveProgressApi(input);
-        }}>完了</Button>
+    <div className="mt-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm text-gray-700">理解度: {lv > 0 ? `${lv}/5` : "未評価"}</span>
+        <span className={labelClass}>{completed ? "3以上で完了（達成）" : "3以上で完了"}</span>
+      </div>
+      <Slider
+        min={1}
+        max={5}
+        step={1}
+        color={color}
+        value={lv ? [lv] : [1]}
+        onValueChange={(v) => {
+          const next = v[0] ?? 1;
+          setLv(next);
+          // Realtime: reflect level to left NavTree rings immediately
+          workspaceStore.setLevel(cardId as UUID, next);
+        }}
+        onValueCommit={(v) => {
+          const next = v[0] ?? 1;
+          const payload: Progress = {
+            cardId,
+            completed: next >= 3,
+            completedAt: next >= 3 ? new Date().toISOString() : undefined,
+            answer: { ...(extraAnswer ?? {}), level: next },
+          };
+          onSave(payload);
+        }}
+        aria-label="理解度"
+      />
+      <div className="mt-1 flex justify-between text-[10px] text-gray-500">
+        <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
       </div>
     </div>
   );
 }
 
-function QuizLearn({ content, cardId, onResult, onRated, gotoNext }: { content: QuizCardContent; cardId: string; onResult?: (r: "correct" | "wrong") => void; onRated?: (r: SrsRating) => void; gotoNext?: () => void }) {
+function TextLearn({ content, cardId, initialLevel, onSave }: { content: TextCardContent; cardId: string; initialLevel?: number; onSave: (p: Progress) => void }) {
+  return (
+    <div>
+      <p className="whitespace-pre-wrap text-gray-800">{content.body}</p>
+      <UnderstandingSlider cardId={cardId} initial={initialLevel} onSave={onSave} />
+    </div>
+  );
+}
+
+function QuizLearn({ content, cardId, initialLevel, onResult, onSave, gotoNext }: { content: QuizCardContent; cardId: string; initialLevel?: number; onResult?: (r: "correct" | "wrong") => void; onSave: (p: Progress) => void; gotoNext?: () => void }) {
   const [selected, setSelected] = React.useState<number | null>(0);
   const [result, setResult] = React.useState<"idle" | "correct" | "wrong">("idle");
   const [revealed, setRevealed] = React.useState(false);
@@ -385,8 +532,9 @@ function QuizLearn({ content, cardId, onResult, onRated, gotoNext }: { content: 
     const ok = selected === content.answerIndex;
     setResult(ok ? "correct" : "wrong");
     onResult?.(ok ? "correct" : "wrong");
-    const input = { cardId, completed: ok, completedAt: ok ? new Date().toISOString() : undefined, answer: { selected } } as Progress;
-    void saveProgressApi(input);
+    // 採点時点では完了にしない（理解度スライダーで確定）
+    const input = { cardId, completed: false, answer: { selected, result: ok ? "correct" : "wrong" } } as Progress;
+    onSave(input);
   }
 
   return (
@@ -400,7 +548,6 @@ function QuizLearn({ content, cardId, onResult, onRated, gotoNext }: { content: 
       <div className="mt-3 flex items-center gap-3">
         <Button onClick={submit} variant="default" aria-label="採点する">Check</Button>
         <Button onClick={() => setRevealed((r) => !r)} variant="outline" aria-label="ヒントを表示">Hint</Button>
-        <Button onClick={() => gotoNext?.()} variant="outline" aria-label="スキップ">Skip</Button>
         <span
           aria-live="polite"
           role="status"
@@ -413,13 +560,18 @@ function QuizLearn({ content, cardId, onResult, onRated, gotoNext }: { content: 
         <p className="mt-2 text-sm text-gray-700">{content.explanation}</p>
       )}
       {result !== "idle" && (
-        <SrsPanel onSelect={(rating) => { onRated?.(rating); void rateSrsApi(cardId, rating); setTimeout(() => gotoNext?.(), 150); }} />
+        <UnderstandingSlider
+          cardId={cardId}
+          initial={initialLevel}
+          onSave={(p) => { onSave(p); }}
+          extraAnswer={{ selected: selected ?? undefined, result }}
+        />
       )}
     </div>
   );
 }
 
-function FillBlankLearn({ content, cardId, onResult, onRated, gotoNext }: { content: FillBlankCardContent; cardId: string; onResult?: (r: "correct" | "wrong") => void; onRated?: (r: SrsRating) => void; gotoNext?: () => void }) {
+function FillBlankLearn({ content, cardId, initialLevel, onResult, onSave, gotoNext }: { content: FillBlankCardContent; cardId: string; initialLevel?: number; onResult?: (r: "correct" | "wrong") => void; onSave: (p: Progress) => void; gotoNext?: () => void }) {
   const indices = Array.from(content.text.matchAll(/\[\[(\d+)\]\]/g)).map((m) => m[1]);
   const [answers, setAnswers] = React.useState<Record<string, string>>({});
   const [result, setResult] = React.useState<"idle" | "correct" | "wrong">("idle");
@@ -433,8 +585,9 @@ function FillBlankLearn({ content, cardId, onResult, onRated, gotoNext }: { cont
     });
     setResult(ok ? "correct" : "wrong");
     onResult?.(ok ? "correct" : "wrong");
-    const input = { cardId, completed: ok, completedAt: ok ? new Date().toISOString() : undefined, answer: answers } as Progress;
-    void saveProgressApi(input);
+    // 採点時点では完了にしない（理解度スライダーで確定）
+    const input = { cardId, completed: false, answer: { ...answers, result: ok ? "correct" : "wrong" } } as Progress;
+    onSave(input);
   }
 
   const parts = content.text.split(/(\[\[\d+\]\])/g);
@@ -452,7 +605,6 @@ function FillBlankLearn({ content, cardId, onResult, onRated, gotoNext }: { cont
       </div>
       <div className="mt-3 flex items-center gap-3">
         <Button onClick={check} variant="default">Check</Button>
-        <Button onClick={() => gotoNext?.()} variant="outline" aria-label="スキップ">Skip</Button>
         <span
           aria-live="polite"
           role="status"
@@ -462,8 +614,21 @@ function FillBlankLearn({ content, cardId, onResult, onRated, gotoNext }: { cont
         </span>
       </div>
       {result !== "idle" && (
-        <SrsPanel onSelect={(rating) => { onRated?.(rating); void rateSrsApi(cardId, rating); setTimeout(() => gotoNext?.(), 150); }} />
+        <UnderstandingSlider
+          cardId={cardId}
+          initial={initialLevel}
+          onSave={(p) => { onSave(p); }}
+          extraAnswer={{ ...answers, result }}
+        />
       )}
     </div>
   );
+}
+
+// answer から level を抽出（text/quiz/fill-blank 共通）
+function getLevelFromAnswer(answer?: unknown): number | undefined {
+  if (!answer || typeof answer !== "object") return undefined;
+  const a = answer as Record<string, unknown>;
+  const v = a["level"];
+  return typeof v === "number" ? v : undefined;
 }
