@@ -54,15 +54,15 @@ describe("NavTree - リングは理解度を%表示", () => {
     // レッスンを展開
     const lessonRow = await screen.findByText("L1");
     // 同じ treeitem 行内の「展開」ボタンを押す
-    const rowEl = lessonRow.closest('[role="treeitem"]') ?? lessonRow.parentElement;
+    const rowEl = (lessonRow.closest('[role="treeitem"]') ?? lessonRow.parentElement) as HTMLElement | null;
     expect(rowEl).not.toBeNull();
-    const toggle = within(rowEl as Element).getByRole("button", { name: /展開|折りたたむ/ });
+    const toggle = within(rowEl as HTMLElement).getByRole("button", { name: /展開|折りたたむ/ });
     toggle.click();
     // カード行（"Hello" の断片 or テキスト）を待ち、そこに 80% のリングがあること
     const cardRow = await screen.findByText(/Hello|テキスト/);
-    const host = cardRow.closest('[role="treeitem"]') ?? cardRow.parentElement;
+    const host = (cardRow.closest('[role="treeitem"]') ?? cardRow.parentElement) as HTMLElement | null;
     expect(host).not.toBeNull();
-    const img = within(host as Element).getByRole("img", { name: /進捗\s*80%/ });
+    const img = within(host as HTMLElement).getByRole("img", { name: /進捗\s*80%/ });
     expect(img).toBeInTheDocument();
   });
 });
