@@ -77,10 +77,39 @@ function Carousel({
 
   const handleKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (event.key === "ArrowLeft") {
+      const key = event.key
+      if (key !== "ArrowLeft" && key !== "ArrowRight") return
+
+      const target = event.target as HTMLElement | null
+      const isFromInteractive = (() => {
+        if (!target) return false
+        if (target instanceof HTMLElement && target.isContentEditable) return true
+        // 入力系・ロールがインタラクティブな要素からのイベントは除外
+        const interactive = target.closest(
+          [
+            "input",
+            "textarea",
+            "select",
+            "button",
+            "[role=slider]",
+            "[role=spinbutton]",
+            "[role=radio]",
+            "[role=listbox]",
+            "[role=combobox]",
+            "[role=menu]",
+            "[role=tablist]",
+            "[contenteditable=true]",
+          ].join(",")
+        )
+        return Boolean(interactive)
+      })()
+
+      if (isFromInteractive) return
+
+      if (key === "ArrowLeft") {
         event.preventDefault()
         scrollPrev()
-      } else if (event.key === "ArrowRight") {
+      } else if (key === "ArrowRight") {
         event.preventDefault()
         scrollNext()
       }
@@ -119,10 +148,11 @@ function Carousel({
       }}
     >
       <div
-        onKeyDownCapture={handleKeyDown}
+        onKeyDown={handleKeyDown}
         className={cn("relative", className)}
         role="region"
         aria-roledescription="carousel"
+        tabIndex={0}
         data-slot="carousel"
         {...props}
       >
