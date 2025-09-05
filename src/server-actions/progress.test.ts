@@ -22,6 +22,38 @@ describe("server-actions/progress", () => {
     expect(captured[0].payload).toMatchObject({ user_id: "user-1", card_id: "C1", completed: true, completed_at: null, answer: null });
   });
 
+  it("saveProgressAction: answer はオブジェクト同士ならフィールドマージ", async () => {
+    const captured: Array<{ t: string; payload: any }> = [];
+    const supa = {
+      from: vi.fn((t: string) => ({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { completed: true, completed_at: "2025-09-01T00:00:00.000Z", answer: { selected: 2, result: "correct" } },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+        upsert: (payload: unknown) => {
+          captured.push({ t, payload });
+          return { error: null };
+        },
+      })),
+    } as const;
+    vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa, getCurrentUserId: async () => "U" }));
+    const { saveProgressAction } = await import("./progress");
+    await saveProgressAction({ cardId: "C1" as UUID, completed: false, answer: { level: 4 } });
+    expect(captured[0].payload).toMatchObject({
+      user_id: "U",
+      card_id: "C1",
+      completed: true, // 既存が true なら維持
+      completed_at: "2025-09-01T00:00:00.000Z",
+      answer: { selected: 2, result: "correct", level: 4 }, // 既存 + 追加分がマージされる
+    });
+  });
+
   it("saveProgressAction: 未認証はエラー", async () => {
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => ({}), getCurrentUserId: async () => undefined }));
     const { saveProgressAction } = await import("./progress");

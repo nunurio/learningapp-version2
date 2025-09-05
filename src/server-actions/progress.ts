@@ -26,8 +26,34 @@ export async function saveProgressAction(input: Progress) {
         : (input.completedAt ?? null))
     : null;
 
-  // answer は入力優先（未指定なら既存を保持）
-  const nextAnswer = (input.answer as Json | undefined) ?? (prev?.answer as Json | null) ?? null;
+  // answer はオブジェクト同士ならフィールド単位でマージする。
+  // それ以外（配列・プリミティブ・null）は入力値があれば全置換、未指定なら既存を保持。
+  const isObjectRecord = (v: unknown): v is Record<string, unknown> =>
+    v !== null && typeof v === "object" && !Array.isArray(v);
+
+  const deepMerge = (base: unknown, patch: unknown): unknown => {
+    if (isObjectRecord(base) && isObjectRecord(patch)) {
+      const out: Record<string, unknown> = { ...base };
+      for (const [k, pv] of Object.entries(patch)) {
+        // undefined は「変更なし」と解釈（JSON へは保存されないため）。
+        if (pv === undefined) continue;
+        const bv = (base as Record<string, unknown>)[k];
+        out[k] = isObjectRecord(bv) && isObjectRecord(pv) ? deepMerge(bv, pv) : pv;
+      }
+      return out;
+    }
+    return patch === undefined ? base : patch;
+  };
+
+  const prevAnswerUnknown = (prev?.answer as unknown) ?? null;
+  let nextAnswer: Json | null;
+  if (typeof input.answer === "undefined") {
+    nextAnswer = (prevAnswerUnknown as Json) ?? null;
+  } else if (isObjectRecord(prevAnswerUnknown) && isObjectRecord(input.answer)) {
+    nextAnswer = deepMerge(prevAnswerUnknown, input.answer) as Json;
+  } else {
+    nextAnswer = (input.answer as Json | null);
+  }
 
   const { error } = await supa
     .from("progress")
