@@ -47,7 +47,35 @@ if (!("ResizeObserver" in globalThis)) {
     unobserve(): void {}
     disconnect(): void {}
   }
-  globalThis.ResizeObserver = ResizeObserverPolyfill;
+  globalThis.ResizeObserver = ResizeObserverPolyfill as unknown as typeof ResizeObserver;
+}
+
+// Polyfill: IntersectionObserver（embla-carousel で使用）
+if (!("IntersectionObserver" in globalThis)) {
+  class IntersectionObserverPolyfill implements IntersectionObserver {
+    readonly root: Element | Document | null = null;
+    readonly rootMargin: string = "0px";
+    readonly thresholds: ReadonlyArray<number> = [0];
+    disconnect(): void {}
+    observe(): void {}
+    takeRecords(): IntersectionObserverEntry[] { return []; }
+    unobserve(): void {}
+  }
+  globalThis.IntersectionObserver =
+    IntersectionObserverPolyfill as unknown as typeof IntersectionObserver;
+}
+
+// Polyfill: Pointer Events capture (Radix Slider が使用)
+if (typeof Element !== "undefined") {
+  type PointerCaptureElement = Element & {
+    setPointerCapture?: (pointerId: number) => void;
+    releasePointerCapture?: (pointerId: number) => void;
+    hasPointerCapture?: (pointerId: number) => boolean;
+  };
+  const proto = Element.prototype as unknown as PointerCaptureElement;
+  if (!proto.setPointerCapture) proto.setPointerCapture = () => {};
+  if (!proto.releasePointerCapture) proto.releasePointerCapture = () => {};
+  if (!proto.hasPointerCapture) proto.hasPointerCapture = () => false;
 }
 
 // Polyfill: matchMedia（NavTree のモバイル判定で使用）

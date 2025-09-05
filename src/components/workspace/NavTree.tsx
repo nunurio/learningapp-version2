@@ -79,6 +79,25 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
     return () => { mounted = false; };
   }, [courseId, version]);
 
+  // 選択復元（後段で rows/rowVirtualizer 定義後にスクロール）
+  const pendingScrollId = React.useRef<string | undefined>(undefined);
+  React.useEffect(() => {
+    if (!selectedId) return;
+    const card = cards.find((c) => c.id === selectedId);
+    if (card) {
+      const leKey = `le:${card.lessonId}`;
+      setExpanded((m) => (m[leKey] ? m : { ...m, [leKey]: true }));
+      pendingScrollId.current = selectedId;
+    } else {
+      const lesson = lessons.find((l) => l.id === selectedId);
+      if (lesson) {
+        const leKey = `le:${lesson.id}`;
+        setExpanded((m) => (m[leKey] ? m : { ...m, [leKey]: true }));
+        pendingScrollId.current = selectedId;
+      }
+    }
+  }, [selectedId, cards, lessons]);
+
   // ロービング tabindex 用の"アクティブ"項目管理
   const [activeId, setActiveId] = React.useState<string | undefined>(undefined);
 
@@ -202,6 +221,19 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
     estimateSize: (index) => (rows[index]?.type === "course" ? COURSE_H : rows[index]?.type === "lesson" ? LESSON_H : CARD_H),
     overscan: 6,
   });
+
+  // rows/rowVirtualizer 利用のスクロール復元は、両者初期化後に実行
+  React.useEffect(() => {
+    const id = pendingScrollId.current;
+    if (!id || rows.length === 0) return;
+    const idx = rows.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      rowVirtualizer.scrollToIndex(idx, { align: "auto" });
+      pendingScrollId.current = undefined;
+      setActiveId(id);
+    }
+    // rows や仮想化の再計算時に再評価
+  }, [rows, rowVirtualizer]);
 
   // 初回フォーカス時に先頭へロービング
   const onTreeFocus = () => {

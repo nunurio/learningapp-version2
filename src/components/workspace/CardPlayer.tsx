@@ -24,9 +24,15 @@ type Props = {
   selectedId?: UUID;
   selectedKind?: "lesson" | "card";
   onNavigate?: (nextCardId: UUID) => void;
+  /**
+   * If provided, limits the active list to cards within this lesson.
+   * This reflects user intent when選択したレッスン行から学習/生成を開始した場合の“レッスンスコープ”。
+   * Local session scopes (e.g., flagged-only) still override this.
+   */
+  lessonScopeId?: UUID;
 };
 
-export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: Props) {
+export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, lessonScopeId }: Props) {
   const version = useWorkspaceSelector((s) => s.version);
   const draftForSelected = useWorkspaceSelector((s) => (selectedId ? s.drafts[selectedId] : undefined), (a, b) => JSON.stringify(a) === JSON.stringify(b));
   const [cards, setCards] = React.useState<Card[]>([]);
@@ -40,8 +46,21 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
       const snap = await fetchSnapshot();
       if (!mounted) return;
       // keep only cards for lessons in this course
-      const lessonIds = new Set<string>(snap.lessons.filter((l) => l.courseId === courseId).map((l) => l.id));
-      const cs = snap.cards.filter((c) => lessonIds.has(c.lessonId)).sort((a, b) => a.orderIndex - b.orderIndex || a.createdAt.localeCompare(b.createdAt));
+      const lessonsInCourse = snap.lessons.filter((l) => l.courseId === courseId);
+      const lessonIds = new Set<string>(lessonsInCourse.map((l) => l.id));
+      const lessonOrder = new Map<string, number>(lessonsInCourse.map((l) => [l.id, l.orderIndex] as const));
+      const cs = snap.cards
+        .filter((c) => lessonIds.has(c.lessonId))
+        // Stable course-wide ordering: lesson.orderIndex -> card.orderIndex -> createdAt
+        .sort((a, b) => {
+          const la = lessonOrder.get(a.lessonId) ?? 0;
+          const lb = lessonOrder.get(b.lessonId) ?? 0;
+          return (
+            (la - lb) ||
+            (a.orderIndex - b.orderIndex) ||
+            a.createdAt.localeCompare(b.createdAt)
+          );
+        });
       setCards(cs);
       setProgress(snap.progress);
       const ids = await listFlaggedByCourse(courseId);
@@ -53,7 +72,12 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
   // セッション用の対象集合（nullなら全件）
   const [scopeIds, setScopeIds] = React.useState<string[] | null>(null);
   const flatCards = React.useMemo(() => cards, [cards]);
-  const activeList = React.useMemo(() => (scopeIds ? flatCards.filter((c) => scopeIds.includes(c.id)) : flatCards), [flatCards, scopeIds]);
+  // lessonScopeId (from parent) provides a default scoping, unless user set a manual scope locally
+  const activeList = React.useMemo(() => {
+    if (scopeIds) return flatCards.filter((c) => scopeIds.includes(c.id)); // manual override (e.g., flagged-only)
+    if (lessonScopeId) return flatCards.filter((c) => c.lessonId === lessonScopeId);
+    return flatCards;
+  }, [flatCards, scopeIds, lessonScopeId]);
   const activeIndex = React.useMemo(() => activeList.findIndex((c) => c.id === selectedId), [activeList, selectedId]);
   const prevId = activeIndex > 0 ? (activeList[activeIndex - 1]?.id as UUID) : undefined;
   const nextId = activeIndex >= 0 && activeIndex < activeList.length - 1 ? (activeList[activeIndex + 1]?.id as UUID) : undefined;
@@ -195,10 +219,12 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
   return (
     <div className="p-2">
       {/* ヘッダー／カードメタ＋フラグ＋ノート */}
-      <div className="mb-2">
-        <span className="px-2 py-1 rounded bg-black/5 text-xs">{view.cardType}</span>
-        {view.title ? <span className="ml-2 font-medium">{view.title}</span> : null}
-        <div className="float-right flex items-center gap-2">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center">
+          <span className="px-2 py-1 rounded bg-black/5 text-xs">{view.cardType}</span>
+          {view.title ? <span className="ml-2 font-medium">{view.title}</span> : null}
+        </div>
+        <div className="flex items-center gap-1">
           <Button
             aria-label={flag ? "フラグ解除" : "フラグ"}
             onClick={async () => {
@@ -210,13 +236,15 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
                 return copy;
               });
             }}
-            size="sm"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
           >
-            <Star className={flag ? "h-4 w-4 fill-current" : "h-4 w-4"} />
+            <Star className={flag ? "h-4 w-4 fill-current text-yellow-500" : "h-4 w-4"} />
           </Button>
           <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" aria-label="ノート">
+              <Button size="icon" variant="ghost" aria-label="ノート" className="h-8 w-8">
                 <StickyNote className="h-4 w-4" />
               </Button>
             </DialogTrigger>
@@ -231,18 +259,29 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
               </div>
             </DialogContent>
           </Dialog>
-          <Button onClick={() => setShowHelp((s) => !s)} size="sm" aria-label="キーボードヘルプ">
+          <Button onClick={() => setShowHelp((s) => !s)} size="icon" variant="ghost" aria-label="キーボードヘルプ" className="h-8 w-8">
             <HelpCircle className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
       {/* 進捗バー */}
-      <div className="mt-2">
+      <div className="mb-4">
         <div className="h-1.5 w-full rounded bg-[hsl(var(--muted))]">
           <div className="h-full rounded bg-[hsl(var(--primary))]" style={{ width: `${activeList.length ? ((activeIndex + 1) / activeList.length) * 100 : 0}%` }} />
         </div>
-        <p className="text-xs text-gray-600 mt-1">{activeIndex + 1} / {activeList.length}</p>
+        <div className="flex items-center justify-between mt-1">
+          <span className="text-xs text-gray-600">
+            {activeIndex + 1} / {activeList.length}
+          </span>
+          <span className="text-xs text-gray-600">
+            理解度: {(() => {
+              const cur = progress.find((p) => p.cardId === view.id);
+              const level = getLevelFromAnswer(cur?.answer);
+              return level != null ? `${level}/5` : "未評価";
+            })()}
+          </span>
+        </div>
       </div>
 
       {showHelp && (
@@ -294,12 +333,7 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         />
       )}
 
-      <div className="mt-3 flex items-center justify-between">
-        <div />
-        <Button onClick={() => setSummaryOpen(true)} aria-label="セッションを終了">セッション終了</Button>
-      </div>
-
-      {/* 学習ビューと同様のナビゲーション */}
+      {/* ナビゲーション */}
       <nav className="mt-6 flex items-center justify-between" aria-label="カードナビゲーション">
         <Button
           onClick={() => { if (prevId && onNavigate) onNavigate(prevId); }}
@@ -309,16 +343,14 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
         >
           前へ
         </Button>
-        <div className="text-sm text-gray-600" aria-live="polite">
-          {(() => {
-            const cur = progress.find((p) => p.cardId === view.id);
-            const level = getLevelFromAnswer(cur?.answer);
-            const completed = level != null ? level >= 3 : !!cur?.completed;
-            const label = completed ? "完了" : "未完了";
-            const lvText = level != null ? ` / 理解度 ${level}/5` : " / 理解度 未評価";
-            return label + lvText;
-          })()}
-        </div>
+        <Button 
+          onClick={() => setSummaryOpen(true)} 
+          variant="ghost" 
+          size="sm"
+          aria-label="セッションを終了"
+        >
+          セッション終了
+        </Button>
         <Button
           onClick={() => { if (nextId && onNavigate) onNavigate(nextId); }}
           disabled={!nextId}
@@ -478,8 +510,8 @@ function UnderstandingSlider({
   return (
     <div className="mt-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-gray-700">理解度: {lv > 0 ? `${lv}/5` : "未評価"}</span>
-        <span className={labelClass}>{completed ? "3以上で完了（達成）" : "3以上で完了"}</span>
+        <span className="text-sm text-gray-700">理解度 {lv > 0 ? `${lv}/5` : "未評価"}</span>
+        <span className={labelClass}>{completed ? `完了 / 理解度 ${lv}/5` : "3以上で完了"}</span>
       </div>
       <Slider
         min={1}

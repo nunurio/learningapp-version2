@@ -1,42 +1,38 @@
 "use client";
+
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
+
 import { cn } from "@/lib/utils/cn";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-60 transform active:scale-95",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none relative active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/40 dark:focus-visible:ring-primary/30",
   {
     variants: {
       variant: {
-        default: "bg-[hsl(var(--primary))] text-[hsl(var(--primary-fg))] shadow-md hover:shadow-lg hover:bg-[hsl(var(--primary-600))] hover:-translate-y-0.5",
-        secondary:
-          "bg-[hsl(var(--accent))] text-[hsl(var(--fg))] border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] shadow-sm hover:shadow-md",
-        outline:
-          [
-            "bg-[hsl(var(--card))] text-[hsl(var(--fg))] border border-[hsl(var(--border))]",
-            "hover:bg-[hsl(var(--accent))] hover:border-[hsl(var(--primary-300))] shadow-sm hover:shadow-md",
-            // Disabled state visually clearer
-            "disabled:bg-[hsl(var(--muted))] disabled:text-gray-400 disabled:border-gray-300 disabled:opacity-100 disabled:cursor-not-allowed disabled:shadow-none",
-          ].join(" "),
-        ghost: "bg-transparent text-[hsl(var(--fg))] hover:bg-[hsl(var(--accent))]",
+        default:
+          "bg-primary text-white shadow-sm hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-400 hover:shadow-md active:shadow-sm",
         destructive:
-          "bg-[hsla(0,84%,60%,.12)] text-[hsl(var(--destructive))] border border-[hsl(var(--destructive))]/40 hover:bg-[hsl(var(--destructive))] hover:text-white hover:border-[hsl(var(--destructive))]",
-        gradient:
-          "bg-gradient-to-r from-[hsl(var(--primary-500))] to-[hsl(var(--primary-400))] text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 hover:from-[hsl(var(--primary-600))] hover:to-[hsl(var(--primary-500))]",
-        success:
-          "bg-gradient-to-r from-[hsl(var(--success-500))] to-[hsl(var(--success-600))] text-white shadow-md hover:shadow-lg hover:-translate-y-0.5",
+          "bg-destructive text-white shadow-sm hover:bg-destructive/90 dark:bg-destructive/60 dark:hover:bg-destructive/50 focus-visible:ring-destructive/40 hover:shadow-md active:shadow-sm",
+        outline:
+          "border border-border bg-background hover:bg-accent hover:text-accent-foreground dark:border-border/40 dark:hover:bg-accent/50 shadow-sm hover:shadow-md active:shadow-sm",
+        secondary:
+          "bg-secondary text-white shadow-sm hover:bg-secondary-600 dark:bg-secondary-500 dark:hover:bg-secondary-400 hover:shadow-md active:shadow-sm",
+        ghost:
+          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/30",
+        link: "text-primary underline-offset-4 hover:underline hover:text-primary-700 dark:hover:text-primary-300",
       },
       size: {
-        sm: "h-8 px-3 text-xs",
-        md: "h-10 px-4 text-sm",
-        lg: "h-12 px-6 text-base",
-        xl: "h-14 px-8 text-lg",
+        default: "h-10 px-4 py-2 has-[>svg]:px-3",
+        sm: "h-9 rounded-md px-3 text-xs has-[>svg]:px-2.5",
+        lg: "h-11 rounded-md px-8 text-base has-[>svg]:px-6",
+        icon: "size-10 p-0",
       },
     },
     defaultVariants: {
-      variant: "outline",
-      size: "md",
+      variant: "default",
+      size: "default",
     },
   }
 );
@@ -47,13 +43,14 @@ export interface ButtonProps
   asChild?: boolean;
 }
 
-export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size }), className)}
         ref={ref}
+        data-slot="button"
+        className={cn(buttonVariants({ variant, size }), className)}
         {...props}
       />
     );
@@ -61,4 +58,4 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 Button.displayName = "Button";
 
-export { buttonVariants };
+export { Button, buttonVariants };
