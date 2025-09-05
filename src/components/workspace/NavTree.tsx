@@ -393,8 +393,18 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
                       }
                     }}
                     onToggle={() => setExpanded((m) => ({ ...m, [`le:${r.id}`]: !m[`le:${r.id}`] }))}
-                    onActive={() => setActiveId(r.id)}
+                  onActive={() => setActiveId(r.id)}
                     onEdit={() => onSelect(r.id as UUID, "lesson-edit")}
+                    onDelete={async () => {
+                      await deleteLessonApi(r.id as UUID);
+                      const isLessonSelected = selectedId === r.id;
+                      const cs = cardsByLesson.get(r.id) ?? [];
+                      const hasSelectedCard = cs.some((c) => c.id === selectedId);
+                      if (isLessonSelected || hasSelectedCard) {
+                        onSelect(courseId, "course");
+                      }
+                      workspaceStore.bumpVersion();
+                    }}
                   />
                 ) : (
                   <TreeCardRow
@@ -408,6 +418,13 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
                     onClick={() => onSelect(r.id as UUID, "card")}
                     onActive={() => setActiveId(r.id)}
                     onEdit={() => onSelect(r.id as UUID, "card")}
+                    onDelete={async () => {
+                      await deleteCardApi(r.id as UUID);
+                      if (selectedId === r.id) {
+                        onSelect(courseId, "course");
+                      }
+                      workspaceStore.bumpVersion();
+                    }}
                   />
                 )}
               </div>
@@ -475,7 +492,7 @@ function TreeCourseRow({ id, title, level, expanded, selected, active, onClick, 
   );
 }
 
-function TreeLessonRow({ id, title, level, expanded, selected, active, progressPct, onClick, onToggle, onActive, onEdit }:{
+function TreeLessonRow({ id, title, level, expanded, selected, active, progressPct, onClick, onToggle, onActive, onEdit, onDelete }:{
   id: string;
   title: string;
   level: number;
@@ -487,6 +504,7 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
   onToggle: () => void;
   onActive: () => void;
   onEdit: () => void;
+  onDelete: () => Promise<void> | void;
 }) {
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   return (
@@ -525,16 +543,16 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
             </button>
           </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onSelect={() => onEdit()}
-            >
-              編集
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setConfirmOpen(true)}>
-              削除
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuItem
+                onSelect={() => onEdit()}
+              >
+                編集
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setConfirmOpen(true)}>
+                削除
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         <Confirm
           open={confirmOpen}
           onOpenChange={setConfirmOpen}
@@ -542,14 +560,14 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
           description="この操作は元に戻せません。配下のカードも削除されます。"
           confirmLabel="削除する"
           cancelLabel="キャンセル"
-          onConfirm={async () => { await deleteLessonApi(id as UUID); workspaceStore.bumpVersion(); }}
+          onConfirm={async () => { await onDelete(); }}
         />
       </div>
     </div>
   );
 }
 
-function TreeCardRow({ id, title, level, selected, active, tags, progressPct, onClick, onActive, onEdit }:{
+function TreeCardRow({ id, title, level, selected, active, tags, progressPct, onClick, onActive, onEdit, onDelete }:{
   id: string;
   title: string;
   level: number;
@@ -560,6 +578,7 @@ function TreeCardRow({ id, title, level, selected, active, tags, progressPct, on
   onClick: () => void;
   onActive: () => void;
   onEdit: () => void;
+  onDelete: () => Promise<void> | void;
 }) {
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   return (
@@ -616,7 +635,7 @@ function TreeCardRow({ id, title, level, selected, active, tags, progressPct, on
         description="この操作は元に戻せません。学習履歴も削除されます。"
         confirmLabel="削除する"
         cancelLabel="キャンセル"
-        onConfirm={async () => { await deleteCardApi(id as UUID); workspaceStore.bumpVersion(); }}
+        onConfirm={async () => { await onDelete(); }}
       />
     </div>
   );
