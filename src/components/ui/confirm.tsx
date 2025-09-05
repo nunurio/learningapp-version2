@@ -17,7 +17,9 @@ type ConfirmProps = {
   confirmLabel?: string;
   cancelLabel?: string;
   onConfirm: () => void | Promise<void>;
-  children: React.ReactNode; // trigger (asChild)
+  children?: React.ReactNode; // optional trigger (asChild)
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 export function Confirm({
@@ -27,12 +29,17 @@ export function Confirm({
   cancelLabel = "キャンセル",
   onConfirm,
   children,
+  open: openProp,
+  onOpenChange,
 }: ConfirmProps) {
-  const [open, setOpen] = React.useState(false);
+  const isControlled = typeof openProp === "boolean";
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = isControlled ? (openProp as boolean) : internalOpen;
+  const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setInternalOpen;
   const [loading, setLoading] = React.useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
+      {children ? <DialogTrigger asChild>{children}</DialogTrigger> : null}
       <DialogContent aria-label={title}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -61,4 +68,3 @@ export function Confirm({
     </Dialog>
   );
 }
-

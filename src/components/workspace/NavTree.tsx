@@ -14,6 +14,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { Confirm } from "@/components/ui/confirm";
+import { deleteLesson as deleteLessonApi, deleteCard as deleteCardApi } from "@/lib/client-api";
+import { workspaceStore } from "@/lib/state/workspace-store";
 import { useWorkspace } from "@/lib/state/workspace-store";
 
 type Props = {
@@ -404,6 +407,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
                     progressPct={getCardPct(r.id as UUID)}
                     onClick={() => onSelect(r.id as UUID, "card")}
                     onActive={() => setActiveId(r.id)}
+                    onEdit={() => onSelect(r.id as UUID, "card")}
                   />
                 )}
               </div>
@@ -484,6 +488,7 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
   onActive: () => void;
   onEdit: () => void;
 }) {
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
   return (
     <div className="px-2" style={{ paddingLeft: (level - 1) * 14 }}>
       <div
@@ -519,21 +524,32 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
               <span aria-hidden>⋯</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end">
             <DropdownMenuItem
               onSelect={() => onEdit()}
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(); }}
             >
-              レッスンを編集（AI生成）
+              編集
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setConfirmOpen(true)}>
+              削除
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Confirm
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title="このレッスンを削除しますか？"
+          description="この操作は元に戻せません。配下のカードも削除されます。"
+          confirmLabel="削除する"
+          cancelLabel="キャンセル"
+          onConfirm={async () => { await deleteLessonApi(id as UUID); workspaceStore.bumpVersion(); }}
+        />
       </div>
     </div>
   );
 }
 
-function TreeCardRow({ id, title, level, selected, active, tags, progressPct, onClick, onActive }:{
+function TreeCardRow({ id, title, level, selected, active, tags, progressPct, onClick, onActive, onEdit }:{
   id: string;
   title: string;
   level: number;
@@ -543,7 +559,9 @@ function TreeCardRow({ id, title, level, selected, active, tags, progressPct, on
   progressPct: number;
   onClick: () => void;
   onActive: () => void;
+  onEdit: () => void;
 }) {
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
   return (
     <div role="group" className="">
       <div className="px-2" style={{ paddingLeft: (level - 1) * 14 }}>
@@ -570,8 +588,36 @@ function TreeCardRow({ id, title, level, selected, active, tags, progressPct, on
               {tags.length > 3 ? <Badge variant="secondary" className="text-[10px] px-1 py-0">+{tags.length - 3}</Badge> : null}
             </span>
           ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                aria-label="カードメニュー"
+                className="ml-auto inline-flex items-center justify-center size-6 rounded hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span aria-hidden>⋯</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => onEdit()}>
+                編集
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setConfirmOpen(true)}>
+                削除
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
+      <Confirm
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="このカードを削除しますか？"
+        description="この操作は元に戻せません。学習履歴も削除されます。"
+        confirmLabel="削除する"
+        cancelLabel="キャンセル"
+        onConfirm={async () => { await deleteCardApi(id as UUID); workspaceStore.bumpVersion(); }}
+      />
     </div>
   );
 }
