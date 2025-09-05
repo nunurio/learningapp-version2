@@ -67,7 +67,12 @@ if (!("IntersectionObserver" in globalThis)) {
 
 // Polyfill: Pointer Events capture (Radix Slider が使用)
 if (typeof Element !== "undefined") {
-  const proto = Element.prototype as any;
+  type PointerCaptureElement = Element & {
+    setPointerCapture?: (pointerId: number) => void;
+    releasePointerCapture?: (pointerId: number) => void;
+    hasPointerCapture?: (pointerId: number) => boolean;
+  };
+  const proto = Element.prototype as unknown as PointerCaptureElement;
   if (!proto.setPointerCapture) proto.setPointerCapture = () => {};
   if (!proto.releasePointerCapture) proto.releasePointerCapture = () => {};
   if (!proto.hasPointerCapture) proto.hasPointerCapture = () => false;

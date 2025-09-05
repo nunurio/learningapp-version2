@@ -17,6 +17,7 @@ vi.mock("@/lib/client-api", () => ({
 
 import { LearningCarousel } from "./LearningCarousel";
 import * as clientApi from "@/lib/client-api";
+import type { MockedFunction } from "vitest";
 
 type UUID = string;
 
@@ -24,20 +25,20 @@ function makeIso(n: number) {
   return new Date(2024, 0, n, 12, 0, 0).toISOString();
 }
 
-const baseCourse = { id: "c-1" as UUID, title: "Course", status: "draft", createdAt: makeIso(1), updatedAt: makeIso(1) };
-const otherCourse = { id: "c-2" as UUID, title: "Other", status: "draft", createdAt: makeIso(1), updatedAt: makeIso(1) };
+const baseCourse = { id: "c-1" as UUID, title: "Course", status: "draft" as const, createdAt: makeIso(1), updatedAt: makeIso(1) };
+const otherCourse = { id: "c-2" as UUID, title: "Other", status: "draft" as const, createdAt: makeIso(1), updatedAt: makeIso(1) };
 
 beforeEach(() => {
   push.mockClear();
-  (clientApi.snapshot as unknown as ReturnType<typeof vi.fn>).mockReset();
-  (clientApi.saveProgress as unknown as ReturnType<typeof vi.fn>).mockClear();
+  vi.mocked(clientApi.snapshot).mockReset();
+  vi.mocked(clientApi.saveProgress).mockClear();
 });
 
 describe("LearningCarousel", () => {
   it("textカード: 初期レンダと理解度コミットで進捗保存", async () => {
     const l1 = { id: "l-1" as UUID, courseId: baseCourse.id, title: "L1", orderIndex: 1, createdAt: makeIso(1) };
     const l2 = { id: "l-2" as UUID, courseId: baseCourse.id, title: "L2", orderIndex: 2, createdAt: makeIso(1) };
-    (clientApi.snapshot as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+    vi.mocked(clientApi.snapshot).mockResolvedValue({
       courses: [baseCourse, otherCourse],
       lessons: [l1, l2],
       cards: [
@@ -68,8 +69,11 @@ describe("LearningCarousel", () => {
 
     // saveProgress が level で呼ばれる（最後が 4）
     expect(clientApi.saveProgress).toHaveBeenCalled();
-    const last = (clientApi.saveProgress as any).mock.calls.at(-1)![0];
-    expect(last).toMatchObject({ cardId: "card-t1", completed: true, answer: { level: 4 } });
+    const saveProgressMock: MockedFunction<typeof clientApi.saveProgress> = vi.mocked(clientApi.saveProgress);
+    const last = saveProgressMock.mock.calls.at(-1)?.[0];
+    expect(last).toBeTruthy();
+    const lastChecked: NonNullable<typeof last> = last as NonNullable<typeof last>;
+    expect(lastChecked).toMatchObject({ cardId: "card-t1", completed: true, answer: { level: 4 } });
 
     // 戻るボタンで router.push に cardId を含めたURL
     await userEvent.click(screen.getByRole("button", { name: "ワークスペースに戻る" }));
@@ -78,7 +82,7 @@ describe("LearningCarousel", () => {
 
   it("quizカード: 採点で結果表示→理解度スライダー表示→コミット", async () => {
     const l1 = { id: "l-1" as UUID, courseId: baseCourse.id, title: "L1", orderIndex: 1, createdAt: makeIso(1) };
-    (clientApi.snapshot as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+    vi.mocked(clientApi.snapshot).mockResolvedValue({
       courses: [baseCourse],
       lessons: [l1],
       cards: [
@@ -106,11 +110,15 @@ describe("LearningCarousel", () => {
     // 結果と解説が表示され、saveProgress が result で呼ばれる
     expect(await screen.findByText("不正解")).toBeInTheDocument();
     expect(screen.getByText("4 が正解")).toBeInTheDocument();
-    expect(clientApi.saveProgress).toHaveBeenCalledWith(expect.objectContaining({
+    const sp1: MockedFunction<typeof clientApi.saveProgress> = vi.mocked(clientApi.saveProgress);
+    const firstCall = sp1.mock.calls[0]?.[0];
+    expect(firstCall).toBeTruthy();
+    const firstChecked: NonNullable<typeof firstCall> = firstCall as NonNullable<typeof firstCall>;
+    expect(firstChecked).toMatchObject({
       cardId: "card-q1",
       completed: false,
-      answer: expect.objectContaining({ selected: 0, result: "wrong" }),
-    }));
+      answer: { selected: 0, result: "wrong" },
+    });
 
     // 以後、理解度スライダーが表示される
     const slider = await screen.findByRole("slider");
@@ -118,7 +126,10 @@ describe("LearningCarousel", () => {
     await userEvent.keyboard("{ArrowRight}{ArrowRight}"); // 1 -> 3
 
     // 最後の呼び出しは level=3, completed=true
-    const last = (clientApi.saveProgress as any).mock.calls.at(-1)![0];
-    expect(last).toMatchObject({ cardId: "card-q1", completed: true, answer: { level: 3 } });
+    const saveProgressMock2: MockedFunction<typeof clientApi.saveProgress> = vi.mocked(clientApi.saveProgress);
+    const last2 = saveProgressMock2.mock.calls.at(-1)?.[0];
+    expect(last2).toBeTruthy();
+    const lastChecked2: NonNullable<typeof last2> = last2 as NonNullable<typeof last2>;
+    expect(lastChecked2).toMatchObject({ cardId: "card-q1", completed: true, answer: { level: 3 } });
   });
 });

@@ -34,19 +34,43 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
       const snap = await fetchSnapshot();
       if (!mounted) return;
       const lessons = snap.lessons.filter((l) => l.courseId === courseId);
-      const lessonId = initialLessonId ?? lessons[0]?.id;
-      // lesson が未指定かつ card 指定があれば、そのカードの lesson を暗黙選択
+      const lessonOrder = new Map<string, number>(lessons.map((l) => [l.id, l.orderIndex] as const));
       const allCourseCards = snap.cards
         .filter((c) => lessons.some((l) => l.id === c.lessonId))
-        .sort((a, b) => a.orderIndex - b.orderIndex || a.createdAt.localeCompare(b.createdAt));
-      const startIndex = initialCardId
-        ? Math.max(0, allCourseCards.findIndex((c) => c.id === initialCardId))
-        : Math.max(0, allCourseCards.findIndex((c) => c.lessonId === lessonId));
-      setCards(allCourseCards);
-      setActive(startIndex >= 0 ? startIndex : 0);
+        .sort((a, b) => {
+          const la = lessonOrder.get(a.lessonId) ?? 0;
+          const lb = lessonOrder.get(b.lessonId) ?? 0;
+          return (
+            (la - lb) ||
+            (a.orderIndex - b.orderIndex) ||
+            a.createdAt.localeCompare(b.createdAt)
+          );
+        });
+
+      // initialLessonId が指定された場合はそのレッスンにスコープ
+      const scopedLessonId = initialLessonId && lessons.some((l) => l.id === initialLessonId) ? initialLessonId : undefined;
+      const scopedCards = scopedLessonId ? allCourseCards.filter((c) => c.lessonId === scopedLessonId) : allCourseCards;
+      const effectiveCards = scopedCards.length > 0 ? scopedCards : allCourseCards;
+
+      // 開始位置の決定
+      let startIndex = 0;
+      if (initialCardId) {
+        const idx = effectiveCards.findIndex((c) => c.id === initialCardId);
+        startIndex = idx >= 0 ? idx : 0;
+      } else if (scopedLessonId) {
+        startIndex = 0; // レッスン指定時はその先頭
+      } else {
+        // レッスン未指定時はコースの最初のレッスン先頭カードを起点
+        const firstLessonId = lessons[0]?.id;
+        const idx = effectiveCards.findIndex((c) => c.lessonId === firstLessonId);
+        startIndex = idx >= 0 ? idx : 0;
+      }
+
+      setCards(effectiveCards);
+      setActive(startIndex);
     })();
     return () => { mounted = false; };
-  }, [courseId]);
+  }, [courseId, initialCardId, initialLessonId]);
 
   // embla 選択変更で active を同期
   const handleSelect = React.useCallback((a?: CarouselApi) => {

@@ -24,9 +24,15 @@ type Props = {
   selectedId?: UUID;
   selectedKind?: "lesson" | "card";
   onNavigate?: (nextCardId: UUID) => void;
+  /**
+   * If provided, limits the active list to cards within this lesson.
+   * This reflects user intent when選択したレッスン行から学習/生成を開始した場合の“レッスンスコープ”。
+   * Local session scopes (e.g., flagged-only) still override this.
+   */
+  lessonScopeId?: UUID;
 };
 
-export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: Props) {
+export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, lessonScopeId }: Props) {
   const version = useWorkspaceSelector((s) => s.version);
   const draftForSelected = useWorkspaceSelector((s) => (selectedId ? s.drafts[selectedId] : undefined), (a, b) => JSON.stringify(a) === JSON.stringify(b));
   const [cards, setCards] = React.useState<Card[]>([]);
@@ -40,8 +46,21 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
       const snap = await fetchSnapshot();
       if (!mounted) return;
       // keep only cards for lessons in this course
-      const lessonIds = new Set<string>(snap.lessons.filter((l) => l.courseId === courseId).map((l) => l.id));
-      const cs = snap.cards.filter((c) => lessonIds.has(c.lessonId)).sort((a, b) => a.orderIndex - b.orderIndex || a.createdAt.localeCompare(b.createdAt));
+      const lessonsInCourse = snap.lessons.filter((l) => l.courseId === courseId);
+      const lessonIds = new Set<string>(lessonsInCourse.map((l) => l.id));
+      const lessonOrder = new Map<string, number>(lessonsInCourse.map((l) => [l.id, l.orderIndex] as const));
+      const cs = snap.cards
+        .filter((c) => lessonIds.has(c.lessonId))
+        // Stable course-wide ordering: lesson.orderIndex -> card.orderIndex -> createdAt
+        .sort((a, b) => {
+          const la = lessonOrder.get(a.lessonId) ?? 0;
+          const lb = lessonOrder.get(b.lessonId) ?? 0;
+          return (
+            (la - lb) ||
+            (a.orderIndex - b.orderIndex) ||
+            a.createdAt.localeCompare(b.createdAt)
+          );
+        });
       setCards(cs);
       setProgress(snap.progress);
       const ids = await listFlaggedByCourse(courseId);
@@ -53,7 +72,12 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate }: P
   // セッション用の対象集合（nullなら全件）
   const [scopeIds, setScopeIds] = React.useState<string[] | null>(null);
   const flatCards = React.useMemo(() => cards, [cards]);
-  const activeList = React.useMemo(() => (scopeIds ? flatCards.filter((c) => scopeIds.includes(c.id)) : flatCards), [flatCards, scopeIds]);
+  // lessonScopeId (from parent) provides a default scoping, unless user set a manual scope locally
+  const activeList = React.useMemo(() => {
+    if (scopeIds) return flatCards.filter((c) => scopeIds.includes(c.id)); // manual override (e.g., flagged-only)
+    if (lessonScopeId) return flatCards.filter((c) => c.lessonId === lessonScopeId);
+    return flatCards;
+  }, [flatCards, scopeIds, lessonScopeId]);
   const activeIndex = React.useMemo(() => activeList.findIndex((c) => c.id === selectedId), [activeList, selectedId]);
   const prevId = activeIndex > 0 ? (activeList[activeIndex - 1]?.id as UUID) : undefined;
   const nextId = activeIndex >= 0 && activeIndex < activeList.length - 1 ? (activeList[activeIndex + 1]?.id as UUID) : undefined;

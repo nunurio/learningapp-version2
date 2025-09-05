@@ -12,7 +12,7 @@ const NavTree = dynamic(() => import("@/components/workspace/NavTree").then((m) 
 const Inspector = dynamic(() => import("@/components/workspace/Inspector").then((m) => m.Inspector), { ssr: false, loading: () => <SkeletonInspector /> });
 const CardPlayer = dynamic(() => import("@/components/workspace/CardPlayer").then((m) => m.CardPlayer), { ssr: false, loading: () => <SkeletonPlayer /> });
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from "@/components/ui/sheet";
-import { listCards as listCardsApi } from "@/lib/client-api";
+import { listCards as listCardsApi, snapshot as fetchSnapshot } from "@/lib/client-api";
 import { workspaceStore } from "@/lib/state/workspace-store";
 import { useHydrateDraftsOnce } from "@/lib/state/useHydrateDrafts";
 
@@ -25,6 +25,8 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
   const [selKind, setSelKind] = React.useState<"lesson" | "card" | undefined>(undefined);
   const [openNav, setOpenNav] = React.useState(false);
   const [openInspector, setOpenInspector] = React.useState(false);
+  // When a lesson (or a card within a lesson) is selected, scope center navigation to that lesson
+  const [lessonScopeId, setLessonScopeId] = React.useState<UUID | null>(null);
 
   const handleSelect = React.useCallback(async (
     id: UUID,
@@ -39,12 +41,14 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
         setSelId(undefined);
         setSelKind(undefined);
       }
+      setLessonScopeId(null);
       if (ctx === "mobile") setOpenNav(false);
       return;
     }
     if (kind === "lesson-edit") {
       setSelId(id);
       setSelKind("lesson");
+      setLessonScopeId(id);
       if (ctx === "mobile") {
         setOpenNav(false);
         setOpenInspector(true);
@@ -55,12 +59,21 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
       const first = (await listCardsApi(id))[0];
       if (first) { setSelId(first.id); setSelKind("card"); }
       else { setSelId(undefined); setSelKind(undefined); }
+      setLessonScopeId(id);
       if (ctx === "mobile") setOpenNav(false);
       return;
     }
     // card
     setSelId(id);
     setSelKind("card");
+    // Derive and lock scope to the card's lesson for consistent next/prev within the lesson
+    try {
+      const snap = await fetchSnapshot();
+      const found = snap.cards.find((c) => c.id === id);
+      setLessonScopeId(found ? (found.lessonId as UUID) : null);
+    } catch {
+      // snapshot 失敗時はスコープ変更しない（現状維持）
+    }
     if (ctx === "mobile") setOpenNav(false);
   }, [courseId, router]);
 
@@ -71,6 +84,20 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
       setSelKind("card");
     }
   }, [initialCardId]);
+
+  // カード選択時は所属レッスンに自動スコープ（初期遷移/戻る遷移の双方をカバー）
+  React.useEffect(() => {
+    (async () => {
+      if (!selId || selKind !== "card") return;
+      try {
+        const snap = await fetchSnapshot();
+        const found = snap.cards.find((c) => c.id === selId);
+        if (found) setLessonScopeId(found.lessonId as UUID);
+      } catch {
+        /* noop */
+      }
+    })();
+  }, [selId, selKind]);
 
   return (
     <div className="min-h-screen">
@@ -104,6 +131,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
                 courseId={courseId}
                 selId={selId}
                 selKind={selKind}
+                lessonScopeId={lessonScopeId ?? undefined}
                 onNavigate={(id) => { setSelId(id); setSelKind("card"); }}
               />
             </ResizablePanel>
@@ -165,6 +193,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
                 courseId={courseId}
                 selectedId={selId}
                 selectedKind={selKind}
+                lessonScopeId={lessonScopeId ?? undefined}
                 onNavigate={(id) => { setSelId(id); setSelKind("card"); }}
               />
             )}
@@ -175,7 +204,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
   );
 }
 
-function CenterPanel({ courseId, selId, selKind, onNavigate }: { courseId: UUID; selId?: string; selKind?: "lesson"|"card"; onNavigate: (id: UUID) => void }) {
+function CenterPanel({ courseId, selId, selKind, lessonScopeId, onNavigate }: { courseId: UUID; selId?: string; selKind?: "lesson"|"card"; lessonScopeId?: UUID; onNavigate: (id: UUID) => void }) {
   return (
     <div className="h-full p-4 overflow-auto">
       <div className="flex items-center justify-between mb-3">
@@ -183,14 +212,25 @@ function CenterPanel({ courseId, selId, selKind, onNavigate }: { courseId: UUID;
         <div>
           {/* 学習モードへ遷移（選択中のカードがあればそのカードから開始） */}
           <Button asChild size="sm" variant="outline" aria-label="学習モード">
-            <Link href={`/learn/${courseId}${selId ? `?cardId=${selId}` : ""}`}>学習モード</Link>
+            {(() => {
+              const href = (() => {
+                if (selId && selKind === "card") {
+                  const q = new URLSearchParams({ cardId: selId });
+                  if (lessonScopeId) q.set("lessonId", lessonScopeId);
+                  return `/learn/${courseId}?${q.toString()}`;
+                }
+                if (selId && selKind === "lesson") return `/learn/${courseId}?lessonId=${selId}`;
+                return `/learn/${courseId}`;
+              })();
+              return <Link href={href}>学習モード</Link>;
+            })()}
           </Button>
         </div>
       </div>
       {!selId ? (
         <p className="text-sm text-gray-700">左のナビからカードを選択すると、ここで学習できます。</p>
       ) : (
-        <CardPlayer courseId={courseId} selectedId={selId} selectedKind={selKind} onNavigate={onNavigate} />
+        <CardPlayer courseId={courseId} selectedId={selId} selectedKind={selKind} lessonScopeId={lessonScopeId} onNavigate={onNavigate} />
       )}
     </div>
   );
