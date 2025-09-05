@@ -27,6 +27,8 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
   const [openInspector, setOpenInspector] = React.useState(false);
   // When a lesson (or a card within a lesson) is selected, scope center navigation to that lesson
   const [lessonScopeId, setLessonScopeId] = React.useState<UUID | null>(null);
+  // 最新のスコープ推定リクエストを識別して競合を防ぐ
+  const scopeReqIdRef = React.useRef(0);
 
   const handleSelect = React.useCallback(async (
     id: UUID,
@@ -66,14 +68,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
     // card
     setSelId(id);
     setSelKind("card");
-    // Derive and lock scope to the card's lesson for consistent next/prev within the lesson
-    try {
-      const snap = await fetchSnapshot();
-      const found = snap.cards.find((c) => c.id === id);
-      setLessonScopeId(found ? (found.lessonId as UUID) : null);
-    } catch {
-      // snapshot 失敗時はスコープ変更しない（現状維持）
-    }
+    // スコープの算出は下の useEffect に集約（最新選択のみ反映）
     if (ctx === "mobile") setOpenNav(false);
   }, [courseId, router]);
 
@@ -87,16 +82,23 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
 
   // カード選択時は所属レッスンに自動スコープ（初期遷移/戻る遷移の双方をカバー）
   React.useEffect(() => {
+    let active = true;
     (async () => {
       if (!selId || selKind !== "card") return;
+      const reqId = ++scopeReqIdRef.current;
       try {
         const snap = await fetchSnapshot();
+        // 競合防止: 直近の要求かつ選択が変わっていないことを確認
+        if (!active || scopeReqIdRef.current !== reqId) return;
         const found = snap.cards.find((c) => c.id === selId);
-        if (found) setLessonScopeId(found.lessonId as UUID);
+        setLessonScopeId(found ? (found.lessonId as UUID) : null);
       } catch {
-        /* noop */
+        // 失敗時はスコープ変更しない（現状維持）
       }
     })();
+    return () => {
+      active = false;
+    };
   }, [selId, selKind]);
 
   return (
