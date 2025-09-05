@@ -7,14 +7,36 @@ export async function saveProgressAction(input: Progress) {
   const supa = await createClient();
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
+  // 既存の完了状態を取得して「true が勝つ」マージを行う
+  const { data: prev, error: selErr } = await supa
+    .from("progress")
+    .select("completed, completed_at, answer")
+    .eq("user_id", userId)
+    .eq("card_id", input.cardId)
+    .maybeSingle();
+  if (selErr) throw selErr;
+
+  const prevCompleted = !!prev?.completed;
+  const nextCompleted = prevCompleted || !!input.completed;
+  // completedAt は「初回完了時刻を保持」。
+  // 既存が完了済みならそれを優先。未完→完了に変わる場合は入力値 or 現在時刻。
+  const nextCompletedAt = nextCompleted
+    ? (prevCompleted
+        ? (prev?.completed_at ?? input.completedAt ?? null)
+        : (input.completedAt ?? null))
+    : null;
+
+  // answer は入力優先（未指定なら既存を保持）
+  const nextAnswer = (input.answer as Json | undefined) ?? (prev?.answer as Json | null) ?? null;
+
   const { error } = await supa
     .from("progress")
     .upsert({
       user_id: userId,
       card_id: input.cardId,
-      completed: !!input.completed,
-      completed_at: input.completedAt ?? null,
-      answer: (input.answer as Json | undefined) ?? null,
+      completed: nextCompleted,
+      completed_at: nextCompletedAt,
+      answer: nextAnswer,
     } satisfies TablesInsert<"progress">);
   if (error) throw error;
 }

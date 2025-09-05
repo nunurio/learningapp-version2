@@ -9,7 +9,12 @@ describe("server-actions/progress", () => {
 
   it("saveProgressAction: 認証必須、upsertで保存", async () => {
     const captured: Array<{ t: string; payload: unknown }> = [];
-    const supa = { from: vi.fn((t: string) => ({ upsert: (payload: unknown) => { captured.push({ t, payload }); return { error: null }; } })) } as const;
+    const supa = {
+      from: vi.fn((t: string) => ({
+        select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+        upsert: (payload: unknown) => { captured.push({ t, payload }); return { error: null }; },
+      })),
+    } as const;
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa, getCurrentUserId: async () => "user-1" }));
     const { saveProgressAction } = await import("./progress");
     await saveProgressAction({ cardId: "C1" as UUID, completed: true, completedAt: undefined, answer: undefined });
