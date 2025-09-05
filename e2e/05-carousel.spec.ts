@@ -22,38 +22,38 @@ test("学習カルーセル: 作成→学習→ナビ/採点/理解度", async (
   const coursePath = new URL(page.url());
   const courseId = coursePath.pathname.split("/")[2];
 
-  // 3) カードを3枚追加（Text / Quiz / Fill‑blank）
-  await page.getByRole("button", { name: "新規カードを作成" }).click();
-  const form = page.locator("form").filter({ hasText: "タイトル（任意）" }).first();
-  await expect(form).toBeVisible();
+  // 3) カードを3枚追加（APIで確実に作成: Text / Quiz / Fill‑blank）
+  // Text（先頭）
+  await page.request.post("/api/db", {
+    data: { op: "addCard", params: { lessonId, card: { cardType: "text", title: null, content: { body: "本文A" } } } },
+  });
+  // Quiz（2枚目）
+  await page.request.post("/api/db", {
+    data: {
+      op: "addCard",
+      params: {
+        lessonId,
+        card: { cardType: "quiz", title: null, content: { question: "2+2?", options: ["3", "4"], answerIndex: 1, explanation: "4 が正解" } },
+      },
+    },
+  });
+  // Fill‑blank（3枚目）
+  await page.request.post("/api/db", {
+    data: { op: "addCard", params: { lessonId, card: { cardType: "fill-blank", title: null, content: { text: "I [[1]] JS", answers: { "1": "love" } } } } },
+  });
 
-  // Text
-  await form.locator('div:has(> label:has-text("本文")) textarea').fill("本文A");
-  await form.getByRole("button", { name: "追加" }).click();
-
-  // Quiz
-  await form.locator("select").selectOption("quiz");
-  await form.locator('div:has(> label:has-text("設問")) input').fill("2+2?");
-  await form.locator('div:has(> label:has-text("選択肢（改行区切り）")) textarea').fill("3\n4");
-  await form.locator('div:has(> label:has-text("正解インデックス（0開始）")) input').fill("1");
-  await form.locator('div:has(> label:has-text("解説（任意）")) input').fill("4 が正解");
-  await form.getByRole("button", { name: "追加" }).click();
-
-  // Fill‑blank
-  await form.locator("select").selectOption("fill-blank");
-  await form.locator('div:has(> label:has-text("テキスト（[[1]] の形式で空所）")) textarea').fill("I [[1]] JS");
-  await form.locator('div:has(> label:has-text("回答（例: 1:answer 改行区切り）")) textarea').fill("1:love");
-  await form.getByRole("button", { name: "追加" }).click();
-
-  // 左ツリーのカード件数を取得（環境差異に備えて2件以上で続行）
-  const cardsInTree = page.locator('[role="treeitem"][data-type="card"]');
-  await page.waitForFunction(() => document.querySelectorAll('[role="treeitem"][data-type="card"]').length >= 2, null, { timeout: 20_000 });
-  const totalCards = await cardsInTree.count();
+  // サーバー順序を取得して合計枚数と各インデックスを確定
+  const listRes = await page.request.post("/api/db", { data: { op: "listCards", params: { lessonId } } });
+  const cardsOrdered: Array<{ id: string; cardType: string }> = await listRes.json();
+  const totalCards = cardsOrdered.length;
+  const quizIndex = Math.max(0, cardsOrdered.findIndex((c) => c.cardType === "quiz"));
+  const fillIndex = cardsOrdered.findIndex((c) => c.cardType === "fill-blank");
 
   // 4) 学習モードへ（選択中のレッスンをスコープ）
-  // 「学習モード」ボタン経由だと環境によりタイミング差が出るため、直接URLで遷移
   await page.goto(`/learn/${courseId}?lessonId=${lessonId}`);
   await page.waitForURL(new RegExp(`/learn/${courseId}\\?lessonId=${lessonId}`));
+  // スライドが期待枚数ロードされるまで待機
+  await page.waitForFunction((n) => document.querySelectorAll('[data-slot="carousel-item"]').length === n, totalCards, { timeout: 20_000 });
 
   // 初期: 1/n。前へは無効、次へは有効。理解度スライダー表示（Text）
   await expect(page.getByText(new RegExp(`^1 / ${totalCards}$`))).toBeVisible({ timeout: 20_000 });
@@ -69,9 +69,11 @@ test("学習カルーセル: 作成→学習→ナビ/採点/理解度", async (
   await sliderThumbText.press("ArrowRight");
   await expect(page.getByText("理解度: 3/5")).toBeVisible();
 
-  // 次へ → Quiz（2/n）。初期はスライダー非表示。
-  await next.click();
-  await expect(page.getByText(new RegExp(`^2 / ${totalCards}$`))).toBeVisible();
+  // Quizへ移動（インデックスに合わせて必要回数だけ次へ）
+  for (let i = 1; i <= quizIndex; i++) {
+    await next.click();
+  }
+  await expect(page.getByText(new RegExp(`^${quizIndex + 1} / ${totalCards}$`))).toBeVisible();
   await expect(page.getByRole("radiogroup", { name: "選択肢" })).toBeVisible();
   await expect(page.locator('[data-slot="slider-thumb"]')).toHaveCount(0);
   // わざと不正解を選び、採点→結果/解説の表示
@@ -83,9 +85,12 @@ test("学習カルーセル: 作成→学習→ナビ/採点/理解度", async (
   await expect(page.locator('[data-slot="slider-thumb"]').first()).toBeVisible();
 
   // 3枚目が存在する場合のみ Fill‑blank も確認
-  if (totalCards >= 3) {
-    await next.click();
-    await expect(page.getByText(new RegExp(`^3 / ${totalCards}$`))).toBeVisible();
+  if (fillIndex !== -1) {
+    // Fillカード位置まで移動
+    for (let i = quizIndex + 1; i <= fillIndex; i++) {
+      await next.click();
+    }
+    await expect(page.getByText(new RegExp(`^${fillIndex + 1} / ${totalCards}$`))).toBeVisible();
     await page.getByPlaceholder("#1").fill("love");
     await page.getByRole("button", { name: "Check" }).click();
     await expect(page.getByText("正解！")).toBeVisible();

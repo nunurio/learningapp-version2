@@ -66,6 +66,44 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
         startIndex = idx >= 0 ? idx : 0;
       }
 
+      // 既存 progress をローカル状態へ反映（levels / results / quizSel / fillAns）
+      // これにより再訪時に「未評価」にならず、クイズ/穴埋めも採点済み表示・入力値を復元できる
+      const progressMap = new Map(snap.progress.map((p) => [p.cardId, p] as const));
+      const initLevels: Record<string, number | undefined> = {};
+      const initResults: Record<string, "idle" | "correct" | "wrong"> = {};
+      const initQuizSel: Record<string, number | null> = {};
+      const initFillAns: Record<string, Record<string, string>> = {};
+      for (const c of effectiveCards) {
+        const p = progressMap.get(c.id);
+        if (!p) continue;
+        const ans = p.answer;
+        if (!ans || typeof ans !== "object") continue;
+        const a = ans as Record<string, unknown>;
+        // 共通: level
+        const lv = a["level"];
+        if (typeof lv === "number") initLevels[c.id] = lv;
+        if (c.cardType === "quiz") {
+          const sel = a["selected"];
+          if (typeof sel === "number") initQuizSel[c.id] = sel;
+          const r = a["result"];
+          if (r === "correct" || r === "wrong") initResults[c.id] = r;
+        } else if (c.cardType === "fill-blank") {
+          const r = a["result"];
+          if (r === "correct" || r === "wrong") initResults[c.id] = r;
+          const vals: Record<string, string> = {};
+          for (const [k, v] of Object.entries(a)) {
+            if (k === "level" || k === "result") continue;
+            if (typeof v === "string") vals[k] = v;
+          }
+          if (Object.keys(vals).length) initFillAns[c.id] = vals;
+        }
+      }
+
+      setLevels(initLevels);
+      setResults(initResults);
+      setQuizSel(initQuizSel);
+      setFillAns(initFillAns);
+
       setCards(effectiveCards);
       setActive(startIndex);
     })();
@@ -98,13 +136,48 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
   const progressValue = cards.length ? ((active + 1) / cards.length) * 100 : 0;
 
   // save helper
+  // 同一 cardId への保存は直列化し、かつサーバー保存時に回答をマージして巻き戻りを防ぐ
+  const saveQueueRef = React.useRef<Map<UUID, Promise<void>>>(new Map());
   const saveProgress = React.useCallback((input: Progress) => {
-    // 楽観更新
+    // 1) 楽観更新（level のみ即時反映）
     if (typeof input.answer === "object" && input.answer && "level" in input.answer) {
       setLevels((m) => ({ ...m, [input.cardId]: (input.answer as Record<string, number>)["level"] }));
     }
-    void saveProgressApi(input).catch((e) => console.error("saveProgress failed:", e));
-  }, []);
+
+    // 2) 送信 payload の回答オブジェクトをローカル既知の状態とマージ
+    const card = cards.find((c) => c.id === input.cardId);
+    const base = (typeof input.answer === "object" && input.answer) ? (input.answer as Record<string, unknown>) : {};
+    const existing: Record<string, unknown> = {};
+    // 既知の level
+    const lv = levels[input.cardId];
+    if (typeof lv === "number") existing["level"] = lv;
+    if (card?.cardType === "quiz") {
+      const sel = quizSel[input.cardId];
+      if (typeof sel === "number") existing["selected"] = sel;
+      const r = results[input.cardId];
+      if (r === "correct" || r === "wrong") existing["result"] = r;
+    } else if (card?.cardType === "fill-blank") {
+      const vals = fillAns[input.cardId];
+      if (vals) Object.assign(existing, vals);
+      const r = results[input.cardId];
+      if (r === "correct" || r === "wrong") existing["result"] = r;
+    }
+    const mergedAnswer = Object.keys(existing).length ? { ...existing, ...base } : base;
+
+    // 3) 直列化キュー（カード単位）に投入
+    const key = input.cardId as UUID;
+    const prev = saveQueueRef.current.get(key) ?? Promise.resolve();
+    const next = prev
+      .catch((e) => { console.error("saveProgress queue previous failed:", e); })
+      .then(async () => {
+        try {
+          await saveProgressApi({ ...input, answer: mergedAnswer });
+        } catch (e) {
+          console.error("saveProgress failed:", e);
+        }
+      });
+    saveQueueRef.current.set(key, next);
+  }, [cards, levels, quizSel, results, fillAns]);
 
   return (
     <div className="relative h-full w-full flex flex-col">
