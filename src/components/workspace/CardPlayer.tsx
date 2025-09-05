@@ -461,7 +461,6 @@ function UnderstandingSlider({
     // Sync transient level to workspace store for realtime UI (NavTree rings)
     const normalized = typeof initial === "number" && initial > 0 ? initial : undefined;
     workspaceStore.setLevel(cardId as UUID, normalized);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cardId, initial]);
   const completed = lv >= 3;
   const color = React.useMemo(() => {
