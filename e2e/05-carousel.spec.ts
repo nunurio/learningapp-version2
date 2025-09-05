@@ -44,7 +44,7 @@ test("学習カルーセル: 作成→学習→ナビ/採点/理解度", async (
 
   // サーバー順序を取得して合計枚数と各インデックスを確定
   const listRes = await page.request.post("/api/db", { data: { op: "listCards", params: { lessonId } } });
-  const cardsOrdered: Array<{ id: string; cardType: string }> = await listRes.json();
+  const cardsOrdered = (await listRes.json()) as unknown as Array<{ id: string; cardType: string }>;
   const totalCards = cardsOrdered.length;
   const quizIndex = Math.max(0, cardsOrdered.findIndex((c) => c.cardType === "quiz"));
   const fillIndex = cardsOrdered.findIndex((c) => c.cardType === "fill-blank");

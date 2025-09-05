@@ -23,7 +23,7 @@ describe("server-actions/progress", () => {
   });
 
   it("saveProgressAction: answer はオブジェクト同士ならフィールドマージ", async () => {
-    const captured: Array<{ t: string; payload: any }> = [];
+    const captured: Array<{ t: string; payload: Record<string, unknown> }> = [];
     const supa = {
       from: vi.fn((t: string) => ({
         select: () => ({
@@ -36,7 +36,7 @@ describe("server-actions/progress", () => {
             }),
           }),
         }),
-        upsert: (payload: unknown) => {
+        upsert: (payload: Record<string, unknown>) => {
           captured.push({ t, payload });
           return { error: null };
         },

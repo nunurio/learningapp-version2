@@ -60,10 +60,9 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
       } else if (scopedLessonId) {
         startIndex = 0; // レッスン指定時はその先頭
       } else {
-        // レッスン未指定時はコースの最初のレッスン先頭カードを起点
-        const firstLessonId = lessons[0]?.id;
-        const idx = effectiveCards.findIndex((c) => c.lessonId === firstLessonId);
-        startIndex = idx >= 0 ? idx : 0;
+        // レッスン未指定時: allCourseCards は lesson/orderIndex で既に昇順ソート済み。
+        // そのためコース先頭カード（インデックス 0）から開始すれば期待どおり。
+        startIndex = 0;
       }
 
       // 既存 progress をローカル状態へ反映（levels / results / quizSel / fillAns）
