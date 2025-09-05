@@ -618,10 +618,20 @@ function TreeCardRow({ id, title, level, selected, active, tags, progressPct, on
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => onEdit()}>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.stopPropagation();
+                  onEdit();
+                }}
+              >
                 編集
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setConfirmOpen(true)}>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.stopPropagation();
+                  setConfirmOpen(true);
+                }}
+              >
                 削除
               </DropdownMenuItem>
             </DropdownMenuContent>
