@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { generateCoursePlan } from "@/lib/ai/mock";
+import { runOutlineGraph } from "@/lib/ai/langgraph/outline";
+import type { CoursePlan } from "@/lib/types";
+import type { AiUpdate } from "@/lib/ai/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,16 +38,17 @@ export async function POST(req: Request) {
   if (!theme || typeof theme !== "string") theme = "コース";
 
   try {
-    const plan = generateCoursePlan({ theme, level, goal, lessonCount });
-    return NextResponse.json(
-      { plan },
-      { headers: { "Cache-Control": "no-store" } },
-    );
+    const result = await runOutlineGraph({ theme, level, goal, lessonCount });
+    const body: { plan: CoursePlan; updates: AiUpdate[] } = {
+      plan: result.plan,
+      updates: result.updates,
+    };
+    return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
   } catch (e: unknown) {
-    const err = e as { message?: string } | undefined;
-    return new NextResponse(
-      JSON.stringify({ error: err?.message ?? "unknown" }),
-      { status: 500, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } },
+    const message = e instanceof Error ? e.message : typeof e === "string" ? e : "unknown";
+    return NextResponse.json(
+      { error: message },
+      { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }
 }
