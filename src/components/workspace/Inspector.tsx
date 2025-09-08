@@ -155,6 +155,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
       <div className="text-xs text-gray-500 mb-2">インスペクタ</div>
       {currentLesson && (
         <LessonTools
+          courseId={courseId}
           lesson={currentLesson}
           runningLesson={runningLesson}
           setRunningLesson={setRunningLesson}
@@ -354,9 +355,10 @@ type LessonToolsProps = {
   onSaveAll: (lessonId: UUID, payload: { draftId: string; payload: LessonCards }, selected: Record<number, boolean>) => void;
   onRefresh: () => void;
   selectedKind?: "lesson" | "card";
+  courseId: UUID;
 };
 
-function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, onSaveAll, onRefresh, selectedKind }: LessonToolsProps) {
+function LessonTools({ courseId, lesson, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, onSaveAll, onRefresh, selectedKind }: LessonToolsProps) {
   const [aiMode, setAiMode] = React.useState<"batch" | "single">("batch");
   // 実行開始時点のモードをロックして保持（実行中のモード変更で再マウントさせない）
   const [runningMode, setRunningMode] = React.useState<"batch" | "single" | null>(null);
@@ -398,6 +400,7 @@ function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, se
       {isRunning && (
         (runningMode ?? aiMode) === "batch" ? (
           <LessonCardsRunner
+            courseId={courseId}
             lessonId={lesson.id}
             lessonTitle={lesson.title}
             onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
@@ -406,6 +409,7 @@ function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, se
           />
         ) : (
           <SingleCardRunner
+            courseId={courseId}
             lessonId={lesson.id}
             lessonTitle={lesson.title}
             onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
@@ -501,6 +505,7 @@ function LessonInspector(props: {
         </div>
         {runningLesson?.id === lesson.id && (
           <LessonCardsRunner
+            courseId={props.courseId}
             lessonId={lesson.id}
             lessonTitle={lesson.title}
             onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}

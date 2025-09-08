@@ -4,6 +4,7 @@ import { saveDraft, commitLessonCardsPartial } from "@/lib/client-api";
 import type { LessonCards, UUID } from "@/lib/types";
 
 type Props = {
+  courseId: UUID;
   lessonId: UUID;
   lessonTitle: string;
   onLog: (lessonId: UUID, text: string) => void;
@@ -11,7 +12,7 @@ type Props = {
   onFinish: () => void; // called on done or error
 };
 
-export function SingleCardRunner({ lessonId, lessonTitle, onLog, onPreview, onFinish }: Props) {
+export function SingleCardRunner({ courseId, lessonId, lessonTitle, onLog, onPreview, onFinish }: Props) {
   const logRef = useRef(onLog);
   const previewRef = useRef(onPreview);
   const finishRef = useRef(onFinish);
@@ -25,7 +26,7 @@ export function SingleCardRunner({ lessonId, lessonTitle, onLog, onPreview, onFi
         const res = await fetch("/api/ai/lesson-cards", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lessonTitle, desiredCount: 1 }),
+          body: JSON.stringify({ lessonTitle, desiredCount: 1, courseId }),
           cache: "no-store",
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -50,7 +51,6 @@ export function SingleCardRunner({ lessonId, lessonTitle, onLog, onPreview, onFi
       }
     })();
     return () => { aborted = true; };
-  }, [lessonId, lessonTitle]);
+  }, [lessonId, lessonTitle, courseId]);
   return null;
 }
-
