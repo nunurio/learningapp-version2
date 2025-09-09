@@ -22,11 +22,38 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
   const [cards, setCards] = React.useState<CardModel[]>([]);
   const [active, setActive] = React.useState(0);
   const [api, setApi] = React.useState<CarouselApi | null>(null);
+  // ビューポート下端までの上限を計測するための ref と状態
+  const carouselAreaRef = React.useRef<HTMLDivElement | null>(null);
+  const [maxBodyHeight, setMaxBodyHeight] = React.useState<number | null>(null);
+  const sliderAreaRef = React.useRef<HTMLDivElement | null>(null);
   // per-card state: quiz/fill の採点結果や入力、slider で決まった level
   const [results, setResults] = React.useState<Record<string, "idle" | "correct" | "wrong">>({});
   const [levels, setLevels] = React.useState<Record<string, number | undefined>>({});
   const [quizSel, setQuizSel] = React.useState<Record<string, number | null>>({});
   const [fillAns, setFillAns] = React.useState<Record<string, Record<string, string>>>({});
+
+  // 画面下端までの最大高さを計測してセット（スライダー領域を差し引く）
+  const measureLayout = React.useCallback(() => {
+    const area = carouselAreaRef.current;
+    if (!area || typeof window === "undefined") return;
+    const rect = area.getBoundingClientRect();
+    const sliderH = sliderAreaRef.current?.offsetHeight ?? 120; // 最低でもスライダー領域ぶんを確保
+    const bottomGap = 8; // 余白
+    const avail = Math.max(0, Math.floor(window.innerHeight - rect.top - sliderH - bottomGap));
+    setMaxBodyHeight(avail);
+  }, []);
+
+  React.useEffect(() => {
+    // 初期 + リサイズ時に再計測
+    const raf = requestAnimationFrame(measureLayout);
+    window.addEventListener("resize", measureLayout);
+    window.addEventListener("orientationchange", measureLayout);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", measureLayout);
+      window.removeEventListener("orientationchange", measureLayout);
+    };
+  }, [measureLayout]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -119,20 +146,44 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
 
   React.useEffect(() => {
     if (!api) return;
-    handleSelect(api);
+    // 初期化時に Embla 側の選択で active を上書きしない（意図した startIndex を優先）
     api.on("select", handleSelect);
     return () => { api.off("select", handleSelect); };
   }, [api, handleSelect]);
 
-  // 初期スクロール位置の確定（apiが来てから）
+  // カード配列の変更を Embla に反映
+  const prevCountRef = React.useRef<number>(0);
+  React.useEffect(() => {
+    if (!api) return;
+    const count = cards.length;
+    if (count !== prevCountRef.current) {
+      prevCountRef.current = count;
+      // スライド数が変わったら再初期化してから目的の位置へジャンプ
+      try { api.reInit(); } catch { /* no-op */ }
+      // 次フレームで確実に位置決め（測定完了後）
+      requestAnimationFrame(() => {
+        const idx = api.selectedScrollSnap();
+        if (idx !== active) api.scrollTo(active, true);
+      });
+    }
+  }, [api, cards.length, active]);
+
+  // active 変更時に Embla を同期
   React.useEffect(() => {
     if (!api) return;
     const idx = api.selectedScrollSnap();
-    if (idx !== active) api.scrollTo(active);
+    if (idx !== active) api.scrollTo(active, true);
   }, [api, active]);
 
   const current = cards[active];
   const progressValue = cards.length ? ((active + 1) / cards.length) * 100 : 0;
+  const sliderVisible = current ? (current.cardType === "text" ? true : (results[current.id] ?? "idle") !== "idle") : false;
+
+  // アクティブスライドの変化やスライダーの可視状態変化時に再計測
+  React.useEffect(() => {
+    const raf = requestAnimationFrame(measureLayout);
+    return () => cancelAnimationFrame(raf);
+  }, [measureLayout, active, sliderVisible]);
 
   // save helper
   // 同一 cardId への保存は直列化し、かつサーバー保存時に回答をマージして巻き戻りを防ぐ
@@ -189,7 +240,7 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
       </div>
 
       {/* 本体: カルーセル（中央にカード。矢印ボタンで移動） */}
-      <div className="relative flex items-stretch mt-0">
+      <div ref={carouselAreaRef} className="relative flex items-stretch mt-0">
         <Carousel
           className="w-full max-w-2xl mx-auto px-2 sm:px-4"
           setApi={setApi}
@@ -199,7 +250,16 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
             {cards.map((card) => (
               <CarouselItem key={card.id} className="pl-4">
                 <Card className="rounded-xl">
-                  <CardContent className="p-6 min-h-[340px] sm:min-h-[440px] md:min-h-[500px]">
+                  <CardContent
+                    className="p-6 min-h-[340px] sm:min-h-[440px] md:min-h-[500px] flex flex-col"
+                    style={maxBodyHeight != null ? {
+                      // デフォルトは既存の最小高さを尊重しつつ、画面下端まで拡張。
+                      // JSDOM/SSR でも安全に動くよう null チェックし、インラインで minHeight を上書き。
+                      maxHeight: maxBodyHeight,
+                      minHeight: Math.min(maxBodyHeight, getDefaultMinHeight()),
+                      overflowY: "auto",
+                    } : undefined}
+                  >
                     {/* タイトル */}
                     <div className="mb-3">
                       <span className="px-2 py-1 rounded bg-black/5 text-xs">{card.cardType}</span>
@@ -250,7 +310,7 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
       </div>
 
       {/* 下部: 理解度スライダー（text は常時、quiz/fill は Check 後） */}
-      <div className="px-4 pb-4 pt-8">
+      <div ref={sliderAreaRef} className="px-4 pb-4 pt-8">
         <div className="max-w-2xl mx-auto min-h-[80px]">
           {current ? (
             <UnderstandingBar
@@ -398,3 +458,12 @@ function FillBlankContent({ cardId, content, values, onChange, result, onCheck }
 }
 
 export default LearningCarousel;
+
+// 現在のブレークポイントにおけるデフォルト最小高さ（Tailwind の sm/md と揃える）
+function getDefaultMinHeight() {
+  if (typeof window === "undefined") return 500;
+  const w = window.innerWidth;
+  if (w >= 768) return 500; // md:
+  if (w >= 640) return 440; // sm:
+  return 340; // base
+}

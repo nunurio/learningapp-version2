@@ -1,18 +1,22 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { saveDraft, commitLessonCardsPartial } from "@/lib/client-api";
-import type { LessonCards, UUID } from "@/lib/types";
+import type { LessonCards, UUID, CardType } from "@/lib/types";
 
 type Props = {
   courseId: UUID;
   lessonId: UUID;
   lessonTitle: string;
+  desiredCardType?: CardType;
+  userBrief?: string;
   onLog: (lessonId: UUID, text: string) => void;
   onPreview?: (lessonId: UUID, draftId: string, payload: LessonCards) => void;
   onFinish: () => void; // called on done or error
 };
 
-export function SingleCardRunner({ courseId, lessonId, lessonTitle, onLog, onPreview, onFinish }: Props) {
+export function SingleCardRunner({ courseId, lessonId, lessonTitle, desiredCardType, userBrief, onLog, onPreview, onFinish }: Props) {
+  const router = useRouter();
   const logRef = useRef(onLog);
   const previewRef = useRef(onPreview);
   const finishRef = useRef(onFinish);
@@ -26,7 +30,7 @@ export function SingleCardRunner({ courseId, lessonId, lessonTitle, onLog, onPre
         const res = await fetch("/api/ai/lesson-cards", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lessonTitle, desiredCount: 1, courseId }),
+          body: JSON.stringify({ lessonTitle, desiredCount: 1, courseId, desiredCardType, userBrief }),
           cache: "no-store",
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -43,6 +47,12 @@ export function SingleCardRunner({ courseId, lessonId, lessonTitle, onLog, onPre
             ? `カードを自動保存しました（1 件）`
             : "カードの保存に失敗しました"
         );
+        // 追加したカードをワークスペースで選択状態にし、学習モード遷移で cardId が乗るようにする
+        if (committed && committed.cardIds && committed.cardIds[0]) {
+          const newId = committed.cardIds[0];
+          // lesson スコープは WorkspaceShell 側の推定で付与されるため cardId のみで十分
+          router.push(`/courses/${courseId}/workspace?cardId=${encodeURIComponent(newId)}`);
+        }
       } catch (e: unknown) {
         const msg = (e as { message?: string })?.message ?? "unknown";
         if (!aborted) logRef.current(lessonId, `エラー: ${msg}`);
@@ -51,6 +61,6 @@ export function SingleCardRunner({ courseId, lessonId, lessonTitle, onLog, onPre
       }
     })();
     return () => { aborted = true; };
-  }, [lessonId, lessonTitle, courseId]);
+  }, [lessonId, lessonTitle, courseId, desiredCardType, userBrief]);
   return null;
 }

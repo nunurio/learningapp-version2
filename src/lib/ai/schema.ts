@@ -4,14 +4,16 @@ import { z } from "zod";
 export const CoursePlanSchema = z.object({
   course: z.object({
     title: z.string().min(1),
-    description: z.string().optional(),
-    category: z.string().optional(),
+    // Structured Outputs要件: 省略不可 -> null許容にする
+    description: z.string().nullable(),
+    category: z.string().nullable(),
   }),
   lessons: z
     .array(
       z.object({
         title: z.string().min(1),
-        summary: z.string().optional(),
+        // 省略不可 -> null許容
+        summary: z.string().nullable(),
       })
     )
     .min(3)
@@ -21,35 +23,61 @@ export const CoursePlanSchema = z.object({
 export type CoursePlanOutput = z.infer<typeof CoursePlanSchema>;
 
 // LessonCards schema (must mirror src/lib/types.ts)
+// Structured Outputsの制約に合わせ、全フィールドをrequiredにしつつ未使用はnullで表現
+export const LessonCardItemSchema = z
+  .object({
+    // discriminator
+    type: z.enum(["text", "quiz", "fill-blank"]),
+    title: z.string().nullable(),
+
+    // text
+    body: z.string().nullable(),
+
+    // quiz
+    question: z.string().nullable(),
+    options: z.array(z.string()).nullable(),
+    answerIndex: z.number().int().min(0).nullable(),
+    explanation: z.string().nullable(),
+
+    // fill-blank
+    text: z.string().nullable(),
+    answers: z.record(z.string(), z.string()).nullable(),
+    caseSensitive: z.boolean().nullable(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.type === "text") {
+      if (v.body == null || v.body.trim().length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["body"], message: "body is required for text" });
+      }
+    } else if (v.type === "quiz") {
+      if (v.question == null || v.question.trim().length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["question"], message: "question is required for quiz" });
+      }
+      if (!Array.isArray(v.options) || v.options.length < 2) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["options"], message: "options must have at least 2 items" });
+      }
+      if (v.answerIndex == null || v.answerIndex < 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["answerIndex"], message: "answerIndex is required for quiz" });
+      }
+    } else if (v.type === "fill-blank") {
+      if (v.text == null || v.text.trim().length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "text is required for fill-blank" });
+      }
+      if (v.answers == null || typeof v.answers !== "object") {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["answers"], message: "answers is required for fill-blank" });
+      }
+    }
+  });
+
 export const LessonCardsSchema = z.object({
   lessonTitle: z.string(),
-  cards: z
-    .array(
-      z.union([
-        z.object({
-          type: z.literal("text"),
-          title: z.string().nullable().optional(),
-          body: z.string().min(1),
-        }),
-        z.object({
-          type: z.literal("quiz"),
-          title: z.string().nullable().optional(),
-          question: z.string(),
-          options: z.array(z.string()).min(2),
-          answerIndex: z.number().int().min(0),
-          explanation: z.string().nullable().optional(),
-        }),
-        z.object({
-          type: z.literal("fill-blank"),
-          title: z.string().nullable().optional(),
-          text: z.string(),
-          answers: z.record(z.string(), z.string()),
-          caseSensitive: z.boolean().optional(),
-        }),
-      ])
-    )
-    .min(3)
-    .max(20),
+  cards: z.array(LessonCardItemSchema).min(3).max(20),
+});
+
+// 単体カード（1件）専用スキーマ
+export const SingleLessonCardsSchema = z.object({
+  lessonTitle: z.string(),
+  cards: z.array(LessonCardItemSchema).min(1).max(1),
 });
 
 export type LessonCardsOutput = z.infer<typeof LessonCardsSchema>;

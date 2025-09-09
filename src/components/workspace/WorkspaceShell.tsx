@@ -72,9 +72,9 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
     if (ctx === "mobile") setOpenNav(false);
   }, [courseId, router]);
 
-  // 初期選択（学習モードから戻ってきた cardId を反映）
+  // ルートの cardId クエリに同期（新規作成直後/学習からの戻りの双方をカバー）
   React.useEffect(() => {
-    if (!selId && initialCardId) {
+    if (initialCardId) {
       setSelId(initialCardId);
       setSelKind("card");
     }

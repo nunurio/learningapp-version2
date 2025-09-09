@@ -1,14 +1,16 @@
 import { Agent } from "@openai/agents";
+import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { CoursePlanSchema } from "@/lib/ai/schema";
 import type { CoursePlan } from "@/lib/types";
 
-export const OutlineAgent = new Agent({
+export const OutlineAgent = new Agent<UnknownContext, typeof CoursePlanSchema>({
   name: "Course Planner",
   instructions: [
     "あなたは教育設計の専門家です。",
-    "出力はoutputTypeのスキーマに厳格に従い、日本語で簡潔に。",
   ].join("\n"),
+  // 構造化出力: Zod スキーマで強制
+  outputType: CoursePlanSchema,
   model: process.env.OPENAI_MODEL,
   modelSettings: {
     maxTokens: process.env.OPENAI_MAX_OUTPUT_TOKENS
@@ -31,19 +33,27 @@ export async function runOutlineAgent(input: {
     `${sys}\n${JSON.stringify({ ...input, lessonCount: count })}`,
     { maxTurns: 1 }
   );
-  const text = (() => {
+  // 1) 構造化出力（推奨） 2) 文字列(JSON) 3) 最後のテキスト で後方互換的に解釈
+  const result = (() => {
     const r: unknown = res;
     if (r && typeof r === "object") {
       const rec = r as Record<string, unknown>;
-      const a = rec.finalOutput;
-      const b = rec.finalText;
-      if (typeof a === "string") return a;
-      if (typeof b === "string") return b;
+      const a = rec.finalOutput as unknown;
+      const b = rec.finalText as unknown;
+      // structured output already parsed
+      if (a && typeof a === "object") return a;
+      // sometimes SDK may still return string JSON
+      if (typeof a === "string") {
+        try { return JSON.parse(a) as unknown; } catch {}
+      }
+      if (typeof b === "string") {
+        try { return JSON.parse(b) as unknown; } catch {}
+      }
     }
     return undefined;
   })();
-  if (!text) throw new Error("No agent output text");
-  const parsed = CoursePlanSchema.safeParse(JSON.parse(text));
+  if (!result) throw new Error("No agent output");
+  const parsed = CoursePlanSchema.safeParse(result);
   if (!parsed.success) throw new Error("CoursePlan schema mismatch");
   return parsed.data as CoursePlan;
 }

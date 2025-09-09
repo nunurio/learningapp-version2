@@ -439,7 +439,7 @@ type SortableLessonItemProps = {
   id: string;
   index: number;
   title: string;
-  summary?: string;
+  summary?: string | null;
   canMoveUp: boolean;
   canMoveDown: boolean;
   onRemove: () => void;
