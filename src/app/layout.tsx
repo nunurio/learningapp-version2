@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     template: "%s | Learnify",
   },
   description:
-    "テーマを入力するだけでAIが学習体験を設計。LangGraph中断復帰・Supabase RLS・CSP対応で安全に学べます。",
+    "テーマを入力するだけでAIが学習体験を設計。OpenAI Agents SDK・Supabase RLS・CSP対応で安全に学べます。",
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     siteName: "Learnify",
     title: "Learnify — AI学習プラットフォーム",
     description:
-      "テーマを入力するだけでAIが学習体験を設計。LangGraph中断復帰・Supabase RLS・CSP対応で安全に学べます。",
+      "テーマを入力するだけでAIが学習体験を設計。OpenAI Agents SDK・Supabase RLS・CSP対応で安全に学べます。",
     images: [
       {
         url: "/vercel.svg",
@@ -44,7 +44,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Learnify — AI学習プラットフォーム",
     description:
-      "テーマを入力するだけでAIが学習体験を設計。LangGraph中断復帰・Supabase RLS・CSP対応で安全に学べます。",
+      "テーマを入力するだけでAIが学習体験を設計。OpenAI Agents SDK・Supabase RLS・CSP対応で安全に学べます。",
     images: ["/vercel.svg"],
   },
 };
@@ -62,9 +62,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
         <CommandPalette />
         <Toaster />

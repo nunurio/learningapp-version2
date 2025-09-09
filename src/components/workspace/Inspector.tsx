@@ -155,6 +155,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
       <div className="text-xs text-gray-500 mb-2">インスペクタ</div>
       {currentLesson && (
         <LessonTools
+          courseId={courseId}
           lesson={currentLesson}
           runningLesson={runningLesson}
           setRunningLesson={setRunningLesson}
@@ -354,13 +355,17 @@ type LessonToolsProps = {
   onSaveAll: (lessonId: UUID, payload: { draftId: string; payload: LessonCards }, selected: Record<number, boolean>) => void;
   onRefresh: () => void;
   selectedKind?: "lesson" | "card";
+  courseId: UUID;
 };
 
-function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, onSaveAll, onRefresh, selectedKind }: LessonToolsProps) {
+function LessonTools({ courseId, lesson, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, onSaveAll, onRefresh, selectedKind }: LessonToolsProps) {
   const [aiMode, setAiMode] = React.useState<"batch" | "single">("batch");
   // 実行開始時点のモードをロックして保持（実行中のモード変更で再マウントさせない）
   const [runningMode, setRunningMode] = React.useState<"batch" | "single" | null>(null);
   const isRunning = !!runningLesson && runningLesson.id === lesson.id;
+  // 単体生成オプション
+  const [singleType, setSingleType] = React.useState<CardType>("text");
+  const [singleBrief, setSingleBrief] = React.useState("");
   // 左ペインの選択に応じて既定値を切替（レッスン=一式 / カード=単体）。実行中は変更しない。
   React.useEffect(() => {
     if (isRunning) return; // 実行中は現在の選択に影響させない
@@ -384,6 +389,31 @@ function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, se
             </SelectMenuContent>
           </SelectMenu>
         </div>
+        {aiMode === "single" && !isRunning && (
+          <div className="w-full grid grid-cols-1 gap-2">
+            <div>
+              <Label className="mb-1 block text-xs text-gray-600">カードタイプ</Label>
+              <SelectMenu value={singleType} onValueChange={(v) => setSingleType(v as CardType)}>
+                <SelectMenuTrigger className="h-9 w-full">
+                  <SelectMenuValue placeholder="カードタイプを選択" />
+                </SelectMenuTrigger>
+                <SelectMenuContent>
+                  <SelectMenuItem value="text">Text</SelectMenuItem>
+                  <SelectMenuItem value="quiz">Quiz</SelectMenuItem>
+                  <SelectMenuItem value="fill-blank">Fill‑blank</SelectMenuItem>
+                </SelectMenuContent>
+              </SelectMenu>
+            </div>
+            <div>
+              <Label className="mb-1 block text-xs text-gray-600">カードの概要（任意）</Label>
+              <Textarea
+                value={singleBrief}
+                onChange={(e) => setSingleBrief(e.target.value)}
+                placeholder="例: 変数の定義と型注釈について要点を説明（学習者は初学者想定）"
+              />
+            </div>
+          </div>
+        )}
         <div className="w-full">
           <Button
             className="h-10 w-full"
@@ -398,6 +428,7 @@ function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, se
       {isRunning && (
         (runningMode ?? aiMode) === "batch" ? (
           <LessonCardsRunner
+            courseId={courseId}
             lessonId={lesson.id}
             lessonTitle={lesson.title}
             onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
@@ -406,8 +437,11 @@ function LessonTools({ lesson, runningLesson, setRunningLesson, logsByLesson, se
           />
         ) : (
           <SingleCardRunner
+            courseId={courseId}
             lessonId={lesson.id}
             lessonTitle={lesson.title}
+            desiredCardType={singleType}
+            userBrief={singleBrief}
             onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
             onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
             onFinish={() => { setRunningLesson(null); setRunningMode(null); onRefresh(); workspaceStore.bumpVersion(); }}
@@ -501,6 +535,7 @@ function LessonInspector(props: {
         </div>
         {runningLesson?.id === lesson.id && (
           <LessonCardsRunner
+            courseId={props.courseId}
             lessonId={lesson.id}
             lessonTitle={lesson.title}
             onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}

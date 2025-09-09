@@ -1,0 +1,174 @@
+import { z } from "zod";
+
+// CoursePlan schema (must mirror src/lib/types.ts)
+export const CoursePlanSchema = z.object({
+  course: z.object({
+    title: z.string().min(1),
+    // Structured Outputs要件: 省略不可 -> null許容にする
+    description: z.string().nullable(),
+    category: z.string().nullable(),
+  }),
+  lessons: z
+    .array(
+      z.object({
+        title: z.string().min(1),
+        // 省略不可 -> null許容
+        summary: z.string().nullable(),
+      })
+    )
+    .min(3)
+    .max(30),
+});
+
+export type CoursePlanOutput = z.infer<typeof CoursePlanSchema>;
+
+// LessonCards schema (must mirror src/lib/types.ts)
+// Structured Outputsの制約に合わせ、全フィールドをrequiredにしつつ未使用はnullで表現
+export const LessonCardItemSchema = z
+  .object({
+    // discriminator
+    type: z.enum(["text", "quiz", "fill-blank"]),
+    title: z.string().nullable(),
+
+    // text
+    body: z.string().nullable(),
+
+    // quiz
+    question: z.string().nullable(),
+    options: z.array(z.string()).nullable(),
+    answerIndex: z.number().int().min(0).nullable(),
+    explanation: z.string().nullable(),
+
+    // fill-blank
+    text: z.string().nullable(),
+    answers: z.record(z.string(), z.string()).nullable(),
+    caseSensitive: z.boolean().nullable(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.type === "text") {
+      if (v.body == null || v.body.trim().length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["body"], message: "body is required for text" });
+      }
+    } else if (v.type === "quiz") {
+      if (v.question == null || v.question.trim().length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["question"], message: "question is required for quiz" });
+      }
+      if (!Array.isArray(v.options) || v.options.length < 2) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["options"], message: "options must have at least 2 items" });
+      }
+      if (v.answerIndex == null || v.answerIndex < 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["answerIndex"], message: "answerIndex is required for quiz" });
+      }
+    } else if (v.type === "fill-blank") {
+      if (v.text == null || v.text.trim().length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "text is required for fill-blank" });
+      }
+      if (v.answers == null || typeof v.answers !== "object") {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["answers"], message: "answers is required for fill-blank" });
+      }
+    }
+  });
+
+export const LessonCardsSchema = z.object({
+  lessonTitle: z.string(),
+  cards: z.array(LessonCardItemSchema).min(3).max(20),
+});
+
+// 単体カード（1件）専用スキーマ
+export const SingleLessonCardsSchema = z.object({
+  lessonTitle: z.string(),
+  cards: z.array(LessonCardItemSchema).min(1).max(1),
+});
+
+export type LessonCardsOutput = z.infer<typeof LessonCardsSchema>;
+
+// JSON Schemas for OpenAI Structured Outputs (function calling)
+export const CoursePlanJSONSchema = {
+  title: "CoursePlan",
+  type: "object",
+  properties: {
+    course: {
+      type: "object",
+      properties: {
+        title: { type: "string", minLength: 1 },
+        description: { type: ["string", "null"] },
+        category: { type: ["string", "null"] },
+      },
+      // Responses API の制約: properties に含めたキーを required に全列挙
+      required: ["title", "description", "category"],
+      additionalProperties: false,
+    },
+    lessons: {
+      type: "array",
+      minItems: 3,
+      maxItems: 30,
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string", minLength: 1 },
+          summary: { type: ["string", "null"] },
+        },
+        // 全列挙 required（未使用は null を許容）
+        required: ["title", "summary"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["course", "lessons"],
+  additionalProperties: false,
+} as const;
+
+export const LessonCardsJSONSchema = {
+  title: "LessonCards",
+  type: "object",
+  properties: {
+    lessonTitle: { type: "string" },
+    cards: {
+      type: "array",
+      minItems: 3,
+      maxItems: 20,
+      items: {
+        type: "object",
+        properties: {
+          // discriminator
+          type: { type: "string", enum: ["text", "quiz", "fill-blank"] },
+          title: { type: ["string", "null"] },
+
+          // text
+          body: { type: ["string", "null"] },
+
+          // quiz
+          question: { type: ["string", "null"] },
+          options: { type: ["array", "null"], items: { type: "string" }, minItems: 2 },
+          answerIndex: { type: ["integer", "null"], minimum: 0 },
+          explanation: { type: ["string", "null"] },
+
+          // fill-blank
+          text: { type: ["string", "null"] },
+          answers: {
+            // patternProperties は使わず、任意キーの文字列値を許容
+            type: ["object", "null"],
+            additionalProperties: { type: "string" },
+          },
+          caseSensitive: { type: ["boolean", "null"] },
+        },
+        // Responses API の制約: properties に含めたキーを required に全列挙
+        required: [
+          "type",
+          "title",
+          "body",
+          "question",
+          "options",
+          "answerIndex",
+          "explanation",
+          "text",
+          "answers",
+          "caseSensitive",
+        ],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["lessonTitle", "cards"],
+  additionalProperties: false,
+} as const;

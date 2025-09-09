@@ -1,69 +1,77 @@
-import type { CoursePlan, LessonCards } from "../types";
+import type { CoursePlan, LessonCards, CardType } from "@/lib/types";
 
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+function pick<T>(arr: T[], i: number): T {
+  return arr[i % arr.length];
 }
 
-export function generateCoursePlan(params: {
+export function createCoursePlanMock(input: {
   theme: string;
   level?: string;
   goal?: string;
   lessonCount?: number;
 }): CoursePlan {
-  const count = Math.min(Math.max(params.lessonCount ?? 6, 3), 30);
-  const courseTitle = `${params.theme.trim()} 入門${params.level ? `（${params.level}）` : ""}`;
-  const descriptions = [
-    "基礎から実践まで短期間で学べるコース",
-    "最小限の理論と豊富な練習問題で身につける",
-    "プロジェクト型で体系的に理解する",
-  ];
-  const plan: CoursePlan = {
+  const count = Math.max(3, Math.min(typeof input.lessonCount === "number" ? input.lessonCount : 6, 30));
+  const lessons = Array.from({ length: count }).map((_, i) => ({
+    title: `${input.theme} 基礎 ${i + 1}`,
+    summary: `このレッスンでは「${input.theme}」の基礎トピック${i + 1}を学びます。`,
+  }));
+  return {
     course: {
-      title: courseTitle,
-      description: params.goal
-        ? `${params.goal} を達成するためのコース`
-        : pick(descriptions),
-      category: "General",
+      title: `${input.theme} 入門コース` + (input.level ? `（${input.level}）` : ""),
+      description: input.goal ? `目標: ${input.goal}` : null,
+      category: null,
     },
-    lessons: Array.from({ length: count }, (_, i) => ({
-      title: `${params.theme.trim()} 第${i + 1}回: 基礎トピック ${i + 1}`,
-      summary: `コア概念とサンプルで ${params.theme.trim()} を理解する`,
-    })),
+    lessons,
   };
-  return plan;
 }
 
-export function generateLessonCards(params: {
+export function createLessonCardsMock(input: {
   lessonTitle: string;
   desiredCount?: number;
+  desiredCardType?: CardType;
+  userBrief?: string;
 }): LessonCards {
-  const count = Math.min(Math.max(params.desiredCount ?? 5, 3), 20);
+  const dc = typeof input.desiredCount === "number" ? input.desiredCount : 6;
+  const count = Math.max(1, Math.min(dc, 20));
+  const titles = ["概要", "重要概念", "例題", "小テスト", "応用", "まとめ"];
   const cards: LessonCards["cards"] = [];
   for (let i = 0; i < count; i++) {
-    if (i % 3 === 0) {
+    const idx = i % 3;
+    const t = input.desiredCardType ?? (idx === 0 ? "text" : idx === 1 ? "quiz" : "fill-blank");
+    if (t === "text") {
       cards.push({
         type: "text",
-        title: `解説 ${i + 1}`,
-        body: `${params.lessonTitle} のポイント ${i + 1} を解説します。`,
+        title: pick(titles, i),
+        body: `${input.lessonTitle} の解説セクション ${i + 1}。${input.userBrief ? `要望: ${input.userBrief}` : ""}`.trim(),
       });
-    } else if (i % 3 === 1) {
+    } else if (t === "quiz") {
+      const options = ["A", "B", "C", "D"].map((o) => `${o}の選択肢`);
       cards.push({
         type: "quiz",
-        title: `クイズ ${i + 1}`,
-        question: `${params.lessonTitle} に関する基本問題 ${i + 1}`,
-        options: ["A", "B", "C", "D"],
-        answerIndex: Math.floor(Math.random() * 4),
-        explanation: "正解の理由を簡潔に説明。",
+        title: pick(titles, i),
+        question: `${input.lessonTitle} に関するクイズ ${i + 1}。正しいものを選んでください。`,
+        options,
+        answerIndex: i % options.length,
+        explanation: "正解の理由を簡潔に説明します。",
       });
     } else {
+      const n = (i % 2) + 1; // [[1]] or [[2]]
       cards.push({
         type: "fill-blank",
-        title: `穴埋め ${i + 1}`,
-        text: `${params.lessonTitle} のキーワードは [[1]] です。`,
-        answers: { "1": "キーワード" },
+        title: pick(titles, i),
+        text: `${input.lessonTitle} の重要語は [[${n}]] です。`,
+        answers: { [`${n}`]: "キーワード" },
         caseSensitive: false,
       });
     }
   }
-  return { lessonTitle: params.lessonTitle, cards };
+  return { lessonTitle: input.lessonTitle, cards };
+}
+
+export function shouldUseMockAI(): boolean {
+  return (
+    process.env.AI_MOCK === "1" ||
+    process.env.E2E === "1" ||
+    process.env.PLAYWRIGHT_TEST === "1"
+  );
 }

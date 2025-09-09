@@ -58,11 +58,11 @@ export default function LandingPage() {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    "name": "Learnify (LangGraph)",
+    "name": "Learnify (OpenAI Agents SDK)",
     "applicationCategory": "EducationApplication",
     "operatingSystem": "Web",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-    "description": "テーマを入力するだけでAIがコース〜レッスンを自動設計。LangGraphで中断復帰、Supabase RLSで安全。"
+    "description": "テーマを入力するだけでAIがコース〜レッスンを自動設計。OpenAI Agents SDKで堅牢、Supabase RLSで安全。"
   };
 
   return (
@@ -136,7 +136,7 @@ export default function LandingPage() {
               
               <p className="max-w-2xl mx-auto text-xl text-gray-600 leading-relaxed">
                 最小の操作で作成から学習まで。<br />
-                LangGraphが状態を管理し、中断しても続きから再開。
+                OpenAI Agents SDKが実行を管理し、堅牢に再試行・再開。
               </p>
               
               {/* Theme Input with modern design */}
@@ -201,7 +201,7 @@ export default function LandingPage() {
                 </Badge>
                 <Badge variant="secondary" className="px-4 py-2 text-sm gap-2">
                   <RefreshCcw className="h-3 w-3" />
-                  LangGraph復帰
+                  OpenAI Agents SDK
                 </Badge>
               </div>
             </div>
@@ -286,8 +286,8 @@ export default function LandingPage() {
                 },
                 {
                   icon: <RefreshCcw className="h-6 w-6" />,
-                  title: "LangGraph 中断復帰",
-                  description: "thread_id / checkpoint による状態管理。生成が止まっても続きから再開可能。",
+                  title: "OpenAI Agents SDK",
+                  description: "エージェント実行管理とガードレールで堅牢に再試行・再開。",
                   gradient: "from-indigo-500 to-purple-500"
                 },
                 {
@@ -350,7 +350,7 @@ export default function LandingPage() {
                   name: "田中 太郎",
                   role: "ソフトウェアエンジニア",
                   avatar: "https://i.pravatar.cc/150?img=1",
-                  content: "LangGraphの中断復帰機能が素晴らしい。長いコース生成でも安心して使えます。技術的な信頼性が高い。"
+                  content: "OpenAI Agents SDKのガードレールと実行管理が素晴らしい。長いコース生成でも安心して使えます。技術的な信頼性が高い。"
                 },
                 {
                   name: "佐藤 花子",
@@ -525,11 +525,11 @@ export default function LandingPage() {
                 },
                 {
                   question: "生成に何秒かかりますか？",
-                  answer: "通常、コースアウトラインは5-10秒、レッスンカードは10-20秒で生成されます。LangGraphのcheckpoint機能により、途中で中断しても続きから再開できるため、タイムアウトの心配はありません。"
+                  answer: "通常、コースアウトラインは5-10秒、レッスンカードは10-20秒で生成されます。OpenAI Agents SDKの実行管理により、途中で中断しても堅牢に再試行でき、タイムアウトの心配を軽減します。"
                 },
                 {
                   question: "生成が途中で止まったらどうなりますか？",
-                  answer: "LangGraphのthread_id / checkpoint機能により、自動的に復帰します。生成状態は永続化されているため、ブラウザを閉じても、次回アクセス時に続きから生成を再開できます。"
+                  answer: "OpenAI Agents SDKのガードレールと実行管理により、再試行・再開が容易です。ブラウザを閉じても安全にやり直せます。"
                 },
                 {
                   question: "どんなセキュリティ対策がされていますか？",
@@ -559,13 +559,13 @@ export default function LandingPage() {
                   <span className="text-2xl font-bold text-white">Learnify</span>
                 </Link>
                 <p className="text-sm leading-relaxed mb-4">
-                  LangGraphとSupabaseで構築された
+                  OpenAI Agents SDKとSupabaseで構築された
                   <br />次世代AI学習プラットフォーム
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {[
                     { icon: <Shield className="h-3 w-3" />, text: "Supabase RLS" },
-                    { icon: <RefreshCcw className="h-3 w-3" />, text: "LangGraph" },
+                    { icon: <RefreshCcw className="h-3 w-3" />, text: "OpenAI Agents SDK" },
                     { icon: <Lock className="h-3 w-3" />, text: "CSP適用" }
                   ].map((badge, idx) => (
                     <Badge key={idx} variant="secondary" className="text-xs gap-1 bg-gray-800 text-gray-400 border-gray-700">

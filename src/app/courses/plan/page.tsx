@@ -96,11 +96,15 @@ export default function PlanCoursePage() {
           signal: abortRef.current?.signal,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as { plan: CoursePlan };
+        const data = (await res.json()) as { plan: CoursePlan; updates?: { ts: number; text: string }[] };
         const draft = await saveDraft("outline", data.plan);
         setPlan(data.plan);
         setEditedPlan(data.plan);
         setLessonKeys(data.plan.lessons.map((_, i) => `l-${Date.now()}-${i}`));
+        if (Array.isArray(data.updates) && data.updates.length) {
+          // サーバー生成のupdatesを優先してタイムラインに反映
+          setLogs(data.updates);
+        }
         // 初回生成時にも下書きは保存するが、編集コミット時に改めて保存し直す
         setLogs((s) => [...s, { ts: Date.now(), text: `下書きを保存しました（ID: ${draft.id}）` }]);
         setPreviewOpen(true);
@@ -435,7 +439,7 @@ type SortableLessonItemProps = {
   id: string;
   index: number;
   title: string;
-  summary?: string;
+  summary?: string | null;
   canMoveUp: boolean;
   canMoveDown: boolean;
   onRemove: () => void;

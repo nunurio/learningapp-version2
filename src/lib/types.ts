@@ -72,10 +72,10 @@ export type SrsEntry = {
 export type CoursePlan = {
   course: {
     title: string;
-    description?: string;
-    category?: string;
+    description?: string | null;
+    category?: string | null;
   };
-  lessons: { title: string; summary?: string }[];
+  lessons: { title: string; summary?: string | null }[];
 };
 
 export type LessonCards = {
@@ -95,7 +95,7 @@ export type LessonCards = {
         title?: string | null;
         text: string;
         answers: Record<string, string>;
-        caseSensitive?: boolean;
+        caseSensitive?: boolean | null;
       }
   )[];
 };

@@ -30,6 +30,9 @@ export default defineConfig({
       NEXT_PUBLIC_SITE_URL: BASE_URL,
       ALLOW_TEST_RESET: "1",
       NEXT_PUBLIC_TIMELINE_SCALE: "0.05",
+      // E2E では常にAIモックを使用
+      AI_MOCK: "1",
+      // 認証は本番と同様の Supabase を使用
     },
   },
   projects: [
