@@ -41,7 +41,7 @@ export async function POST(req: Request) {
 
   try {
     const start = Date.now();
-    const useMock = shouldUseMockAI() || !process.env.OPENAI_API_KEY;
+    const useMock = shouldUseMockAI();
     const plan = useMock
       ? createCoursePlanMock({ theme, level, goal, lessonCount })
       : (initAgents(), await runOutlineAgent({ theme, level, goal, lessonCount }));

@@ -71,7 +71,7 @@ export async function POST(req: Request) {
   const start = Date.now();
   updates.push({ ts: start, text: "received" });
   try {
-    const useMock = shouldUseMockAI() || !process.env.OPENAI_API_KEY;
+    const useMock = shouldUseMockAI();
     const isSingle = typeof desiredCount === "number" ? desiredCount <= 1 : true;
     const payload = useMock
       ? createLessonCardsMock({ lessonTitle, desiredCount: isSingle ? 1 : desiredCount, desiredCardType, userBrief })

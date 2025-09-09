@@ -72,8 +72,6 @@ export function shouldUseMockAI(): boolean {
   return (
     process.env.AI_MOCK === "1" ||
     process.env.E2E === "1" ||
-    process.env.PLAYWRIGHT_TEST === "1" ||
-    process.env.NODE_ENV === "test"
+    process.env.PLAYWRIGHT_TEST === "1"
   );
 }
-
