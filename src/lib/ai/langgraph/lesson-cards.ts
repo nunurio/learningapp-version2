@@ -1,5 +1,6 @@
 import { Annotation, StateGraph } from "@langchain/langgraph";
 import OpenAI from "openai";
+import type { ResponseFormatTextJSONSchemaConfig } from "openai/resources/responses/responses";
 import { LessonCardsSchema, LessonCardsJSONSchema, type LessonCardsOutput } from "@/lib/ai/schema";
 import type { LessonCards } from "@/lib/types";
 import type { AiUpdate } from "@/lib/ai/log";
@@ -75,13 +76,20 @@ async function generateCards(state: typeof CardsState.State) {
     "- 使わないフィールドは null を設定してよい（例: text カードの question は null）。",
   ].join("\n");
   const user = { lessonTitle: i.lessonTitle, desiredCount: i.desiredCount, course: i.course };
+  // 型安全のために JSON Schema フォーマットを明示の型に合わせて構築
+  const jsonFormat: ResponseFormatTextJSONSchemaConfig = {
+    type: "json_schema",
+    name: "LessonCards",
+    schema: LessonCardsJSONSchema as Record<string, unknown>,
+    strict: true,
+  };
   const res = await client.responses.create({
     model,
     input: [
       { role: "system", content: sys },
       { role: "user", content: `次のレッスン用にカードを${i.desiredCount}件、バランスよく生成してください。\n${JSON.stringify(user)}` },
     ],
-    text: { format: { type: "json_schema", name: "LessonCards", schema: LessonCardsJSONSchema, strict: true } },
+    text: { format: jsonFormat },
     ...(maxOut ? { max_output_tokens: maxOut } : {}),
   });
   const payload = extractJsonFromResponses(res);

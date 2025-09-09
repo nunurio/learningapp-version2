@@ -1,5 +1,6 @@
 import { Annotation, StateGraph } from "@langchain/langgraph";
 import OpenAI from "openai";
+import type { ResponseFormatTextJSONSchemaConfig } from "openai/resources/responses/responses";
 import { CoursePlanSchema, CoursePlanJSONSchema, type CoursePlanOutput } from "@/lib/ai/schema";
 import type { CoursePlan } from "@/lib/types";
 import type { AiUpdate } from "@/lib/ai/log";
@@ -84,13 +85,19 @@ async function planCourse(state: typeof OutlineState.State) {
   const maxOut = process.env.OPENAI_MAX_OUTPUT_TOKENS ? Number(process.env.OPENAI_MAX_OUTPUT_TOKENS) : undefined;
   const sys = "あなたは教育設計の専門家です。出力はスキーマに厳格に従い、日本語で簡潔に書いてください。";
   const user = { theme: i.theme, level: i.level, goal: i.goal, lessonCount: i.lessonCount };
+  const jsonFormat: ResponseFormatTextJSONSchemaConfig = {
+    type: "json_schema",
+    name: "CoursePlan",
+    schema: CoursePlanJSONSchema as Record<string, unknown>,
+    strict: true,
+  };
   const res = await client.responses.create({
     model,
     input: [
       { role: "system", content: sys },
       { role: "user", content: `次の条件でコース案（レッスン${i.lessonCount}件）を作成してください。\n${JSON.stringify(user)}` },
     ],
-    text: { format: { type: "json_schema", name: "CoursePlan", schema: CoursePlanJSONSchema, strict: true } },
+    text: { format: jsonFormat },
     ...(maxOut ? { max_output_tokens: maxOut } : {}),
   });
   const planObj = extractJsonFromResponses(res);
