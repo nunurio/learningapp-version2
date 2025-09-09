@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { initAgents } from "@/lib/ai/agents/index";
 import { runOutlineAgent } from "@/lib/ai/agents/outline";
+import { createCoursePlanMock, shouldUseMockAI } from "@/lib/ai/mock";
 import type { CoursePlan } from "@/lib/types";
 import type { AiUpdate } from "@/lib/ai/log";
 
@@ -39,12 +40,14 @@ export async function POST(req: Request) {
   if (!theme || typeof theme !== "string") theme = "コース";
 
   try {
-    initAgents();
     const start = Date.now();
-    const plan = await runOutlineAgent({ theme, level, goal, lessonCount });
+    const useMock = shouldUseMockAI() || !process.env.OPENAI_API_KEY;
+    const plan = useMock
+      ? createCoursePlanMock({ theme, level, goal, lessonCount })
+      : (initAgents(), await runOutlineAgent({ theme, level, goal, lessonCount }));
     const updates: AiUpdate[] = [
       { ts: start, text: "received" },
-      { ts: Date.now(), text: "runAgent" },
+      { ts: Date.now(), text: useMock ? "mock" : "runAgent" },
       { ts: Date.now(), text: "persistPreview" },
     ];
     return NextResponse.json(

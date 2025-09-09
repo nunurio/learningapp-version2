@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { initAgents } from "@/lib/ai/agents/index";
 import { runLessonCardsAgent } from "@/lib/ai/agents/lesson-cards";
+import { createLessonCardsMock, shouldUseMockAI } from "@/lib/ai/mock";
 import { getCourse } from "@/lib/db/queries";
 import type { UUID } from "@/lib/types";
 import type { LessonCards } from "@/lib/types";
@@ -70,13 +71,16 @@ export async function POST(req: Request) {
   const start = Date.now();
   updates.push({ ts: start, text: "received" });
   try {
-    initAgents();
-    // 単体生成: desiredCount <= 1 を専用エージェントに分岐
+    const useMock = shouldUseMockAI() || !process.env.OPENAI_API_KEY;
     const isSingle = typeof desiredCount === "number" ? desiredCount <= 1 : true;
-    const payload = isSingle
-      ? await (await import("@/lib/ai/agents/lesson-cards")).runSingleCardAgent({ lessonTitle, course, desiredCardType, userBrief })
-      : await runLessonCardsAgent({ lessonTitle, desiredCount, course });
-    updates.push({ ts: Date.now(), text: "runAgent" }, { ts: Date.now(), text: "persistPreview" });
+    const payload = useMock
+      ? createLessonCardsMock({ lessonTitle, desiredCount: isSingle ? 1 : desiredCount, desiredCardType, userBrief })
+      : (initAgents(), (
+          isSingle
+            ? await (await import("@/lib/ai/agents/lesson-cards")).runSingleCardAgent({ lessonTitle, course, desiredCardType, userBrief })
+            : await runLessonCardsAgent({ lessonTitle, desiredCount, course })
+        ));
+    updates.push({ ts: Date.now(), text: useMock ? "mock" : "runAgent" }, { ts: Date.now(), text: "persistPreview" });
     return NextResponse.json(
       { payload, updates },
       { headers: { "Cache-Control": "no-store" } }
