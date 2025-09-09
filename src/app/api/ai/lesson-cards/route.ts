@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { runLessonCardsGraph } from "@/lib/ai/langgraph/lesson-cards";
+import { initAgents } from "@/lib/ai/agents/index";
+import { runLessonCardsAgent } from "@/lib/ai/agents/lesson-cards";
 import { getCourse } from "@/lib/db/queries";
 import type { UUID } from "@/lib/types";
 import type { LessonCards } from "@/lib/types";
@@ -52,12 +53,18 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await runLessonCardsGraph({ lessonTitle, desiredCount, course });
-    const body: { payload: LessonCards; updates: AiUpdate[] } = {
-      payload: result.payload,
-      updates: result.updates,
-    };
-    return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
+    initAgents();
+    const start = Date.now();
+    const payload = await runLessonCardsAgent({ lessonTitle, desiredCount, course });
+    const updates: AiUpdate[] = [
+      { ts: start, text: "received" },
+      { ts: Date.now(), text: "runAgent" },
+      { ts: Date.now(), text: "persistPreview" },
+    ];
+    return NextResponse.json(
+      { payload, updates },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : typeof e === "string" ? e : "unknown";
     return NextResponse.json(

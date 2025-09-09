@@ -16,7 +16,7 @@
   - Tools: 関数ツール（Zod/JSON Schema）、ホストツール（web_search, file_search, code_interpreter など）。
   - Guardrails: 入力/出力に並行適用できる検証・制約。トリップワイヤで実行停止。
   - Tracing: 実行履歴（LLM生成/ツール/ハンドオフ/ガードレール）をOpenAI Tracesへ自動送信（オプトアウト可能）。
-- モデル: 既定は`gpt-4.1`。`OPENAI_DEFAULT_MODEL`やAgent/Runnerで個別指定可能。`gpt-5`系では`reasoning.effort`/`text.verbosity`の既定最適化あり。
+- モデル: SDK既定は`gpt-4.1`だが、本プロジェクトでは既定を`gpt-5`にする。`OPENAI_DEFAULT_MODEL`やAgent/Runnerで上書き可能。`gpt-5`系では`reasoning.effort`/`text.verbosity`が既定で`"low"`に最適化される。
 - ストリーミング: `run(..., { stream: true })`で逐次イベント/テキスト取得。UIのインクリメンタル更新に有用。
 
 参考:
@@ -39,7 +39,16 @@
 - ストリーミングは段階導入: 現状は最終JSONのみ返却（SSE廃止方針を維持）。必要に応じ将来`stream: true`へ拡張。
 - エラー処理: `ModelBehaviorError`/`MaxTurnsExceededError`/Guardrail系例外を捕捉しUIに要約。再実行時は`result.state`で継続可。
 - トレーシング: PII配慮で`traceIncludeSensitiveData: false`（既定offに近い運用）を検討。`workflowName`/`groupId`に`courseId`/`lessonId`等を付与。
-- モデル/コスト: まず`gpt-5-mini`+`reasoning.effort: minimal`（低遅延）→品質要件で`gpt-5`へ昇格。`maxTokens`は出力スキーマ規模に合わせて明示。
+- モデル/コスト:
+  - 既定: `gpt-5`（本プロジェクト方針）。`text.verbosity: 'high'` / `reasoning.effort: 'medium'` を明示設定し、説明性と安定した推論を優先。
+  - 低遅延トラフィック向け: `gpt-5-mini` + `reasoning.effort: 'minimal'`（一部ホストツールは`'minimal'`非対応のため注意）。
+  - `temperature`: 指定不要（未指定で十分）。
+
+### 2.1 GPT‑5のverbosity/effort/temperature方針
+
+- verbosity（`text.verbosity`）: 既定`'low'`を上書きし`'high'`を採用。学習コンテンツの説明性を高める。
+- reasoning_effort（`reasoning.effort`）: 既定`'low'`を上書きし`'medium'`を採用。品質とレイテンシのバランス重視。
+- temperature: オプションであり原則未設定。構造化出力（Zod outputType）とガードレールで安定性を担保するため、温度は不要。
 
 ---
 
@@ -86,7 +95,7 @@ src/
   - instructions: 教育設計の役割、日本語、簡潔、スキーマ厳守
   - model: `process.env.OPENAI_MODEL`（未設定ならRunner既定）
   - outputType: `CoursePlanSchema`
-  - modelSettings: `maxTokens`（`OPENAI_MAX_OUTPUT_TOKENS`に一致）, `temperature: 0.3`
+  - modelSettings: `maxTokens`（`OPENAI_MAX_OUTPUT_TOKENS`に一致）
   - maxTurns: 1（原則単発）。必要なら2（失敗時の再試行）
 
 - LessonCardsAgent
@@ -172,9 +181,12 @@ src/
 import { Runner, setDefaultOpenAIKey } from "@openai/agents";
 
 export const runner = new Runner({
-  model: process.env.OPENAI_MODEL || undefined,
+  // 本プロジェクトの既定は gpt-5（SDK既定は gpt-4.1）
+  model: process.env.OPENAI_MODEL || "gpt-5",
   modelSettings: {
     maxTokens: process.env.OPENAI_MAX_OUTPUT_TOKENS ? Number(process.env.OPENAI_MAX_OUTPUT_TOKENS) : undefined,
+    text: { verbosity: "high" },
+    reasoning: { effort: "medium" },
   },
   workflowName: "Course authoring",
   traceIncludeSensitiveData: false,
@@ -234,7 +246,6 @@ export const OutlineAgent = new Agent({
   model: process.env.OPENAI_MODEL,
   modelSettings: {
     maxTokens: process.env.OPENAI_MAX_OUTPUT_TOKENS ? Number(process.env.OPENAI_MAX_OUTPUT_TOKENS) : undefined,
-    temperature: 0.3,
   },
 });
 
@@ -266,6 +277,7 @@ export const LessonCardsAgent = new Agent({
   outputType: LessonCardsSchema,
   outputGuardrails: [lessonCardsGuardrail],
   model: process.env.OPENAI_MODEL,
+  // temperature は未指定（不要）。verbosity/effort は Runner 側で 'high' / 'medium' を明示設定。
 });
 
 export async function runLessonCardsAgent(input: { lessonTitle: string; desiredCount?: number; course?: { title: string; description?: string | null; category?: string | null } }) {
@@ -284,7 +296,7 @@ export async function runLessonCardsAgent(input: { lessonTitle: string; desiredC
 
 - 単体: `guardrails.ts`の検証関数、件数clamp、空白正規化。
 - ルート: `route.test.ts`でAgentsの`run*Agent`をモックし、入出力互換性を確認。
-- 性能: モデルを`gpt-5-mini`から開始し、遅延・トークン使用量を計測。必要なら`gpt-5`へ昇格。
+- 性能: 基本は`gpt-5`。低遅延が必要なエンドポイントは`gpt-5-mini`+`reasoning.effort: 'minimal'`をAB比較して採用判断。
 - 監視: Tracesでエージェントループ/ハンドオフ/ツールの可視化。`workflowName`/`groupId`で集計。
 
 ---
@@ -314,4 +326,3 @@ export async function runLessonCardsAgent(input: { lessonTitle: string; desiredC
 - OpenAI Traces: https://platform.openai.com/traces
 
 （上記はすべてOpenAI公式の公開資料）
-

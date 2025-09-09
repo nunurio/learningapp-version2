@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { runOutlineGraph } from "@/lib/ai/langgraph/outline";
+import { initAgents } from "@/lib/ai/agents/index";
+import { runOutlineAgent } from "@/lib/ai/agents/outline";
 import type { CoursePlan } from "@/lib/types";
 import type { AiUpdate } from "@/lib/ai/log";
 
@@ -38,12 +39,18 @@ export async function POST(req: Request) {
   if (!theme || typeof theme !== "string") theme = "コース";
 
   try {
-    const result = await runOutlineGraph({ theme, level, goal, lessonCount });
-    const body: { plan: CoursePlan; updates: AiUpdate[] } = {
-      plan: result.plan,
-      updates: result.updates,
-    };
-    return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
+    initAgents();
+    const start = Date.now();
+    const plan = await runOutlineAgent({ theme, level, goal, lessonCount });
+    const updates: AiUpdate[] = [
+      { ts: start, text: "received" },
+      { ts: Date.now(), text: "runAgent" },
+      { ts: Date.now(), text: "persistPreview" },
+    ];
+    return NextResponse.json(
+      { plan, updates },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : typeof e === "string" ? e : "unknown";
     return NextResponse.json(

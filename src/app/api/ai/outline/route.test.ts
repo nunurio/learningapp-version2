@@ -8,11 +8,8 @@ describe("api/ai/outline POST", () => {
   });
 
   it("テーマ未指定時は 'コース' を使い JSON を返す", async () => {
-    const run = vi.fn(async () => ({
-      plan: { course: { title: "A" }, lessons: [] },
-      updates: [],
-    }));
-    vi.doMock("@/lib/ai/langgraph/outline", () => ({ runOutlineGraph: run }));
+    const run = vi.fn(async () => ({ course: { title: "A" }, lessons: [] }));
+    vi.doMock("@/lib/ai/agents/outline", () => ({ runOutlineAgent: run }));
 
     const { POST } = await import("./route");
     const res = await POST(new Request("http://local/api/ai/outline", { method: "POST" }));
@@ -24,7 +21,7 @@ describe("api/ai/outline POST", () => {
 
   it("生成で例外発生時は 500 を返す", async () => {
     const run = vi.fn(async () => { throw new Error("boom"); });
-    vi.doMock("@/lib/ai/langgraph/outline", () => ({ runOutlineGraph: run }));
+    vi.doMock("@/lib/ai/agents/outline", () => ({ runOutlineAgent: run }));
     const { POST } = await import("./route");
     const res = await POST(new Request("http://local/api/ai/outline", { method: "POST" }));
     expect(res.status).toBe(500);
