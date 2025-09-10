@@ -3,6 +3,7 @@ import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { CoursePlanSchema } from "@/lib/ai/schema";
 import type { CoursePlan } from "@/lib/types";
+import { extractAgentJSON, parseWithSchema } from "@/lib/ai/executor";
 
 export const OutlineAgent = new Agent<UnknownContext, typeof CoursePlanSchema>({
   name: "Course Planner",
@@ -46,27 +47,7 @@ export async function runOutlineAgent(input: {
     `${sys}\n${JSON.stringify({ ...input, lessonCount: count, level, goal, userBrief: extra })}`,
     { maxTurns: 1 }
   );
-  // 1) 構造化出力（推奨） 2) 文字列(JSON) 3) 最後のテキスト で後方互換的に解釈
-  const result = (() => {
-    const r: unknown = res;
-    if (r && typeof r === "object") {
-      const rec = r as Record<string, unknown>;
-      const a = rec.finalOutput as unknown;
-      const b = rec.finalText as unknown;
-      // structured output already parsed
-      if (a && typeof a === "object") return a;
-      // sometimes SDK may still return string JSON
-      if (typeof a === "string") {
-        try { return JSON.parse(a) as unknown; } catch {}
-      }
-      if (typeof b === "string") {
-        try { return JSON.parse(b) as unknown; } catch {}
-      }
-    }
-    return undefined;
-  })();
+  const result = extractAgentJSON(res);
   if (!result) throw new Error("No agent output");
-  const parsed = CoursePlanSchema.safeParse(result);
-  if (!parsed.success) throw new Error("CoursePlan schema mismatch");
-  return parsed.data as CoursePlan;
+  return parseWithSchema(CoursePlanSchema, result) as CoursePlan;
 }

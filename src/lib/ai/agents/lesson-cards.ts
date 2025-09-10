@@ -5,6 +5,7 @@ import { lessonCardsGuardrail } from "@/lib/ai/agents/guardrails";
 import type { OutputGuardrail } from "@openai/agents";
 import { LessonCardsSchema, SingleLessonCardsSchema } from "@/lib/ai/schema";
 import type { LessonCards, CardType } from "@/lib/types";
+import { extractAgentJSON, parseWithSchema } from "@/lib/ai/executor";
 
 // 単体カード専用エージェント（1件ぴったり）
 export const SingleCardAgent = new Agent<UnknownContext, typeof SingleLessonCardsSchema>({
@@ -46,27 +47,15 @@ export async function runSingleCardAgent(input: {
     `${sys}\n${JSON.stringify({ lessonTitle: input.lessonTitle, desiredCount: count, course: input.course, desiredCardType: input.desiredCardType, userBrief: input.userBrief })}`,
     { maxTurns: 1 }
   );
-  const result = (() => {
-    const r: unknown = res;
-    if (r && typeof r === "object") {
-      const rec = r as Record<string, unknown>;
-      const a = rec.finalOutput as unknown;
-      const b = rec.finalText as unknown;
-      if (a && typeof a === "object") return a; // structured output
-      if (typeof a === "string") { try { return JSON.parse(a) as unknown; } catch {} }
-      if (typeof b === "string") { try { return JSON.parse(b) as unknown; } catch {} }
-    }
-    return undefined;
-  })();
+  const result = extractAgentJSON(res);
   if (!result) throw new Error("No agent output");
-  const parsed = SingleLessonCardsSchema.safeParse(result);
-  if (!parsed.success) throw new Error("SingleLessonCards schema mismatch");
+  const parsed = parseWithSchema(SingleLessonCardsSchema, result);
   if (input.desiredCardType) {
-    const produced = parsed.data.cards[0]?.type;
+    const produced = parsed.cards[0]?.type;
     if (produced !== input.desiredCardType) {
       throw new Error(`type mismatch: expected ${input.desiredCardType}, got ${produced}`);
     }
   }
   // 返却型はLessonCards互換
-  return parsed.data as unknown as LessonCards;
+  return parsed as unknown as LessonCards;
 }

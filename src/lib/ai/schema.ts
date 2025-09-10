@@ -85,14 +85,34 @@ export type LessonCardsOutput = z.infer<typeof LessonCardsSchema>;
 
 // --- Planning phase -------------------------------------------------------
 // レッスン一式を作る前に、カードの枚数・順番・タイプ・概要を決める計画スキーマ
-export const CardPlanItemSchema = z.object({
-  // text | quiz | fill-blank
-  type: z.enum(["text", "quiz", "fill-blank"]),
-  // そのカードのねらい・含める要素（短いブリーフ）
-  brief: z.string().min(1),
-  // 任意タイトル（なくても良い）
-  title: z.string().nullable().optional(),
-});
+export const CardPlanItemSchema = z
+  .object({
+    // text | quiz | fill-blank
+    type: z.enum(["text", "quiz", "fill-blank"]),
+    // そのカードのねらい（概要）。詳細はここでは禁止。
+    // 例: 「導入：課題意識を醸成」「要点整理：主要用語の関係を俯瞰」
+    brief: z.string().min(1).max(140),
+    // 任意タイトル（なくても良い）
+    title: z.string().nullable().optional(),
+  })
+  .superRefine((v, ctx) => {
+    // 企画段階の brief に含めてはならない具体要素を簡易チェック
+    const s = v.brief ?? "";
+    if (/選択肢|正解|\[\[(\d+)\]\]/.test(s)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["brief"],
+        message: "brief は概要のみ。『選択肢』『正解』や [[n]] の空所指定は含めないでください",
+      });
+    }
+    if (/[A-E]\)/.test(s)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["brief"],
+        message: "brief に A) などの列挙記法は含めないでください",
+      });
+    }
+  });
 
 export const LessonCardsPlanSchema = z.object({
   lessonTitle: z.string(),

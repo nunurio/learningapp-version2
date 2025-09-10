@@ -1,7 +1,11 @@
 "use client";
 import { useEffect, useRef } from "react";
+// グローバルに一度だけ型を拡張
+declare global {
+  var __ai_inflight: Set<string> | undefined;
+}
 import { useRouter } from "next/navigation";
-import { saveDraft, commitLessonCardsPartial } from "@/lib/client-api";
+import { generateSingleCard } from "@/lib/client-api";
 import type { LessonCards, UUID, CardType } from "@/lib/types";
 
 type Props = {
@@ -16,11 +20,12 @@ type Props = {
 };
 
 export function SingleCardRunner({ courseId, lessonId, lessonTitle, desiredCardType, userBrief, onLog, onPreview, onFinish }: Props) {
-  // dev StrictMode の副作用による二重起動を抑止する軽量ガード
+  // dev StrictMode の副作用による二重起動を抑止する軽量ガード（型安全）
   const key = `${lessonId}-single`;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const g: any = globalThis as any;
-  if (!g.__ai_inflight) g.__ai_inflight = new Set<string>();
+  function ensureInflight(): Set<string> {
+    if (!globalThis.__ai_inflight) globalThis.__ai_inflight = new Set<string>();
+    return globalThis.__ai_inflight;
+  }
   const router = useRouter();
   const logRef = useRef(onLog);
   const previewRef = useRef(onPreview);
@@ -28,49 +33,34 @@ export function SingleCardRunner({ courseId, lessonId, lessonTitle, desiredCardT
   useEffect(() => { logRef.current = onLog; previewRef.current = onPreview; finishRef.current = onFinish; }, [onLog, onPreview, onFinish]);
 
   useEffect(() => {
-    if (g.__ai_inflight.has(key)) return;
-    g.__ai_inflight.add(key);
+    const inflight = ensureInflight();
+    if (inflight.has(key)) return;
+    inflight.add(key);
     let aborted = false;
     (async () => {
       try {
         logRef.current(lessonId, "received(single)");
-        const res = await fetch("/api/ai/lesson-cards", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lessonTitle, desiredCount: 1, courseId, desiredCardType, userBrief }),
-          cache: "no-store",
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as { payload: LessonCards };
+        const res = await generateSingleCard({ courseId, lessonId, lessonTitle, desiredCardType, userBrief });
         if (aborted) return;
-        const draft = await saveDraft("lesson-cards", data.payload);
-        if (aborted) return;
-        previewRef.current?.(lessonId, draft.id, data.payload);
-        const committed = await commitLessonCardsPartial({ draftId: draft.id, lessonId, selectedIndexes: [0] });
-        if (aborted) return;
-        logRef.current(
-          lessonId,
-          committed
-            ? `カードを自動保存しました（1 件）`
-            : "カードの保存に失敗しました"
-        );
-        // 追加したカードをワークスペースで選択状態にし、学習モード遷移で cardId が乗るようにする
-        if (committed && committed.cardIds && committed.cardIds[0]) {
-          const newId = committed.cardIds[0];
-          // lesson スコープは WorkspaceShell 側の推定で付与されるため cardId のみで十分
-          router.push(`/courses/${courseId}/workspace?cardId=${encodeURIComponent(newId)}`);
-        }
+        // ログ
+        for (const u of res.updates) logRef.current(lessonId, u.text);
+        // プレビュー通知（Inspectorのdraftプレビュー連携）
+        previewRef.current?.(lessonId, res.draftId, res.payload);
+        // ルーティング（カードフォーカス）
+        const newId = res.committed?.cardIds?.[0];
+        if (newId) router.push(`/courses/${courseId}/workspace?cardId=${encodeURIComponent(newId)}`);
       } catch (e: unknown) {
         const msg = (e as { message?: string })?.message ?? "unknown";
         if (!aborted) logRef.current(lessonId, `エラー: ${msg}`);
       } finally {
-        if (!aborted) finishRef.current();
-        setTimeout(() => { g.__ai_inflight.delete(key); }, 1500);
+        // StrictMode の再マウントで早期に unmount されても完了時に親へ通知する
+        finishRef.current();
+        setTimeout(() => { ensureInflight().delete(key); }, 1500);
       }
     })();
     return () => {
       aborted = true;
-      setTimeout(() => { g.__ai_inflight.delete(key); }, 1500);
+      setTimeout(() => { ensureInflight().delete(key); }, 1500);
     };
   }, [lessonId, lessonTitle, courseId, desiredCardType, userBrief]);
   return null;

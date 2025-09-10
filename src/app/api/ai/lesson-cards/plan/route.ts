@@ -5,31 +5,20 @@ import { createLessonCardsPlanMock, shouldUseMockAI } from "@/lib/ai/mock";
 import { getCourse, listLessons } from "@/lib/db/queries";
 import type { UUID } from "@/lib/types";
 import type { AiUpdate } from "@/lib/ai/log";
+import { z } from "zod";
+import { parseJsonWithQuery } from "@/lib/utils/request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  let lessonTitle: string | undefined;
-  let desiredCount: number | undefined;
-  let courseId: UUID | undefined;
-  try {
-    if (req.headers.get("content-type")?.includes("application/json")) {
-      const j = (await req.json().catch(() => ({}))) as Partial<{ lessonTitle: string; desiredCount: number; courseId: UUID }>;
-      lessonTitle = j.lessonTitle ?? undefined;
-      desiredCount = typeof j.desiredCount === "number" ? j.desiredCount : undefined;
-      courseId = j.courseId ?? undefined;
-    }
-  } catch {}
-  try {
-    const url = new URL(req.url);
-    lessonTitle = lessonTitle ?? url.searchParams.get("lessonTitle") ?? undefined;
-    const dc = url.searchParams.get("desiredCount");
-    if (dc != null) desiredCount = Number(dc);
-    const cid = url.searchParams.get("courseId");
-    if (cid) courseId = cid as UUID;
-  } catch {}
-  if (!lessonTitle) lessonTitle = "レッスン";
+  const RequestSchema = z.object({
+    lessonTitle: z.string().min(1),
+    desiredCount: z.number().int().optional(),
+    courseId: z.string().optional(),
+  });
+  const input = await parseJsonWithQuery(req, RequestSchema, { lessonTitle: "レッスン" });
+  const { lessonTitle, desiredCount, courseId } = input;
 
   const updates: AiUpdate[] = [];
   const start = Date.now();
@@ -39,7 +28,7 @@ export async function POST(req: Request) {
     let planContext: { course?: { title: string; description?: string | null; category?: string | null; level?: string | null }; lessons: { title: string }[]; index: number } = { lessons: [], index: 0 };
     if (courseId) {
       try {
-        const [course, lessons] = await Promise.all([getCourse(courseId), listLessons(courseId)]);
+        const [course, lessons] = await Promise.all([getCourse(courseId as UUID), listLessons(courseId as UUID)]);
         const idx = lessons.findIndex((l) => l.title === lessonTitle);
         const lessonKey = (lessonTitle ?? "").toLowerCase();
         const level = (course as { level?: string | null } | undefined)?.level ?? "初心者";

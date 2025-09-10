@@ -6,61 +6,32 @@ import { getCourse } from "@/lib/db/queries";
 import type { UUID } from "@/lib/types";
 import type { LessonCards } from "@/lib/types";
 import type { AiUpdate } from "@/lib/ai/log";
+import { z } from "zod";
+import { parseJsonWithQuery } from "@/lib/utils/request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // ストリーミング(SSE)は廃止し、最終結果のみJSONで返す
 export async function POST(req: Request) {
-  // 入力の堅牢化: JSON/クエリどちらでも受け取り、未指定は安全にフォールバック
-  let lessonTitle: string | undefined;
-  let desiredCount: number | undefined;
-  let courseId: UUID | undefined;
-  let course: { title: string; description?: string | null; category?: string | null; level?: string | null } | undefined;
-  let desiredCardType: "text" | "quiz" | "fill-blank" | undefined;
-  let userBrief: string | undefined;
-  let sharedPrefix: string | undefined;
-  try {
-    if (req.headers.get("content-type")?.includes("application/json")) {
-      const j = (await req.json().catch(() => ({}))) as Partial<{
-        lessonTitle: string;
-        desiredCount: number;
-        courseId: UUID;
-        course: { title: string; description?: string | null; category?: string | null; level?: string | null };
-        desiredCardType: "text" | "quiz" | "fill-blank";
-        userBrief: string;
-        sharedPrefix: string;
-      }>;
-      lessonTitle = j.lessonTitle ?? undefined;
-      desiredCount = typeof j.desiredCount === "number" ? j.desiredCount : undefined;
-      courseId = j.courseId ?? undefined;
-      course = j.course ?? undefined;
-      if (j.desiredCardType === "text" || j.desiredCardType === "quiz" || j.desiredCardType === "fill-blank") {
-        desiredCardType = j.desiredCardType;
-      }
-      if (typeof j.userBrief === "string" && j.userBrief.trim().length > 0) {
-        userBrief = j.userBrief.trim();
-      }
-      if (typeof j.sharedPrefix === "string" && j.sharedPrefix.trim().length > 0) {
-        sharedPrefix = j.sharedPrefix.trim();
-      }
-    }
-  } catch {}
-  try {
-    const url = new URL(req.url);
-    lessonTitle = lessonTitle ?? url.searchParams.get("lessonTitle") ?? undefined;
-    const dc = url.searchParams.get("desiredCount");
-    if (dc != null) desiredCount = Number(dc);
-    const cid = url.searchParams.get("courseId");
-    if (cid) courseId = cid as UUID;
-    const t = url.searchParams.get("desiredCardType");
-    if (t === "text" || t === "quiz" || t === "fill-blank") desiredCardType = t;
-    const ub = url.searchParams.get("userBrief");
-    if (ub && ub.trim()) userBrief = ub.trim();
-    const sp = url.searchParams.get("sharedPrefix");
-    if (sp && sp.trim()) sharedPrefix = sp.trim();
-  } catch {}
-  if (!lessonTitle || typeof lessonTitle !== "string") lessonTitle = "レッスン";
+  const RequestSchema = z.object({
+    lessonTitle: z.string().min(1),
+    desiredCount: z.number().int().optional(),
+    courseId: z.string().optional(),
+    course: z
+      .object({
+        title: z.string(),
+        description: z.string().nullable().optional(),
+        category: z.string().nullable().optional(),
+        level: z.string().nullable().optional(),
+      })
+      .optional(),
+    desiredCardType: z.enum(["text", "quiz", "fill-blank"]).optional(),
+    userBrief: z.string().optional(),
+    sharedPrefix: z.string().optional(),
+  });
+  const input = await parseJsonWithQuery(req, RequestSchema, { lessonTitle: "レッスン" });
+  let { lessonTitle, desiredCount, courseId, course, desiredCardType, userBrief, sharedPrefix } = input;
 
   // server 側で courseId があればコース情報を解決
   try {
