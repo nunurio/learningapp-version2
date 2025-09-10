@@ -1,9 +1,11 @@
 "use server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { UUID, Card } from "@/lib/types";
 // asUpsertById not needed after switching to plain updates for reordering
 import type { TablesInsert } from "@/lib/database.types";
+import { dashboardUserTag } from "@/lib/db/dashboard";
+import { getCurrentUserId } from "@/lib/supabase/server";
 
 export async function addCardAction(
   lessonId: UUID,
@@ -34,6 +36,9 @@ export async function addCardAction(
     .single();
   if (error) throw error;
   revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  revalidatePath("/dashboard");
+  const uid = await getCurrentUserId();
+  if (uid) revalidateTag(dashboardUserTag(uid));
   return data.id as UUID;
 }
 
@@ -52,6 +57,9 @@ export async function updateCardAction(cardId: UUID, patch: Partial<Card>) {
   const { error } = await supa.from("cards").update(updates).eq("id", cardId);
   if (error) throw error;
   revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  revalidatePath("/dashboard");
+  const uid2 = await getCurrentUserId();
+  if (uid2) revalidateTag(dashboardUserTag(uid2));
 }
 
 export async function deleteCardAction(cardId: UUID) {
@@ -62,6 +70,9 @@ export async function deleteCardAction(cardId: UUID) {
   const { error } = await supa.from("cards").delete().eq("id", cardId);
   if (error) throw error;
   if (!le) revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  revalidatePath("/dashboard");
+  const uid3 = await getCurrentUserId();
+  if (uid3) revalidateTag(dashboardUserTag(uid3));
 }
 
 export async function deleteCardsAction(ids: UUID[]) {
@@ -76,6 +87,9 @@ export async function deleteCardsAction(ids: UUID[]) {
   const { error } = await supa.from("cards").delete().in("id", ids);
   if (error) throw error;
   if (courseId) revalidatePath(`/courses/${courseId}/workspace`, "page");
+  revalidatePath("/dashboard");
+  const uid4 = await getCurrentUserId();
+  if (uid4) revalidateTag(dashboardUserTag(uid4));
 }
 
 export async function reorderCardsAction(lessonId: UUID, orderedIds: UUID[]) {
@@ -165,4 +179,7 @@ export async function reorderCardsAction(lessonId: UUID, orderedIds: UUID[]) {
   }
 
   revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  revalidatePath("/dashboard");
+  const uid5 = await getCurrentUserId();
+  if (uid5) revalidateTag(dashboardUserTag(uid5));
 }

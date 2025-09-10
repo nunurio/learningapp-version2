@@ -1,8 +1,9 @@
 "use server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient, getCurrentUserId } from "@/lib/supabase/server";
 import type { UUID, Course } from "@/lib/types";
 import type { TablesInsert } from "@/lib/database.types";
+import { dashboardUserTag } from "@/lib/db/dashboard";
 
 export async function createCourseAction(input: { title: string; description?: string; category?: string }): Promise<{ courseId: UUID }> {
   const supa = await createClient();
@@ -21,6 +22,9 @@ export async function createCourseAction(input: { title: string; description?: s
     .single();
   if (error) throw error;
   revalidatePath("/");
+  revalidatePath("/dashboard");
+  const tag = dashboardUserTag(ownerId);
+  revalidateTag(tag);
   return { courseId: data.id };
 }
 
@@ -35,6 +39,9 @@ export async function updateCourseAction(courseId: UUID, patch: Partial<Pick<Cou
   const { error } = await supa.from("courses").update(updates).eq("id", courseId);
   if (error) throw error;
   revalidatePath("/");
+  revalidatePath("/dashboard");
+  const uid = await getCurrentUserId();
+  if (uid) revalidateTag(dashboardUserTag(uid));
   revalidatePath(`/courses/${courseId}/workspace`, "page");
 }
 
@@ -43,5 +50,8 @@ export async function deleteCourseAction(courseId: UUID) {
   const { error } = await supa.from("courses").delete().eq("id", courseId);
   if (error) throw error;
   revalidatePath("/");
+  revalidatePath("/dashboard");
+  const uid2 = await getCurrentUserId();
+  if (uid2) revalidateTag(dashboardUserTag(uid2));
   revalidatePath(`/courses/${courseId}/workspace`, "page");
 }

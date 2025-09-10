@@ -1,8 +1,10 @@
 "use server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { UUID } from "@/lib/types";
 import type { TablesInsert } from "@/lib/database.types";
+import { dashboardUserTag } from "@/lib/db/dashboard";
+import { getCurrentUserId } from "@/lib/supabase/server";
 
 export async function addLessonAction(courseId: UUID, title: string): Promise<{ lessonId: UUID }> {
   const supa = await createClient();
@@ -21,6 +23,9 @@ export async function addLessonAction(courseId: UUID, title: string): Promise<{ 
     .single();
   if (error) throw error;
   revalidatePath(`/courses/${courseId}/workspace`, "page");
+  revalidatePath("/dashboard");
+  const uid = await getCurrentUserId();
+  if (uid) revalidateTag(dashboardUserTag(uid));
   return { lessonId: data.id };
 }
 
@@ -30,6 +35,9 @@ export async function deleteLessonAction(lessonId: UUID) {
   const { error } = await supa.from("lessons").delete().eq("id", lessonId);
   if (error) throw error;
   if (lrow?.course_id) revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  revalidatePath("/dashboard");
+  const uid2 = await getCurrentUserId();
+  if (uid2) revalidateTag(dashboardUserTag(uid2));
 }
 
 export async function reorderLessonsAction(courseId: UUID, orderedIds: UUID[]) {
@@ -99,4 +107,7 @@ export async function reorderLessonsAction(courseId: UUID, orderedIds: UUID[]) {
     throw err;
   }
   revalidatePath(`/courses/${courseId}/workspace`, "page");
+  revalidatePath("/dashboard");
+  const uid3 = await getCurrentUserId();
+  if (uid3) revalidateTag(dashboardUserTag(uid3));
 }

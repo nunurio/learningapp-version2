@@ -49,6 +49,7 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const path = request.nextUrl.pathname
+  const isApiRoute = path.startsWith('/api/');
   const isPublicRoute =
     path === '/' ||
     path.startsWith('/login') ||
@@ -56,7 +57,7 @@ export async function updateSession(request: NextRequest) {
     path.startsWith('/error')
 
   // When not signed in, block private routes but allow public ones (incl. landing '/')
-  if (!user && !isPublicRoute) {
+  if (!user && !isPublicRoute && !isApiRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

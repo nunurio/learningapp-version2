@@ -1,8 +1,9 @@
 "use server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import type { UUID, CoursePlan, LessonCards } from "@/lib/types";
 import { createClient, getCurrentUserId } from "@/lib/supabase/server";
 import type { Tables, TablesInsert } from "@/lib/database.types";
+import { DASHBOARD_TAG } from "@/lib/db/dashboard";
 
 export async function saveDraftAction(
   kind: "outline" | "lesson-cards",
@@ -48,6 +49,8 @@ export async function commitCoursePlanAction(draftId: string): Promise<{ courseI
     if (e3) throw e3;
   }
   await supa.from("ai_drafts").delete().eq("id", draftId);
+  revalidatePath("/dashboard");
+  revalidateTag(DASHBOARD_TAG);
   return { courseId: cid };
 }
 
@@ -82,6 +85,8 @@ export async function commitCoursePlanPartialAction(draftId: string, selectedInd
     if (e3) throw e3;
   }
   await supa.from("ai_drafts").delete().eq("id", draftId);
+  revalidatePath("/dashboard");
+  revalidateTag(DASHBOARD_TAG);
   return { courseId: cid };
 }
 
@@ -124,6 +129,8 @@ export async function commitLessonCardsAction(opts: { draftId: string; lessonId:
   await supa.from("ai_drafts").delete().eq("id", opts.draftId);
   const { data: lrow } = await supa.from("lessons").select("course_id").eq("id", opts.lessonId).single();
   if (lrow?.course_id) revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  revalidatePath("/dashboard");
+  revalidateTag(DASHBOARD_TAG);
   return { count, cardIds: ids };
 }
 
@@ -168,5 +175,7 @@ export async function commitLessonCardsPartialAction(opts: { draftId: string; le
   await supa.from("ai_drafts").delete().eq("id", opts.draftId);
   const { data: lrow } = await supa.from("lessons").select("course_id").eq("id", opts.lessonId).single();
   if (lrow?.course_id) revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  revalidatePath("/dashboard");
+  revalidateTag(DASHBOARD_TAG);
   return { count, cardIds: ids };
 }

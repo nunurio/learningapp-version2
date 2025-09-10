@@ -2,6 +2,8 @@
 import type { UUID, Progress, SrsEntry, SrsRating } from "@/lib/types";
 import { createClient, getCurrentUserId } from "@/lib/supabase/server";
 import type { TablesInsert, Json } from "@/lib/database.types";
+import { revalidateTag, revalidatePath } from "next/cache";
+import { dashboardUserTag } from "@/lib/db/dashboard";
 
 export async function saveProgressAction(input: Progress) {
   const supa = await createClient();
@@ -65,6 +67,8 @@ export async function saveProgressAction(input: Progress) {
       answer: nextAnswer,
     } satisfies TablesInsert<"progress">);
   if (error) throw error;
+  revalidatePath("/dashboard");
+  revalidateTag(dashboardUserTag(userId));
 }
 
 function startOfDayISO(date = new Date()) {
@@ -120,6 +124,8 @@ export async function rateSrsAction(cardId: UUID, rating: SrsRating): Promise<Sr
       last_rating: rating,
     } satisfies TablesInsert<"srs">);
   if (error) throw error;
+  revalidatePath("/dashboard");
+  revalidateTag(dashboardUserTag(userId));
   return next;
 }
 
@@ -136,10 +142,14 @@ export async function toggleFlagAction(cardId: UUID): Promise<boolean> {
   if (!row) {
     const { error } = await supa.from("flags").insert({ user_id: userId, card_id: cardId } satisfies TablesInsert<"flags">);
     if (error) throw error;
+    revalidatePath("/dashboard");
+    revalidateTag(dashboardUserTag(userId));
     return true;
   } else {
     const { error } = await supa.from("flags").delete().eq("user_id", userId).eq("card_id", cardId);
     if (error) throw error;
+    revalidatePath("/dashboard");
+    revalidateTag(dashboardUserTag(userId));
     return false;
   }
 }
@@ -152,4 +162,6 @@ export async function saveNoteAction(cardId: UUID, text: string) {
     .from("notes")
     .upsert({ user_id: userId, card_id: cardId, text } satisfies TablesInsert<"notes">);
   if (error) throw error;
+  revalidatePath("/dashboard");
+  revalidateTag(dashboardUserTag(userId));
 }
