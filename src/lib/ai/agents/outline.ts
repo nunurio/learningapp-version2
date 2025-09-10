@@ -3,14 +3,13 @@ import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { CoursePlanSchema } from "@/lib/ai/schema";
 import type { CoursePlan } from "@/lib/types";
-import { extractAgentJSON, parseWithSchema } from "@/lib/ai/executor";
+import { fallbackFromHistory } from "@/lib/ai/executor";
+import { OUTLINE_AGENT_INSTRUCTIONS } from "@/lib/ai/prompts";
+// finalOutput は outputType 指定時に Zod 検証済みで返る
 
 export const OutlineAgent = new Agent<UnknownContext, typeof CoursePlanSchema>({
   name: "Course Planner",
-  instructions: [
-    "あなたは教育設計の専門家です。",
-    "出力の course オブジェクトには level（学習者の前提レベル: 例. 初心者/初級/中級/上級）を含め、構造化スキーマに厳密準拠してください。",
-  ].join("\n"),
+  instructions: OUTLINE_AGENT_INSTRUCTIONS,
   // 構造化出力: Zod スキーマで強制
   outputType: CoursePlanSchema,
   model: process.env.OPENAI_MODEL,
@@ -28,26 +27,22 @@ export async function runOutlineAgent(input: {
   lessonCount?: number;
   userBrief?: string;
 }): Promise<CoursePlan> {
-  const lc = typeof input.lessonCount === "number" ? input.lessonCount : 12;
-  const count = Math.max(3, Math.min(lc, 30));
-  const level = (input.level ?? "").trim() || "初心者";
-  const goal = (input.goal ?? "").trim() || "中級者";
-  const extra = (input.userBrief ?? "").trim();
-  const hints: string[] = [
-    `次の条件でコース案（レッスン${count}件）を作成してください。`,
-    `時間配分: 1レッスンあたり約60分を目安に内容量・演習量を設計すること。`,
-    `前提レベル: ${level} / 目標レベル: ${goal}。現状から目標に到達するために必要なスキルギャップを洗い出し、段階的に橋渡しできるカリキュラムを設計すること。`,
-    `各レッスンは学習成果が明確になるように設計し、冗長な理論だけでなく実践・演習を適切に配分すること。`,
-    `出力は構造化スキーマ（CoursePlan）に厳密に従い、不要なテキストは含めないこと。`,
-  ];
-  if (extra) hints.push(`ユーザー要望: ${extra}`);
-  const sys = hints.join("\n");
-  const res = await runner.run(
-    OutlineAgent,
-    `${sys}\n${JSON.stringify({ ...input, lessonCount: count, level, goal, userBrief: extra })}`,
-    { maxTurns: 1 }
-  );
-  const result = extractAgentJSON(res);
-  if (!result) throw new Error("No agent output");
-  return parseWithSchema(CoursePlanSchema, result) as CoursePlan;
+  const lc = Math.max(3, Math.min(typeof input.lessonCount === "number" ? input.lessonCount : 12, 30));
+  const payload = {
+    task: "Design course outline strictly as CoursePlan JSON.",
+    parameters: {
+      theme: input.theme,
+      level: input.level?.trim() || "初心者",
+      goal: (input.goal ?? "").trim() || "中級者",
+      lessonCount: lc,
+      userBrief: (input.userBrief ?? "").trim() || null,
+    },
+  } as const;
+  const res = await runner.run(OutlineAgent, JSON.stringify(payload), { maxTurns: 1 });
+  // まず finalOutput を信頼（Zod 検証済み）
+  if (res.finalOutput) return res.finalOutput as CoursePlan;
+  // フォールバック: 履歴からテキスト抽出→JSON→Zod
+  const fb = fallbackFromHistory(res, CoursePlanSchema);
+  if (fb) return fb as CoursePlan;
+  throw new Error("No agent output");
 }

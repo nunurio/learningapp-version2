@@ -5,16 +5,14 @@ import { lessonCardsGuardrail } from "@/lib/ai/agents/guardrails";
 import type { OutputGuardrail } from "@openai/agents";
 import { LessonCardsSchema, SingleLessonCardsSchema } from "@/lib/ai/schema";
 import type { LessonCards, CardType } from "@/lib/types";
-import { extractAgentJSON, parseWithSchema } from "@/lib/ai/executor";
+import { fallbackFromHistory } from "@/lib/ai/executor";
+import { SINGLE_CARD_WRITER_INSTRUCTIONS } from "@/lib/ai/prompts";
+// outputType 指定により finalOutput は Zod 検証済み
 
 // 単体カード専用エージェント（1件ぴったり）
 export const SingleCardAgent = new Agent<UnknownContext, typeof SingleLessonCardsSchema>({
   name: "Single Card Writer",
-  instructions: [
-    "あなたは教育コンテンツ作成の専門家です。",
-    "text / quiz / fill-blank から適切な形式を1件だけ生成。",
-    "fill-blankは[[n]]とanswersの整合を厳守。",
-  ].join("\n"),
+  instructions: SINGLE_CARD_WRITER_INSTRUCTIONS,
   outputType: SingleLessonCardsSchema,
   outputGuardrails: [lessonCardsGuardrail as unknown as OutputGuardrail<typeof SingleLessonCardsSchema>],
   model: process.env.OPENAI_MODEL,
@@ -28,28 +26,24 @@ export async function runSingleCardAgent(input: {
   // prompt caching を狙う共通プレフィックス（全カードで同一）
   sharedPrefix?: string;
 }): Promise<LessonCards> {
-  const count = 1;
-  const hints: string[] = [
-    input.sharedPrefix ? String(input.sharedPrefix) : "",
-    `次のレッスン用にカードを${count}件だけ生成してください。`,
-  ].filter(Boolean);
-  if (input.desiredCardType) hints.push(`カードタイプは "${input.desiredCardType}" を必ず使用。`);
-  if (input.userBrief && input.userBrief.trim()) hints.push(`ユーザー要望: ${input.userBrief.trim()}`);
-  const level = input.course?.level ?? "初心者";
-  hints.push(`学習者レベル: ${level} を想定。説明の深さ・用語の難易度・例の具体性をこのレベルに最適化してください。`);
-  // 型に合わせるために最小限の日本語指示を追加
-  hints.push("入力は JSON: { lessonTitle, desiredCount, course?, desiredCardType?, userBrief? }。course は { title, description?, category? }。");
-  hints.push("title は任意。未使用フィールドは null。type は text|quiz|fill-blank のいずれか。");
-  hints.push("text の場合は約5分で読み切れる密度（700〜1200字目安）で、そのレッスンの知識を過不足なくインプットできるように。");
-  const sys = hints.join("\n");
-  const res = await runner.run(
-    SingleCardAgent,
-    `${sys}\n${JSON.stringify({ lessonTitle: input.lessonTitle, desiredCount: count, course: input.course, desiredCardType: input.desiredCardType, userBrief: input.userBrief })}`,
-    { maxTurns: 1 }
-  );
-  const result = extractAgentJSON(res);
-  if (!result) throw new Error("No agent output");
-  const parsed = parseWithSchema(SingleLessonCardsSchema, result);
+  const payload = {
+    task: "Write exactly 1 card as SingleLessonCards JSON.",
+    parameters: {
+      lessonTitle: input.lessonTitle,
+      course: input.course ?? null,
+      desiredCardType: input.desiredCardType ?? null,
+      userBrief: (input.userBrief ?? "").trim() || null,
+      sharedPrefix: input.sharedPrefix ?? null,
+    },
+  } as const;
+  const res = await runner.run(SingleCardAgent, JSON.stringify(payload), { maxTurns: 1 });
+  // まず finalOutput を信頼（Zod 検証済み）
+  let parsed = res.finalOutput;
+  if (!parsed) {
+    const fb = fallbackFromHistory(res, SingleLessonCardsSchema);
+    if (fb) parsed = fb;
+  }
+  if (!parsed) throw new Error("No agent output");
   if (input.desiredCardType) {
     const produced = parsed.cards[0]?.type;
     if (produced !== input.desiredCardType) {

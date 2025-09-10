@@ -2,22 +2,14 @@ import { Agent } from "@openai/agents";
 import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { LessonCardsPlanSchema, type LessonCardsPlan } from "@/lib/ai/schema";
-import { extractAgentJSON, parseWithSchema } from "@/lib/ai/executor";
+import { parseWithSchema, fallbackFromHistory } from "@/lib/ai/executor";
 import { z } from "zod";
+import { CARDS_PLANNER_INSTRUCTIONS } from "@/lib/ai/prompts";
 
 // レッスン一式のカード計画（順番・タイプ・ブリーフ）を作るエージェント
 export const CardsPlannerAgent = new Agent<UnknownContext, typeof LessonCardsPlanSchema>({
   name: "Lesson Cards Planner",
-  instructions: [
-    "あなたは教育コンテンツ設計の専門家です。",
-    "目的: 今回は ‘アウトラインのみ’ を設計します。各カードのタイプと狙い（1〜2文の要約）だけを決め、詳細（問題文・選択肢・空所[[n]]・正解・数式・コード・API名の列挙 等）は書かないでください。",
-    "各カードには type(text|quiz|fill-blank) と brief（概要の1行/50〜120字程度）、任意 title を指定します。brief は学習意図と扱う話題を短く要約し、具体的指示や箇条書きは禁止です（例: ‘選択肢…/正解…/[[1]]…/A) …’ を書かない）。",
-    "text/quiz/fill-blank は学習効果が最大になるよう多様に配列し、導入→概念→確認→まとめの流れを意識してください。",
-    "count は cards.length と必ず一致させてください。",
-    "sharedPrefix は必須です。以下を“高レベルの要約”として簡潔に含めます: 1) 到達目標、2) 前提（Prerequisites）、3) 簡潔な用語集（箇条書き可・定義は一行）、4) 学習者レベル（例: 入門/初級/中級/上級）。詳細な式や選択肢は含めません。",
-    "学習者レベルは context.course.level が未指定なら『初心者』と明記してください（推定しない）。",
-    "出力は構造化スキーマ LessonCardsPlan に厳密準拠。brief は概要のみで、詳細生成は後段の ‘Writer’ が担当します。",
-  ].join("\n"),
+  instructions: CARDS_PLANNER_INSTRUCTIONS,
   outputType: LessonCardsPlanSchema,
   model: process.env.OPENAI_MODEL,
 });
@@ -31,23 +23,22 @@ export async function runCardsPlanner(input: {
     index: number; // 現レッスンのインデックス
   };
 }): Promise<LessonCardsPlan> {
-  const sys = [
-    `あなたには JSON 入力が与えられます: { lessonTitle, desiredCount?, context: { course: { title, description?, category?, level? }, lessons: { title }[], index } }。`,
-    `今回のレッスンに最適な ‘カード計画(アウトライン)’ を 3〜20 枚の範囲で決定してください（desiredCount は目安。必要に応じて調整可）。`,
-    `cards は生成順で並べ、各 item に type と brief（概要の1行/50〜120字）と任意 title を含めます。brief は詳細指示を書かず、後続の生成器が解釈できる最小限の狙いに留めます。`,
-    `禁止: 問題文そのもの・選択肢や正解の明記・[[n]] の空所指定・具体的な数式/コード/API名の列挙・文字数指定（例: 700〜1200字）。`,
-    `count は cards.length と一致させ、導入→概念→確認→まとめの流れを意識してください。`,
-    `sharedPrefix は到達目標/前提/簡潔な用語集/学習者レベルを高レベルで記述します（詳細は書かない）。`,
-    `学習者レベルは context.course.level が未指定なら『初心者』としてください（推定しない）。`,
-    `出力は LessonCardsPlan スキーマに厳密準拠。`,
-  ].join("\n");
-  const res = await runner.run(
-    CardsPlannerAgent,
-    `${sys}\n${JSON.stringify(input)}`,
-    { maxTurns: 1 }
-  );
-  const result = extractAgentJSON(res);
-  if (!result) throw new Error("No planner output");
+  const payload = {
+    task: "Plan lesson cards strictly as LessonCardsPlan JSON.",
+    parameters: {
+      lessonTitle: input.lessonTitle,
+      desiredCount: typeof input.desiredCount === "number" ? input.desiredCount : null,
+      context: input.context,
+    },
+  } as const;
+  const res = await runner.run(CardsPlannerAgent, JSON.stringify(payload), { maxTurns: 1 });
+  // まず finalOutput を信頼（Zod 検証済み）
+  const result = res.finalOutput as unknown;
+  if (!result) {
+    const fb = fallbackFromHistory(res, LessonCardsPlanSchema);
+    if (fb) return fb as LessonCardsPlan;
+    throw new Error("No planner output");
+  }
   // 軽いサニタイズ: brief を概要レベルに強制（安全側のトリム）
   const LoosePlanSchema = z.object({
     cards: z.array(z.unknown()).optional(),
