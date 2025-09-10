@@ -36,7 +36,7 @@ export async function commitCoursePlanAction(draftId: string): Promise<{ courseI
   const plan = draft.payload as CoursePlan;
   const { data: course, error: e2 } = await supa
     .from("courses")
-    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, status: "draft" } satisfies TablesInsert<"courses">)
+    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, level: (plan.course as { level?: string | null }).level ?? null, status: "draft" } satisfies TablesInsert<"courses">)
     .select("id")
     .single();
   if (e2) throw e2;
@@ -67,7 +67,7 @@ export async function commitCoursePlanPartialAction(draftId: string, selectedInd
   const plan = draft.payload as CoursePlan;
   const { data: course, error: e2 } = await supa
     .from("courses")
-    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, status: "draft" } satisfies TablesInsert<"courses">)
+    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, level: (plan.course as { level?: string | null }).level ?? null, status: "draft" } satisfies TablesInsert<"courses">)
     .select("id")
     .single();
   if (e2) throw e2;

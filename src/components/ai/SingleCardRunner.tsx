@@ -16,6 +16,11 @@ type Props = {
 };
 
 export function SingleCardRunner({ courseId, lessonId, lessonTitle, desiredCardType, userBrief, onLog, onPreview, onFinish }: Props) {
+  // dev StrictMode の副作用による二重起動を抑止する軽量ガード
+  const key = `${lessonId}-single`;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const g: any = globalThis as any;
+  if (!g.__ai_inflight) g.__ai_inflight = new Set<string>();
   const router = useRouter();
   const logRef = useRef(onLog);
   const previewRef = useRef(onPreview);
@@ -23,6 +28,8 @@ export function SingleCardRunner({ courseId, lessonId, lessonTitle, desiredCardT
   useEffect(() => { logRef.current = onLog; previewRef.current = onPreview; finishRef.current = onFinish; }, [onLog, onPreview, onFinish]);
 
   useEffect(() => {
+    if (g.__ai_inflight.has(key)) return;
+    g.__ai_inflight.add(key);
     let aborted = false;
     (async () => {
       try {
@@ -58,9 +65,13 @@ export function SingleCardRunner({ courseId, lessonId, lessonTitle, desiredCardT
         if (!aborted) logRef.current(lessonId, `エラー: ${msg}`);
       } finally {
         if (!aborted) finishRef.current();
+        setTimeout(() => { g.__ai_inflight.delete(key); }, 1500);
       }
     })();
-    return () => { aborted = true; };
+    return () => {
+      aborted = true;
+      setTimeout(() => { g.__ai_inflight.delete(key); }, 1500);
+    };
   }, [lessonId, lessonTitle, courseId, desiredCardType, userBrief]);
   return null;
 }

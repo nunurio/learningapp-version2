@@ -107,6 +107,7 @@ export type Database = {
           category: string | null
           created_at: string
           description: string | null
+          level: string | null
           id: string
           owner_id: string
           slug: string | null
@@ -118,6 +119,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           description?: string | null
+          level?: string | null
           id?: string
           owner_id: string
           slug?: string | null
@@ -129,6 +131,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           description?: string | null
+          level?: string | null
           id?: string
           owner_id?: string
           slug?: string | null
@@ -465,4 +468,3 @@ export const Constants = {
     },
   },
 } as const
-

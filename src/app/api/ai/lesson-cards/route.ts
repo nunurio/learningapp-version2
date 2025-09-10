@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { initAgents } from "@/lib/ai/agents/index";
-import { runLessonCardsAgent } from "@/lib/ai/agents/lesson-cards";
+// 旧: 一括生成ロジックは廃止。単体生成のみを扱う。
 import { createLessonCardsMock, shouldUseMockAI } from "@/lib/ai/mock";
 import { getCourse } from "@/lib/db/queries";
 import type { UUID } from "@/lib/types";
@@ -16,18 +16,20 @@ export async function POST(req: Request) {
   let lessonTitle: string | undefined;
   let desiredCount: number | undefined;
   let courseId: UUID | undefined;
-  let course: { title: string; description?: string | null; category?: string | null } | undefined;
+  let course: { title: string; description?: string | null; category?: string | null; level?: string | null } | undefined;
   let desiredCardType: "text" | "quiz" | "fill-blank" | undefined;
   let userBrief: string | undefined;
+  let sharedPrefix: string | undefined;
   try {
     if (req.headers.get("content-type")?.includes("application/json")) {
       const j = (await req.json().catch(() => ({}))) as Partial<{
         lessonTitle: string;
         desiredCount: number;
         courseId: UUID;
-        course: { title: string; description?: string | null; category?: string | null };
+        course: { title: string; description?: string | null; category?: string | null; level?: string | null };
         desiredCardType: "text" | "quiz" | "fill-blank";
         userBrief: string;
+        sharedPrefix: string;
       }>;
       lessonTitle = j.lessonTitle ?? undefined;
       desiredCount = typeof j.desiredCount === "number" ? j.desiredCount : undefined;
@@ -38,6 +40,9 @@ export async function POST(req: Request) {
       }
       if (typeof j.userBrief === "string" && j.userBrief.trim().length > 0) {
         userBrief = j.userBrief.trim();
+      }
+      if (typeof j.sharedPrefix === "string" && j.sharedPrefix.trim().length > 0) {
+        sharedPrefix = j.sharedPrefix.trim();
       }
     }
   } catch {}
@@ -52,6 +57,8 @@ export async function POST(req: Request) {
     if (t === "text" || t === "quiz" || t === "fill-blank") desiredCardType = t;
     const ub = url.searchParams.get("userBrief");
     if (ub && ub.trim()) userBrief = ub.trim();
+    const sp = url.searchParams.get("sharedPrefix");
+    if (sp && sp.trim()) sharedPrefix = sp.trim();
   } catch {}
   if (!lessonTitle || typeof lessonTitle !== "string") lessonTitle = "レッスン";
 
@@ -60,7 +67,7 @@ export async function POST(req: Request) {
     if (!course && courseId) {
       const co = await getCourse(courseId);
       if (co) {
-        course = { title: co.title, description: co.description ?? null, category: co.category ?? null };
+        course = { title: co.title, description: co.description ?? null, category: co.category ?? null, level: (co as { level?: string | null }).level ?? "初心者" };
       }
     }
   } catch {
@@ -72,14 +79,17 @@ export async function POST(req: Request) {
   updates.push({ ts: start, text: "received" });
   try {
     const useMock = shouldUseMockAI();
+    // 単体生成のみ許可（旧一括生成はサポート外）
     const isSingle = typeof desiredCount === "number" ? desiredCount <= 1 : true;
+    if (!isSingle) {
+      return NextResponse.json(
+        { error: "Batch generation is no longer supported. Use /api/ai/lesson-cards/plan and single-card generation in parallel." },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
+      );
+    }
     const payload = useMock
-      ? createLessonCardsMock({ lessonTitle, desiredCount: isSingle ? 1 : desiredCount, desiredCardType, userBrief })
-      : (initAgents(), (
-          isSingle
-            ? await (await import("@/lib/ai/agents/lesson-cards")).runSingleCardAgent({ lessonTitle, course, desiredCardType, userBrief })
-            : await runLessonCardsAgent({ lessonTitle, desiredCount, course })
-        ));
+      ? createLessonCardsMock({ lessonTitle, desiredCount: 1, desiredCardType, userBrief })
+      : (initAgents(), await (await import("@/lib/ai/agents/lesson-cards")).runSingleCardAgent({ lessonTitle, course, desiredCardType, userBrief, ...(sharedPrefix ? { sharedPrefix } : {}) }));
     updates.push({ ts: Date.now(), text: useMock ? "mock" : "runAgent" }, { ts: Date.now(), text: "persistPreview" });
     return NextResponse.json(
       { payload, updates },

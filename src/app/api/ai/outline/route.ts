@@ -14,6 +14,7 @@ export async function POST(req: Request) {
   let level: string | undefined;
   let goal: string | undefined;
   let lessonCount: number | undefined;
+  let userBrief: string | undefined;
 
   try {
     if (req.headers.get("content-type")?.includes("application/json")) {
@@ -22,11 +23,13 @@ export async function POST(req: Request) {
         level: string;
         goal: string;
         lessonCount: number;
+        userBrief: string;
       }>;
       theme = j.theme ?? undefined;
       level = j.level ?? undefined;
       goal = j.goal ?? undefined;
       lessonCount = typeof j.lessonCount === "number" ? j.lessonCount : undefined;
+      userBrief = j.userBrief ?? undefined;
     }
   } catch {}
   try {
@@ -43,8 +46,8 @@ export async function POST(req: Request) {
     const start = Date.now();
     const useMock = shouldUseMockAI();
     const plan = useMock
-      ? createCoursePlanMock({ theme, level, goal, lessonCount })
-      : (initAgents(), await runOutlineAgent({ theme, level, goal, lessonCount }));
+      ? createCoursePlanMock({ theme, level, goal, lessonCount, userBrief })
+      : (initAgents(), await runOutlineAgent({ theme, level, goal, lessonCount, userBrief }));
     const updates: AiUpdate[] = [
       { ts: start, text: "received" },
       { ts: Date.now(), text: useMock ? "mock" : "runAgent" },

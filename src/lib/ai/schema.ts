@@ -7,6 +7,7 @@ export const CoursePlanSchema = z.object({
     // Structured Outputs要件: 省略不可 -> null許容にする
     description: z.string().nullable(),
     category: z.string().nullable(),
+    level: z.string().nullable(),
   }),
   lessons: z
     .array(
@@ -82,6 +83,28 @@ export const SingleLessonCardsSchema = z.object({
 
 export type LessonCardsOutput = z.infer<typeof LessonCardsSchema>;
 
+// --- Planning phase -------------------------------------------------------
+// レッスン一式を作る前に、カードの枚数・順番・タイプ・概要を決める計画スキーマ
+export const CardPlanItemSchema = z.object({
+  // text | quiz | fill-blank
+  type: z.enum(["text", "quiz", "fill-blank"]),
+  // そのカードのねらい・含める要素（短いブリーフ）
+  brief: z.string().min(1),
+  // 任意タイトル（なくても良い）
+  title: z.string().nullable().optional(),
+});
+
+export const LessonCardsPlanSchema = z.object({
+  lessonTitle: z.string(),
+  // 最終的に生成する枚数（cards.length と一致する）
+  count: z.number().int().min(3).max(20),
+  // 生成順に並べた計画
+  cards: z.array(CardPlanItemSchema).min(3).max(20),
+  // 後続の単体生成で共通に再利用するプレフィックス（Prompt Caching用）
+  sharedPrefix: z.string().nullable().optional(),
+});
+export type LessonCardsPlan = z.infer<typeof LessonCardsPlanSchema>;
+
 // JSON Schemas for OpenAI Structured Outputs (function calling)
 export const CoursePlanJSONSchema = {
   title: "CoursePlan",
@@ -93,9 +116,10 @@ export const CoursePlanJSONSchema = {
         title: { type: "string", minLength: 1 },
         description: { type: ["string", "null"] },
         category: { type: ["string", "null"] },
+        level: { type: ["string", "null"] },
       },
       // Responses API の制約: properties に含めたキーを required に全列挙
-      required: ["title", "description", "category"],
+      required: ["title", "description", "category", "level"],
       additionalProperties: false,
     },
     lessons: {
