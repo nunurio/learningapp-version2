@@ -33,4 +33,10 @@ describe("parseJsonWithQuery", () => {
     const req = makeReq("http://x.local/api?count=aa");
     await expect(parseJsonWithQuery(req, schema, { name: "D" })).rejects.toThrow(/count/);
   });
+
+  it("works when defaults is omitted", async () => {
+    const req = makeReq("http://x.local/api?name=Q&count=2");
+    const res = await parseJsonWithQuery(req, schema);
+    expect(res).toEqual({ name: "Q", count: 2 });
+  });
 });

@@ -219,7 +219,21 @@ export async function generateLessonCardsParallelAction(input: {
   updates.push({ ts: now(), text: `planReady(${total})` });
 
   // Parallel single-card generation with retry
-  const concurrency = Math.max(1, Number(process.env.AI_CONCURRENCY ?? process.env.NEXT_PUBLIC_AI_CONCURRENCY ?? 10));
+  // NOTE: Be robust to non-numeric env values (e.g. "auto", "true").
+  const DEFAULT_CONCURRENCY = 10;
+  const rawConcurrency = process.env.AI_CONCURRENCY ?? process.env.NEXT_PUBLIC_AI_CONCURRENCY;
+  let resolvedConcurrency = DEFAULT_CONCURRENCY;
+  if (typeof rawConcurrency === "string" && rawConcurrency.trim().length > 0) {
+    const parsed = Number.parseInt(rawConcurrency.trim(), 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      resolvedConcurrency = parsed;
+    } else {
+      // Fallback and record the fallback reason for diagnostics.
+      updates.push({ ts: now(), text: `concurrencyFallback(${rawConcurrency})→${DEFAULT_CONCURRENCY}` });
+    }
+  }
+  // Cap to a sensible range. If total=0, spawn a single no-op worker.
+  const concurrency = total > 0 ? Math.max(1, Math.min(resolvedConcurrency, total)) : 1;
   const slots: (LessonCards["cards"][number] | undefined)[] = Array.from({ length: total });
   let nextIndex = 0;
   let completed = 0;

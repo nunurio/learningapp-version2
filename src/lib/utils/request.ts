@@ -24,7 +24,9 @@ export async function parseJsonWithQuery<T>(req: Request, schema: z.ZodSchema<T>
   } catch {
     // ignore
   }
-  const merged = { ...(defaults as object), ...query, ...body } as unknown;
+  // defaults が未指定(undefined/null)でもクラッシュしないように空オブジェクトへフォールバック
+  const base = (defaults ?? {}) as object;
+  const merged = { ...base, ...query, ...body } as unknown;
   const parsed = schema.safeParse(merged);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
