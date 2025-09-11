@@ -1,20 +1,20 @@
 "use server";
-import { revalidatePath, revalidateTag } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import * as supa from "@/lib/supabase/server";
 import type { UUID, Card } from "@/lib/types";
 // asUpsertById not needed after switching to plain updates for reordering
 import type { TablesInsert } from "@/lib/database.types";
 import { dashboardUserTag } from "@/lib/db/dashboard";
-import { getCurrentUserId } from "@/lib/supabase/server";
+// getCurrentUserId will be accessed via supa namespace to avoid hard dependency in tests
+import { safeRevalidatePath, safeRevalidateTag, getCurrentUserIdSafe } from "@/server-actions/utils";
 
 export async function addCardAction(
   lessonId: UUID,
   card: Omit<Card, "id" | "lessonId" | "createdAt" | "orderIndex">
 ): Promise<UUID> {
-  const supa = await createClient();
-  const { data: lrow, error: le } = await supa.from("lessons").select("course_id").eq("id", lessonId).single();
+  const supaClient = await supa.createClient();
+  const { data: lrow, error: le } = await supaClient.from("lessons").select("course_id").eq("id", lessonId).single();
   if (le) throw le;
-  const { data: maxData, error: e1 } = await supa
+  const { data: maxData, error: e1 } = await supaClient
     .from("cards")
     .select("order_index")
     .eq("lesson_id", lessonId)
@@ -22,7 +22,7 @@ export async function addCardAction(
     .limit(1);
   if (e1) throw e1;
   const nextIndex = maxData?.[0]?.order_index != null ? Number(maxData[0].order_index) + 1 : 0;
-  const { data, error } = await supa
+  const { data, error } = await supaClient
     .from("cards")
     .insert({
       lesson_id: lessonId,
@@ -35,18 +35,18 @@ export async function addCardAction(
     .select("id")
     .single();
   if (error) throw error;
-  revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
-  revalidatePath("/dashboard");
-  const uid = await getCurrentUserId();
-  if (uid) revalidateTag(dashboardUserTag(uid));
+  safeRevalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  safeRevalidatePath("/dashboard");
+  const uid = await getCurrentUserIdSafe();
+  if (uid) safeRevalidateTag(dashboardUserTag(uid));
   return data.id as UUID;
 }
 
 export async function updateCardAction(cardId: UUID, patch: Partial<Card>) {
-  const supa = await createClient();
-  const { data: crow, error: ce } = await supa.from("cards").select("lesson_id").eq("id", cardId).single();
+  const supaClient = await supa.createClient();
+  const { data: crow, error: ce } = await supaClient.from("cards").select("lesson_id").eq("id", cardId).single();
   if (ce) throw ce;
-  const { data: lrow, error: le } = await supa.from("lessons").select("course_id").eq("id", crow.lesson_id).single();
+  const { data: lrow, error: le } = await supaClient.from("lessons").select("course_id").eq("id", crow.lesson_id).single();
   if (le) throw le;
   const updates: Record<string, unknown> = {};
   if (patch.title !== undefined) updates.title = patch.title;
@@ -54,55 +54,57 @@ export async function updateCardAction(cardId: UUID, patch: Partial<Card>) {
   if (patch.content !== undefined) updates.content = patch.content;
   if (patch.orderIndex !== undefined) updates.order_index = patch.orderIndex;
   if (Object.keys(updates).length === 0) return;
-  const { error } = await supa.from("cards").update(updates).eq("id", cardId);
+  const { error } = await supaClient.from("cards").update(updates).eq("id", cardId);
   if (error) throw error;
-  revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
-  revalidatePath("/dashboard");
-  const uid2 = await getCurrentUserId();
-  if (uid2) revalidateTag(dashboardUserTag(uid2));
+  safeRevalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  safeRevalidatePath("/dashboard");
+  const uid2 = await getCurrentUserIdSafe();
+  if (uid2) safeRevalidateTag(dashboardUserTag(uid2));
 }
 
 export async function deleteCardAction(cardId: UUID) {
-  const supa = await createClient();
-  const { data: crow, error: ce } = await supa.from("cards").select("lesson_id").eq("id", cardId).single();
+  const supaClient = await supa.createClient();
+  const { data: crow, error: ce } = await supaClient.from("cards").select("lesson_id").eq("id", cardId).single();
   if (ce) throw ce;
-  const { data: lrow, error: le } = await supa.from("lessons").select("course_id").eq("id", crow.lesson_id).single();
-  const { error } = await supa.from("cards").delete().eq("id", cardId);
+  const { data: lrow, error: le } = await supaClient.from("lessons").select("course_id").eq("id", crow.lesson_id).single();
+  const { error } = await supaClient.from("cards").delete().eq("id", cardId);
   if (error) throw error;
-  if (!le) revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
-  revalidatePath("/dashboard");
-  const uid3 = await getCurrentUserId();
-  if (uid3) revalidateTag(dashboardUserTag(uid3));
+  if (!le) {
+    safeRevalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+    safeRevalidatePath("/dashboard");
+    const uid3 = await getCurrentUserIdSafe();
+    if (uid3) safeRevalidateTag(dashboardUserTag(uid3));
+  }
 }
 
 export async function deleteCardsAction(ids: UUID[]) {
   if (!ids.length) return;
-  const supa = await createClient();
-  const { data: rows } = await supa.from("cards").select("lesson_id").in("id", ids);
+  const supaClient = await supa.createClient();
+  const { data: rows } = await supaClient.from("cards").select("lesson_id").in("id", ids);
   let courseId: string | undefined;
   if (rows && rows[0]) {
-    const { data: lrow } = await supa.from("lessons").select("course_id").eq("id", rows[0].lesson_id).single();
+    const { data: lrow } = await supaClient.from("lessons").select("course_id").eq("id", rows[0].lesson_id).single();
     courseId = lrow?.course_id as string | undefined;
   }
-  const { error } = await supa.from("cards").delete().in("id", ids);
+  const { error } = await supaClient.from("cards").delete().in("id", ids);
   if (error) throw error;
-  if (courseId) revalidatePath(`/courses/${courseId}/workspace`, "page");
-  revalidatePath("/dashboard");
-  const uid4 = await getCurrentUserId();
-  if (uid4) revalidateTag(dashboardUserTag(uid4));
+  if (courseId) safeRevalidatePath(`/courses/${courseId}/workspace`, "page");
+  safeRevalidatePath("/dashboard");
+  const uid4 = await getCurrentUserIdSafe();
+  if (uid4) safeRevalidateTag(dashboardUserTag(uid4));
 }
 
 export async function reorderCardsAction(lessonId: UUID, orderedIds: UUID[]) {
-  const supa = await createClient();
+  const supaClient = await supa.createClient();
   // 1) Pre-flight: resolve course for revalidate and verify target set
-  const { data: lrow, error: le } = await supa
+  const { data: lrow, error: le } = await supaClient
     .from("lessons")
     .select("course_id")
     .eq("id", lessonId)
     .single();
   if (le) throw le;
 
-  const { data: currentIdsRows, error: lidErr } = await supa
+  const { data: currentIdsRows, error: lidErr } = await supaClient
     .from("cards")
     .select("id, order_index")
     .eq("lesson_id", lessonId)
@@ -129,7 +131,7 @@ export async function reorderCardsAction(lessonId: UUID, orderedIds: UUID[]) {
     for (let idx = 0; idx < orderedIds.length; idx++) {
       const id = orderedIds[idx];
       const provisional = idx + OFFSET;
-      const { error } = await supa
+      const { error } = await supaClient
         .from("cards")
         .update({ order_index: provisional })
         .eq("id", id)
@@ -143,7 +145,7 @@ export async function reorderCardsAction(lessonId: UUID, orderedIds: UUID[]) {
     // Phase 2: set final indices 0..n-1.
     for (let idx = 0; idx < orderedIds.length; idx++) {
       const id = orderedIds[idx];
-      const { error } = await supa
+      const { error } = await supaClient
         .from("cards")
         .update({ order_index: idx })
         .eq("id", id)
@@ -159,7 +161,7 @@ export async function reorderCardsAction(lessonId: UUID, orderedIds: UUID[]) {
       const OFFSET2 = 2_000_000;
       for (let idx = 0; idx < orderedIds.length; idx++) {
         const id = orderedIds[idx];
-        const { error } = await supa
+        const { error } = await supaClient
           .from("cards")
           .update({ order_index: OFFSET2 + idx })
           .eq("id", id)
@@ -167,7 +169,7 @@ export async function reorderCardsAction(lessonId: UUID, orderedIds: UUID[]) {
         if (error) break; // give up further rollback if this fails
       }
       for (const [id, orig] of originalIndexById.entries()) {
-        const { error } = await supa
+        const { error } = await supaClient
           .from("cards")
           .update({ order_index: orig })
           .eq("id", id)
@@ -178,8 +180,8 @@ export async function reorderCardsAction(lessonId: UUID, orderedIds: UUID[]) {
     throw err;
   }
 
-  revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
-  revalidatePath("/dashboard");
-  const uid5 = await getCurrentUserId();
-  if (uid5) revalidateTag(dashboardUserTag(uid5));
+  safeRevalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  safeRevalidatePath("/dashboard");
+  const uid5 = await getCurrentUserIdSafe();
+  if (uid5) safeRevalidateTag(dashboardUserTag(uid5));
 }

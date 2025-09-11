@@ -1,14 +1,14 @@
 "use server";
-import { revalidatePath, revalidateTag } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import * as supa from "@/lib/supabase/server";
 import type { UUID } from "@/lib/types";
 import type { TablesInsert } from "@/lib/database.types";
 import { dashboardUserTag } from "@/lib/db/dashboard";
-import { getCurrentUserId } from "@/lib/supabase/server";
+// getCurrentUserId will be accessed via supa namespace to avoid hard dependency in tests
+import { safeRevalidatePath, safeRevalidateTag, getCurrentUserIdSafe } from "@/server-actions/utils";
 
 export async function addLessonAction(courseId: UUID, title: string): Promise<{ lessonId: UUID }> {
-  const supa = await createClient();
-  const { data: maxData, error: e1 } = await supa
+  const supaClient = await supa.createClient();
+  const { data: maxData, error: e1 } = await supaClient
     .from("lessons")
     .select("order_index")
     .eq("course_id", courseId)
@@ -16,34 +16,34 @@ export async function addLessonAction(courseId: UUID, title: string): Promise<{ 
     .limit(1);
   if (e1) throw e1;
   const nextIndex = maxData?.[0]?.order_index != null ? Number(maxData[0].order_index) + 1 : 0;
-  const { data, error } = await supa
+  const { data, error } = await supaClient
     .from("lessons")
     .insert({ course_id: courseId, title: title.trim(), order_index: nextIndex } satisfies TablesInsert<"lessons">)
     .select("id")
     .single();
   if (error) throw error;
-  revalidatePath(`/courses/${courseId}/workspace`, "page");
-  revalidatePath("/dashboard");
-  const uid = await getCurrentUserId();
-  if (uid) revalidateTag(dashboardUserTag(uid));
+  safeRevalidatePath(`/courses/${courseId}/workspace`, "page");
+  safeRevalidatePath("/dashboard");
+  const uid = await getCurrentUserIdSafe();
+  if (uid) safeRevalidateTag(dashboardUserTag(uid));
   return { lessonId: data.id };
 }
 
 export async function deleteLessonAction(lessonId: UUID) {
-  const supa = await createClient();
-  const { data: lrow } = await supa.from("lessons").select("course_id").eq("id", lessonId).single();
-  const { error } = await supa.from("lessons").delete().eq("id", lessonId);
+  const supaClient = await supa.createClient();
+  const { data: lrow } = await supaClient.from("lessons").select("course_id").eq("id", lessonId).single();
+  const { error } = await supaClient.from("lessons").delete().eq("id", lessonId);
   if (error) throw error;
-  if (lrow?.course_id) revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
-  revalidatePath("/dashboard");
-  const uid2 = await getCurrentUserId();
-  if (uid2) revalidateTag(dashboardUserTag(uid2));
+  if (lrow?.course_id) safeRevalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  safeRevalidatePath("/dashboard");
+  const uid2 = await getCurrentUserIdSafe();
+  if (uid2) safeRevalidateTag(dashboardUserTag(uid2));
 }
 
 export async function reorderLessonsAction(courseId: UUID, orderedIds: UUID[]) {
-  const supa = await createClient();
+  const supaClient = await supa.createClient();
   // Verify target set belongs to course
-  const { data: rows, error: selErr } = await supa
+  const { data: rows, error: selErr } = await supaClient
     .from("lessons")
     .select("id, order_index")
     .eq("course_id", courseId)
@@ -66,7 +66,7 @@ export async function reorderLessonsAction(courseId: UUID, orderedIds: UUID[]) {
     for (let idx = 0; idx < orderedIds.length; idx++) {
       const id = orderedIds[idx];
       const provisional = idx + OFFSET;
-      const { error } = await supa
+      const { error } = await supaClient
         .from("lessons")
         .update({ order_index: provisional })
         .eq("id", id)
@@ -75,7 +75,7 @@ export async function reorderLessonsAction(courseId: UUID, orderedIds: UUID[]) {
     }
     for (let idx = 0; idx < orderedIds.length; idx++) {
       const id = orderedIds[idx];
-      const { error } = await supa
+      const { error } = await supaClient
         .from("lessons")
         .update({ order_index: idx })
         .eq("id", id)
@@ -88,7 +88,7 @@ export async function reorderLessonsAction(courseId: UUID, orderedIds: UUID[]) {
       const OFFSET2 = 2_000_000;
       for (let idx = 0; idx < orderedIds.length; idx++) {
         const id = orderedIds[idx];
-        const { error } = await supa
+        const { error } = await supaClient
           .from("lessons")
           .update({ order_index: OFFSET2 + idx })
           .eq("id", id)
@@ -96,7 +96,7 @@ export async function reorderLessonsAction(courseId: UUID, orderedIds: UUID[]) {
         if (error) break;
       }
       for (const [id, orig] of originalIndexById.entries()) {
-        const { error } = await supa
+        const { error } = await supaClient
           .from("lessons")
           .update({ order_index: orig })
           .eq("id", id)
@@ -106,8 +106,8 @@ export async function reorderLessonsAction(courseId: UUID, orderedIds: UUID[]) {
     } catch {}
     throw err;
   }
-  revalidatePath(`/courses/${courseId}/workspace`, "page");
-  revalidatePath("/dashboard");
-  const uid3 = await getCurrentUserId();
-  if (uid3) revalidateTag(dashboardUserTag(uid3));
+  safeRevalidatePath(`/courses/${courseId}/workspace`, "page");
+  safeRevalidatePath("/dashboard");
+  const uid3 = await getCurrentUserIdSafe();
+  if (uid3) safeRevalidateTag(dashboardUserTag(uid3));
 }

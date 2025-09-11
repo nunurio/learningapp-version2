@@ -1,16 +1,16 @@
 "use server";
 import type { UUID, Progress, SrsEntry, SrsRating } from "@/lib/types";
-import { createClient, getCurrentUserId } from "@/lib/supabase/server";
+import * as supa from "@/lib/supabase/server";
 import type { TablesInsert, Json } from "@/lib/database.types";
-import { revalidateTag, revalidatePath } from "next/cache";
+import { safeRevalidatePath, safeRevalidateTag, getCurrentUserIdSafe } from "@/server-actions/utils";
 import { dashboardUserTag } from "@/lib/db/dashboard";
 
 export async function saveProgressAction(input: Progress) {
-  const supa = await createClient();
-  const userId = await getCurrentUserId();
+  const supaClient = await supa.createClient();
+  const userId = await getCurrentUserIdSafe();
   if (!userId) throw new Error("Not authenticated");
   // 既存の完了状態を取得して「true が勝つ」マージを行う
-  const { data: prev, error: selErr } = await supa
+  const { data: prev, error: selErr } = await supaClient
     .from("progress")
     .select("completed, completed_at, answer")
     .eq("user_id", userId)
@@ -57,7 +57,7 @@ export async function saveProgressAction(input: Progress) {
     nextAnswer = (input.answer as Json | null);
   }
 
-  const { error } = await supa
+  const { error } = await supaClient
     .from("progress")
     .upsert({
       user_id: userId,
@@ -67,8 +67,8 @@ export async function saveProgressAction(input: Progress) {
       answer: nextAnswer,
     } satisfies TablesInsert<"progress">);
   if (error) throw error;
-  revalidatePath("/dashboard");
-  revalidateTag(dashboardUserTag(userId));
+  safeRevalidatePath("/dashboard");
+  safeRevalidateTag(dashboardUserTag(userId));
 }
 
 function startOfDayISO(date = new Date()) {
@@ -78,10 +78,10 @@ function startOfDayISO(date = new Date()) {
 }
 
 export async function rateSrsAction(cardId: UUID, rating: SrsRating): Promise<SrsEntry> {
-  const supa = await createClient();
-  const userId = await getCurrentUserId();
+  const supaClient = await supa.createClient();
+  const userId = await getCurrentUserIdSafe();
   if (!userId) throw new Error("Not authenticated");
-  const { data: prev, error: e1 } = await supa
+  const { data: prev, error: e1 } = await supaClient
     .from("srs")
     .select("*")
     .eq("user_id", userId)
@@ -113,7 +113,7 @@ export async function rateSrsAction(cardId: UUID, rating: SrsRating): Promise<Sr
 
   const due = startOfDayISO(new Date(Date.now() + interval * 24 * 60 * 60 * 1000));
   const next: SrsEntry = { cardId, ease, interval, due, lastRating: rating };
-  const { error } = await supa
+  const { error } = await supaClient
     .from("srs")
     .upsert({
       user_id: userId,
@@ -124,44 +124,44 @@ export async function rateSrsAction(cardId: UUID, rating: SrsRating): Promise<Sr
       last_rating: rating,
     } satisfies TablesInsert<"srs">);
   if (error) throw error;
-  revalidatePath("/dashboard");
-  revalidateTag(dashboardUserTag(userId));
+  safeRevalidatePath("/dashboard");
+  safeRevalidateTag(dashboardUserTag(userId));
   return next;
 }
 
 export async function toggleFlagAction(cardId: UUID): Promise<boolean> {
-  const supa = await createClient();
-  const userId = await getCurrentUserId();
+  const supaClient = await supa.createClient();
+  const userId = await getCurrentUserIdSafe();
   if (!userId) throw new Error("Not authenticated");
-  const { data: row } = await supa
+  const { data: row } = await supaClient
     .from("flags")
     .select("*")
     .eq("user_id", userId)
     .eq("card_id", cardId)
     .maybeSingle();
   if (!row) {
-    const { error } = await supa.from("flags").insert({ user_id: userId, card_id: cardId } satisfies TablesInsert<"flags">);
+    const { error } = await supaClient.from("flags").insert({ user_id: userId, card_id: cardId } satisfies TablesInsert<"flags">);
     if (error) throw error;
-    revalidatePath("/dashboard");
-    revalidateTag(dashboardUserTag(userId));
+    safeRevalidatePath("/dashboard");
+    safeRevalidateTag(dashboardUserTag(userId));
     return true;
   } else {
-    const { error } = await supa.from("flags").delete().eq("user_id", userId).eq("card_id", cardId);
+    const { error } = await supaClient.from("flags").delete().eq("user_id", userId).eq("card_id", cardId);
     if (error) throw error;
-    revalidatePath("/dashboard");
-    revalidateTag(dashboardUserTag(userId));
+    safeRevalidatePath("/dashboard");
+    safeRevalidateTag(dashboardUserTag(userId));
     return false;
   }
 }
 
 export async function saveNoteAction(cardId: UUID, text: string) {
-  const supa = await createClient();
-  const userId = await getCurrentUserId();
+  const supaClient = await supa.createClient();
+  const userId = await getCurrentUserIdSafe();
   if (!userId) throw new Error("Not authenticated");
-  const { error } = await supa
+  const { error } = await supaClient
     .from("notes")
     .upsert({ user_id: userId, card_id: cardId, text } satisfies TablesInsert<"notes">);
   if (error) throw error;
-  revalidatePath("/dashboard");
-  revalidateTag(dashboardUserTag(userId));
+  safeRevalidatePath("/dashboard");
+  safeRevalidateTag(dashboardUserTag(userId));
 }

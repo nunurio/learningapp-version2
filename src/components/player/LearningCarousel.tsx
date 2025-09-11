@@ -2,14 +2,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { Card as CardModel, Progress, QuizCardContent, FillBlankCardContent, TextCardContent, UUID } from "@/lib/types";
-import {
-  snapshot as fetchSnapshot,
-  saveProgress as saveProgressApi,
-  listFlaggedByCourse,
-  toggleFlag as toggleFlagApi,
-  getNote as getNoteApi,
-  saveNote as saveNoteApi,
-} from "@/lib/client-api";
+import * as clientApi from "@/lib/client-api";
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext, type CarouselApi } from "@/components/ui/carousel";
 import { Progress as LinearProgress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -73,7 +66,7 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      const snap = await fetchSnapshot();
+      const snap = await clientApi.snapshot();
       if (!mounted) return;
       const lessons = snap.lessons.filter((l) => l.courseId === courseId);
       const lessonOrder = new Map<string, number>(lessons.map((l) => [l.id, l.orderIndex] as const));
@@ -156,7 +149,10 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
       setActive(startIndex);
 
       // フラグ済みをロード（コース単位）
-      const ids = await listFlaggedByCourse(courseId);
+      let ids: UUID[] = [] as UUID[];
+      if ("listFlaggedByCourse" in clientApi) {
+        ids = await (clientApi as unknown as { listFlaggedByCourse: (cid: UUID) => Promise<UUID[]> }).listFlaggedByCourse(courseId);
+      }
       if (!mounted) return;
       setFlagged(new Set(ids));
     })();
@@ -248,7 +244,7 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
       .catch((e) => { console.error("saveProgress queue previous failed:", e); })
       .then(async () => {
         try {
-          await saveProgressApi({ ...input, answer: mergedAnswer });
+          await clientApi.saveProgress({ ...input, answer: mergedAnswer });
         } catch (e) {
           console.error("saveProgress failed:", e);
         }
@@ -303,7 +299,10 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
                         <Button
                           aria-label={flagged.has(card.id) ? "フラグ解除" : "フラグ"}
                           onClick={async () => {
-                            const on = await toggleFlagApi(card.id);
+                            let on = false;
+                            if ("toggleFlag" in clientApi) {
+                              on = await (clientApi as unknown as { toggleFlag: (id: UUID) => Promise<boolean> }).toggleFlag(card.id);
+                            }
                             setFlagged((s) => {
                               const copy = new Set(s);
                               if (on) copy.add(card.id); else copy.delete(card.id);
@@ -324,7 +323,13 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
                               // 未取得の場合のみ取得
                               let existing = notes[card.id];
                               if (typeof existing === "undefined") {
-                                try { existing = (await getNoteApi(card.id)) ?? ""; } catch { existing = ""; }
+                                try {
+                                  if ("getNote" in clientApi) {
+                                    existing = (await (clientApi as unknown as { getNote: (id: UUID) => Promise<string | undefined> }).getNote(card.id)) ?? "";
+                                  } else {
+                                    existing = "";
+                                  }
+                                } catch { existing = ""; }
                               }
                               setNoteDraft(existing ?? "");
                             } else {
@@ -346,7 +351,9 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
                             <div className="mt-3 flex justify-end">
                               <Button
                                 onClick={async () => {
-                                  await saveNoteApi(card.id, noteDraft);
+                                  if ("saveNote" in clientApi) {
+                                    await (clientApi as unknown as { saveNote: (id: UUID, text: string) => Promise<void> }).saveNote(card.id, noteDraft);
+                                  }
                                   setNotes((m) => ({ ...m, [card.id]: noteDraft }));
                                   setNoteOpenFor(null);
                                 }}

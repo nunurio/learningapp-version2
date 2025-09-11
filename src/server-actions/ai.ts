@@ -1,7 +1,7 @@
 "use server";
-import { revalidatePath, revalidateTag } from "next/cache";
+import { safeRevalidatePath, safeRevalidateTag, getCurrentUserIdSafe } from "@/server-actions/utils";
 import type { UUID, CoursePlan, LessonCards } from "@/lib/types";
-import { createClient, getCurrentUserId } from "@/lib/supabase/server";
+import * as supa from "@/lib/supabase/server";
 import type { Tables, TablesInsert } from "@/lib/database.types";
 import { DASHBOARD_TAG } from "@/lib/db/dashboard";
 import { shouldUseMockAI, createLessonCardsPlanMock, createLessonCardsMock } from "@/lib/ai/mock";
@@ -15,10 +15,10 @@ export async function saveDraftAction(
   kind: "outline" | "lesson-cards",
   payload: CoursePlan | LessonCards
 ): Promise<{ id: string }> {
-  const supa = await createClient();
-  const userId = await getCurrentUserId();
+  const supaClient = await supa.createClient();
+  const userId = await getCurrentUserIdSafe();
   if (!userId) throw new Error("Not authenticated");
-  const { data, error } = await supa
+  const { data, error } = await supaClient
     .from("ai_drafts")
     .insert({ user_id: userId, kind, payload })
     .select("id")
@@ -28,22 +28,22 @@ export async function saveDraftAction(
 }
 
 export async function commitCoursePlanAction(draftId: string): Promise<{ courseId: UUID } | undefined> {
-  const supa = await createClient();
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const { data: draft, error: e1 } = await supa
+  const supaClient2 = await supa.createClient();
+  const userId2 = await getCurrentUserIdSafe();
+  if (!userId2) throw new Error("Not authenticated");
+  const { data: draft, error: e1 } = await supaClient2
     .from("ai_drafts")
     .select("*")
-    .eq("user_id", userId)
+    .eq("user_id", userId2)
     .eq("id", draftId)
     .eq("kind", "outline")
     .maybeSingle();
   if (e1) throw e1;
   if (!draft) return undefined;
   const plan = draft.payload as CoursePlan;
-  const { data: course, error: e2 } = await supa
+  const { data: course, error: e2 } = await supaClient2
     .from("courses")
-    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, level: (plan.course as { level?: string | null }).level ?? null, status: "draft" } satisfies TablesInsert<"courses">)
+    .insert({ owner_id: userId2, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, level: (plan.course as { level?: string | null }).level ?? null, status: "draft" } satisfies TablesInsert<"courses">)
     .select("id")
     .single();
   if (e2) throw e2;
@@ -51,32 +51,32 @@ export async function commitCoursePlanAction(draftId: string): Promise<{ courseI
   // insert lessons with incremental order_index
   const rows: TablesInsert<"lessons">[] = plan.lessons.map((l, idx) => ({ course_id: cid, title: l.title, order_index: idx }));
   if (rows.length) {
-    const { error: e3 } = await supa.from("lessons").insert(rows);
+    const { error: e3 } = await supaClient2.from("lessons").insert(rows);
     if (e3) throw e3;
   }
-  await supa.from("ai_drafts").delete().eq("id", draftId);
-  revalidatePath("/dashboard");
-  revalidateTag(DASHBOARD_TAG);
+  await supaClient2.from("ai_drafts").delete().eq("id", draftId);
+  safeRevalidatePath("/dashboard");
+  safeRevalidateTag(DASHBOARD_TAG);
   return { courseId: cid };
 }
 
 export async function commitCoursePlanPartialAction(draftId: string, selectedIndexes: number[]): Promise<{ courseId: UUID } | undefined> {
-  const supa = await createClient();
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const { data: draft, error: e1 } = await supa
+  const supaClient3 = await supa.createClient();
+  const userId3 = await getCurrentUserIdSafe();
+  if (!userId3) throw new Error("Not authenticated");
+  const { data: draft, error: e1 } = await supaClient3
     .from("ai_drafts")
     .select("*")
-    .eq("user_id", userId)
+    .eq("user_id", userId3)
     .eq("id", draftId)
     .eq("kind", "outline")
     .maybeSingle();
   if (e1) throw e1;
   if (!draft) return undefined;
   const plan = draft.payload as CoursePlan;
-  const { data: course, error: e2 } = await supa
+  const { data: course, error: e2 } = await supaClient3
     .from("courses")
-    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, level: (plan.course as { level?: string | null }).level ?? null, status: "draft" } satisfies TablesInsert<"courses">)
+    .insert({ owner_id: userId3, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, level: (plan.course as { level?: string | null }).level ?? null, status: "draft" } satisfies TablesInsert<"courses">)
     .select("id")
     .single();
   if (e2) throw e2;
@@ -87,30 +87,30 @@ export async function commitCoursePlanPartialAction(draftId: string, selectedInd
     .filter(Boolean) as Pick<Tables<"lessons">, "course_id" | "title">[];
   const withOrder: TablesInsert<"lessons">[] = rows.map((r, idx) => ({ ...r, order_index: idx }));
   if (withOrder.length) {
-    const { error: e3 } = await supa.from("lessons").insert(withOrder);
+    const { error: e3 } = await supaClient3.from("lessons").insert(withOrder);
     if (e3) throw e3;
   }
-  await supa.from("ai_drafts").delete().eq("id", draftId);
-  revalidatePath("/dashboard");
-  revalidateTag(DASHBOARD_TAG);
+  await supaClient3.from("ai_drafts").delete().eq("id", draftId);
+  safeRevalidatePath("/dashboard");
+  safeRevalidateTag(DASHBOARD_TAG);
   return { courseId: cid };
 }
 
 export async function commitLessonCardsAction(opts: { draftId: string; lessonId: UUID }): Promise<{ count: number; cardIds: UUID[] } | undefined> {
-  const supa = await createClient();
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const { data: draft, error: e1 } = await supa
+  const supaClient4 = await supa.createClient();
+  const userId4 = await getCurrentUserIdSafe();
+  if (!userId4) throw new Error("Not authenticated");
+  const { data: draft, error: e1 } = await supaClient4
     .from("ai_drafts")
     .select("*")
-    .eq("user_id", userId)
+    .eq("user_id", userId4)
     .eq("id", opts.draftId)
     .eq("kind", "lesson-cards")
     .maybeSingle();
   if (e1) throw e1;
   if (!draft) return undefined;
   const payload = draft.payload as LessonCards;
-  const siblings = await supa
+  const siblings = await supaClient4
     .from("cards")
     .select("order_index")
     .eq("lesson_id", opts.lessonId)
@@ -128,26 +128,26 @@ export async function commitLessonCardsAction(opts: { draftId: string; lessonId:
   }));
   let count = 0; const ids: UUID[] = [];
   if (rows.length) {
-    const { data, error } = await supa.from("cards").insert(rows).select("id");
+    const { data, error } = await supaClient4.from("cards").insert(rows).select("id");
     if (error) throw error;
     count = data.length; ids.push(...data.map((r: { id: UUID }) => r.id));
   }
-  await supa.from("ai_drafts").delete().eq("id", opts.draftId);
-  const { data: lrow } = await supa.from("lessons").select("course_id").eq("id", opts.lessonId).single();
-  if (lrow?.course_id) revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
-  revalidatePath("/dashboard");
-  revalidateTag(DASHBOARD_TAG);
+  await supaClient4.from("ai_drafts").delete().eq("id", opts.draftId);
+  const { data: lrow } = await supaClient4.from("lessons").select("course_id").eq("id", opts.lessonId).single();
+  if (lrow?.course_id) safeRevalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  safeRevalidatePath("/dashboard");
+  safeRevalidateTag(DASHBOARD_TAG);
   return { count, cardIds: ids };
 }
 
 export async function commitLessonCardsPartialAction(opts: { draftId: string; lessonId: UUID; selectedIndexes: number[] }): Promise<{ count: number; cardIds: UUID[] } | undefined> {
-  const supa = await createClient();
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const { data: draft, error: e1 } = await supa
+  const supaClient5 = await supa.createClient();
+  const userId5 = await getCurrentUserIdSafe();
+  if (!userId5) throw new Error("Not authenticated");
+  const { data: draft, error: e1 } = await supaClient5
     .from("ai_drafts")
     .select("*")
-    .eq("user_id", userId)
+    .eq("user_id", userId5)
     .eq("id", opts.draftId)
     .eq("kind", "lesson-cards")
     .maybeSingle();
@@ -156,7 +156,7 @@ export async function commitLessonCardsPartialAction(opts: { draftId: string; le
   const payload = draft.payload as LessonCards;
   const set = new Set(opts.selectedIndexes);
   const selected = payload.cards.map((it, idx) => (set.has(idx) ? it : null)).filter(Boolean) as LessonCards["cards"];
-  const siblings = await supa
+  const siblings = await supaClient5
     .from("cards")
     .select("order_index")
     .eq("lesson_id", opts.lessonId)
@@ -174,15 +174,15 @@ export async function commitLessonCardsPartialAction(opts: { draftId: string; le
   }));
   let count = 0; const ids: UUID[] = [];
   if (rows.length) {
-    const { data, error } = await supa.from("cards").insert(rows).select("id");
+    const { data, error } = await supaClient5.from("cards").insert(rows).select("id");
     if (error) throw error;
     count = data.length; ids.push(...data.map((r: { id: UUID }) => r.id));
   }
-  await supa.from("ai_drafts").delete().eq("id", opts.draftId);
-  const { data: lrow } = await supa.from("lessons").select("course_id").eq("id", opts.lessonId).single();
-  if (lrow?.course_id) revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
-  revalidatePath("/dashboard");
-  revalidateTag(DASHBOARD_TAG);
+  await supaClient5.from("ai_drafts").delete().eq("id", opts.draftId);
+  const { data: lrow } = await supaClient5.from("lessons").select("course_id").eq("id", opts.lessonId).single();
+  if (lrow?.course_id) safeRevalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
+  safeRevalidatePath("/dashboard");
+  safeRevalidateTag(DASHBOARD_TAG);
   return { count, cardIds: ids };
 }
 
