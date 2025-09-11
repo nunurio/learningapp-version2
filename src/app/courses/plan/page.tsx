@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -25,9 +27,10 @@ export default function PlanCoursePage() {
   const [theme, setTheme] = useState("");
   const [level, setLevel] = useState("");
   const [goal, setGoal] = useState("");
-  const [lessonCount, setLessonCount] = useState(6);
+  const [lessonCount, setLessonCount] = useState(12);
   const [plan, setPlan] = useState<CoursePlan | null>(null);
   const [editedPlan, setEditedPlan] = useState<CoursePlan | null>(null);
+  const [brief, setBrief] = useState("");
   // 生成直後の下書きIDは保持しない（編集結果を都度保存してコミット）
   const [generating, setGenerating] = useState(false);
   const [logs, setLogs] = useState<{ ts: number; text: string }[]>([]);
@@ -92,7 +95,7 @@ export default function PlanCoursePage() {
         const res = await fetch("/api/ai/outline", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ theme, level, goal, lessonCount }),
+          body: JSON.stringify({ theme, level, goal, lessonCount, userBrief: brief }),
           signal: abortRef.current?.signal,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -258,8 +261,31 @@ export default function PlanCoursePage() {
                   placeholder="例: 3週間で基礎を習得"
                 />
               </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="brief" className="block text-sm font-medium mb-1">フリー指示（任意）</label>
+                <Textarea
+                  id="brief"
+                  value={brief}
+                  onChange={(e) => setBrief(e.target.value)}
+                  placeholder="例: 図解中心で/演習多め/実装重視/数学は最小限 など"
+                />
+              </div>
               <div>
-                <label htmlFor="lessonCount" className="block text-sm font-medium mb-1">レッスン数</label>
+                <div className="flex items-center gap-1 mb-1">
+                  <label htmlFor="lessonCount" className="block text-sm font-medium">レッスン数</label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" aria-label="レッスン数の説明" className="inline-flex rounded p-1 text-gray-500 hover:text-gray-800">
+                          <Info className="h-4 w-4" aria-hidden />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" align="start">
+                        1レッスンあたり約60分を目安に構成します。
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
                 <Input
                   id="lessonCount"
                   type="number"

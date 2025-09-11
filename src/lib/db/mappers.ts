@@ -7,6 +7,7 @@ export function mapCourse(r: Tables<"courses">): Course {
     title: r.title,
     description: r.description ?? undefined,
     category: r.category ?? undefined,
+    level: (r as { level?: string | null }).level ?? undefined,
     status: r.status,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -35,4 +36,3 @@ export function mapCard(r: Tables<"cards">): Card {
     createdAt: r.created_at,
   };
 }
-

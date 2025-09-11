@@ -66,7 +66,7 @@ type Group = { id: GroupId; label: string; Icon: Lucide; start?: number; end?: n
 
   const matchGroup = (label: string): GroupId => {
     if (/(received|normalizeInput|expandContext)/i.test(label)) return "prep";
-    if (/(planCourse|generateCards)/i.test(label)) return "gen";
+    if (/(planCourse|planCards|planReady|generateCards|generateCard)/i.test(label)) return "gen";
     if (/(validatePlan|validateSchema)/i.test(label)) return "validate";
     if (/(persistPreview|保存)/i.test(label)) return "persist";
     return "other";

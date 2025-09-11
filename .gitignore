@@ -49,6 +49,8 @@ playwright/.auth
 playwright-report/
 test-results/
 blob-report/
-source.md
 memo.md
+source.md
 sum.py
+src/lib/database.types.ts.gen
+src/lib/database.types.ts.bak-*

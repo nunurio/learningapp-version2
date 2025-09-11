@@ -7,6 +7,7 @@ export const CoursePlanSchema = z.object({
     // Structured Outputs要件: 省略不可 -> null許容にする
     description: z.string().nullable(),
     category: z.string().nullable(),
+    level: z.string().nullable(),
   }),
   lessons: z
     .array(
@@ -82,6 +83,48 @@ export const SingleLessonCardsSchema = z.object({
 
 export type LessonCardsOutput = z.infer<typeof LessonCardsSchema>;
 
+// --- Planning phase -------------------------------------------------------
+// レッスン一式を作る前に、カードの枚数・順番・タイプ・概要を決める計画スキーマ
+export const CardPlanItemSchema = z
+  .object({
+    // text | quiz | fill-blank
+    type: z.enum(["text", "quiz", "fill-blank"]),
+    // そのカードのねらい（概要）。詳細はここでは禁止。
+    // 例: 「導入：課題意識を醸成」「要点整理：主要用語の関係を俯瞰」
+    brief: z.string().min(1).max(140),
+    // 任意タイトル（なくても良い）
+    title: z.string().nullable().optional(),
+  })
+  .superRefine((v, ctx) => {
+    // 企画段階の brief に含めてはならない具体要素を簡易チェック
+    const s = v.brief ?? "";
+    if (/選択肢|正解|\[\[(\d+)\]\]/.test(s)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["brief"],
+        message: "brief は概要のみ。『選択肢』『正解』や [[n]] の空所指定は含めないでください",
+      });
+    }
+    if (/[A-E]\)/.test(s)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["brief"],
+        message: "brief に A) などの列挙記法は含めないでください",
+      });
+    }
+  });
+
+export const LessonCardsPlanSchema = z.object({
+  lessonTitle: z.string(),
+  // 最終的に生成する枚数（cards.length と一致する）
+  count: z.number().int().min(3).max(20),
+  // 生成順に並べた計画
+  cards: z.array(CardPlanItemSchema).min(3).max(20),
+  // 後続の単体生成で共通に再利用するプレフィックス（Prompt Caching用）
+  sharedPrefix: z.string().nullable().optional(),
+});
+export type LessonCardsPlan = z.infer<typeof LessonCardsPlanSchema>;
+
 // JSON Schemas for OpenAI Structured Outputs (function calling)
 export const CoursePlanJSONSchema = {
   title: "CoursePlan",
@@ -93,9 +136,10 @@ export const CoursePlanJSONSchema = {
         title: { type: "string", minLength: 1 },
         description: { type: ["string", "null"] },
         category: { type: ["string", "null"] },
+        level: { type: ["string", "null"] },
       },
       // Responses API の制約: properties に含めたキーを required に全列挙
-      required: ["title", "description", "category"],
+      required: ["title", "description", "category", "level"],
       additionalProperties: false,
     },
     lessons: {

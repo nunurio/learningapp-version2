@@ -3,12 +3,13 @@ import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { CoursePlanSchema } from "@/lib/ai/schema";
 import type { CoursePlan } from "@/lib/types";
+import { fallbackFromHistory } from "@/lib/ai/executor";
+import { OUTLINE_AGENT_INSTRUCTIONS } from "@/lib/ai/prompts";
+// finalOutput は outputType 指定時に Zod 検証済みで返る
 
 export const OutlineAgent = new Agent<UnknownContext, typeof CoursePlanSchema>({
   name: "Course Planner",
-  instructions: [
-    "あなたは教育設計の専門家です。",
-  ].join("\n"),
+  instructions: OUTLINE_AGENT_INSTRUCTIONS,
   // 構造化出力: Zod スキーマで強制
   outputType: CoursePlanSchema,
   model: process.env.OPENAI_MODEL,
@@ -24,36 +25,24 @@ export async function runOutlineAgent(input: {
   level?: string;
   goal?: string;
   lessonCount?: number;
+  userBrief?: string;
 }): Promise<CoursePlan> {
-  const lc = typeof input.lessonCount === "number" ? input.lessonCount : 6;
-  const count = Math.max(3, Math.min(lc, 30));
-  const sys = `次の条件でコース案（レッスン${count}件）を作成してください。`;
-  const res = await runner.run(
-    OutlineAgent,
-    `${sys}\n${JSON.stringify({ ...input, lessonCount: count })}`,
-    { maxTurns: 1 }
-  );
-  // 1) 構造化出力（推奨） 2) 文字列(JSON) 3) 最後のテキスト で後方互換的に解釈
-  const result = (() => {
-    const r: unknown = res;
-    if (r && typeof r === "object") {
-      const rec = r as Record<string, unknown>;
-      const a = rec.finalOutput as unknown;
-      const b = rec.finalText as unknown;
-      // structured output already parsed
-      if (a && typeof a === "object") return a;
-      // sometimes SDK may still return string JSON
-      if (typeof a === "string") {
-        try { return JSON.parse(a) as unknown; } catch {}
-      }
-      if (typeof b === "string") {
-        try { return JSON.parse(b) as unknown; } catch {}
-      }
-    }
-    return undefined;
-  })();
-  if (!result) throw new Error("No agent output");
-  const parsed = CoursePlanSchema.safeParse(result);
-  if (!parsed.success) throw new Error("CoursePlan schema mismatch");
-  return parsed.data as CoursePlan;
+  const lc = Math.max(3, Math.min(typeof input.lessonCount === "number" ? input.lessonCount : 12, 30));
+  const payload = {
+    task: "Design course outline strictly as CoursePlan JSON.",
+    parameters: {
+      theme: input.theme,
+      level: input.level?.trim() || "初心者",
+      goal: (input.goal ?? "").trim() || "中級者",
+      lessonCount: lc,
+      userBrief: (input.userBrief ?? "").trim() || null,
+    },
+  } as const;
+  const res = await runner.run(OutlineAgent, JSON.stringify(payload), { maxTurns: 1 });
+  // まず finalOutput を信頼（Zod 検証済み）
+  if (res.finalOutput) return res.finalOutput as CoursePlan;
+  // フォールバック: 履歴からテキスト抽出→JSON→Zod
+  const fb = fallbackFromHistory(res, CoursePlanSchema);
+  if (fb) return fb as CoursePlan;
+  throw new Error("No agent output");
 }
