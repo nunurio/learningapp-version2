@@ -103,8 +103,99 @@
 }
 
 @theme inline {
+  /* Fonts */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Tailwind v4 color tokens mapping to our HSL design tokens */
+  /* Base (light) scheme */
+  --color-background: hsl(var(--bg));
+  --color-foreground: hsl(var(--fg));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--fg));
+  --color-border: hsl(var(--border));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--fg));
+
+  /* shadcn/ui essentials */
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--fg) / 0.6);
+  --color-popover: hsl(var(--card));
+  --color-popover-foreground: hsl(var(--fg));
+  --color-input: hsl(var(--border));
+  --color-ring: hsl(var(--primary-500) / 0.5);
+
+  --color-primary: hsl(var(--primary-600));
+  --color-primary-foreground: hsl(var(--primary-fg, 0 0% 100%));
+  --color-primary-400: hsl(var(--primary-400));
+  --color-primary-500: hsl(var(--primary-500));
+  --color-primary-300: hsl(var(--primary-300));
+  --color-primary-600: hsl(var(--primary-600));
+  --color-primary-700: hsl(var(--primary-700));
+
+  --color-secondary: hsl(var(--secondary-500));
+  --color-secondary-foreground: hsl(0 0% 100%);
+  --color-secondary-400: hsl(var(--secondary-400));
+  --color-secondary-500: hsl(var(--secondary-500));
+  --color-secondary-600: hsl(var(--secondary-600));
+
+  /* Destructive uses our semantic error/destructive token */
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(0 0% 98%);
+
+  /* Radius bridge for shadcn */
+  --radius: var(--radius-lg);
+  --radius-xs: var(--radius-sm);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+}
+
+/* Dark scheme overrides */
+@media (prefers-color-scheme: dark) {
+  @theme inline {
+    --color-background: hsl(var(--bg));
+    --color-foreground: hsl(var(--fg));
+    --color-card: hsl(var(--card));
+    --color-card-foreground: hsl(var(--fg));
+    --color-border: hsl(var(--border));
+    --color-accent: hsl(var(--accent));
+    --color-accent-foreground: hsl(var(--fg));
+
+    /* shadcn/ui essentials */
+    --color-muted: hsl(var(--muted));
+    --color-muted-foreground: hsl(var(--fg) / 0.65);
+    --color-popover: hsl(var(--card));
+    --color-popover-foreground: hsl(var(--fg));
+    --color-input: hsl(var(--border));
+    --color-ring: hsl(var(--primary-400) / 0.4);
+
+    --color-primary: hsl(var(--primary-500));
+    --color-primary-foreground: hsl(var(--primary-fg, 0 0% 100%));
+    --color-primary-300: hsl(var(--primary-300));
+    --color-primary-400: hsl(var(--primary-400));
+    --color-primary-500: hsl(var(--primary-500));
+    --color-primary-600: hsl(var(--primary-600));
+    --color-primary-700: hsl(var(--primary-700));
+
+    --color-secondary: hsl(var(--secondary-500));
+    --color-secondary-foreground: hsl(0 0% 100%);
+    --color-secondary-400: hsl(var(--secondary-400));
+    --color-secondary-500: hsl(var(--secondary-500));
+    --color-secondary-600: hsl(var(--secondary-600));
+
+    --color-destructive: hsl(var(--destructive));
+    --color-destructive-foreground: hsl(0 0% 98%);
+
+    /* Radius bridge for shadcn */
+    --radius: var(--radius-lg);
+    --radius-xs: var(--radius-sm);
+    --radius-sm: var(--radius-sm);
+    --radius-md: var(--radius-md);
+    --radius-lg: var(--radius-lg);
+    --radius-xl: var(--radius-xl);
+  }
 }
 
 /* Base */
@@ -112,6 +203,12 @@ html, body {
   height: 100%;
 }
 
+/* Improve native widget theming and defaults */
+:root {
+  color-scheme: light dark;
+}
+
+/* Apply background and foreground via CSS variables as default */
 body {
   background-color: hsl(var(--bg));
   color: hsl(var(--fg));
@@ -124,6 +221,11 @@ body {
 :where(a, button, input, textarea, select, [tabindex]):focus-visible {
   outline: 2px solid hsl(var(--focus));
   outline-offset: 2px;
+}
+
+/* Reflect brand color to form controls */
+:where(input, textarea, select, progress) {
+  accent-color: hsl(var(--primary-600));
 }
 
 /* Reduced motion respect */
@@ -207,6 +309,12 @@ body {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Virtualization-friendly section (lightweight) */
+.virtual-section {
+  content-visibility: auto;
+  contain-intrinsic-size: 600px;
 }
 
 .gradient-border {

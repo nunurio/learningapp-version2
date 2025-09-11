@@ -20,7 +20,7 @@ export const DropdownMenuContent = React.forwardRef<
       sideOffset={sideOffset}
       align={align}
       className={cn(
-        "z-50 min-w-44 overflow-hidden rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-1 shadow-md",
+      "z-50 min-w-44 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground p-1 shadow-md",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in data-[state=closed]:fade-out",
         className
       )}

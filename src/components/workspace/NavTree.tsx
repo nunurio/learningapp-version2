@@ -568,7 +568,7 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
           <DropdownMenuTrigger asChild>
             <button
               aria-label="レッスンメニュー"
-              className="inline-flex items-center justify-center size-6 rounded hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
+              className="inline-flex items-center justify-center size-6 rounded hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ring-offset-background focus-visible:ring-offset-2"
               onClick={(e) => e.stopPropagation()}
             >
               <span aria-hidden>⋯</span>
@@ -643,7 +643,7 @@ function TreeCardRow({ id, title, level, selected, active, tags, progressPct, on
             <DropdownMenuTrigger asChild>
               <button
                 aria-label="カードメニュー"
-                className="ml-auto inline-flex items-center justify-center size-6 rounded hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
+                className="ml-auto inline-flex items-center justify-center size-6 rounded hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ring-offset-background focus-visible:ring-offset-2"
                 onClick={(e) => e.stopPropagation()}
               >
                 <span aria-hidden>⋯</span>
@@ -684,21 +684,16 @@ function TreeCardRow({ id, title, level, selected, active, tags, progressPct, on
 }
 
 function labelForCard(card: Card): string {
+  // ツリーでは本文ではなく種別のプレースホルダのみを表示
   if (card.cardType === "text") return "テキスト";
-  if (card.cardType === "quiz") return (card.content as QuizCardContent).question ?? "クイズ";
-  return (card.content as FillBlankCardContent).text?.replace(/\[\[(\d+)\]\]/g, "□") ?? "穴埋め";
+  if (card.cardType === "quiz") return "クイズ";
+  return "穴埋め";
 }
 
 function labelForCardWithDraft(card: Card, draft?: SaveCardDraftInput): string {
-  if (draft && draft.cardType === "text" && card.cardType === "text") {
-    return (draft.body ?? "").slice(0, 18) || "テキスト";
-  }
-  if (draft && draft.cardType === "quiz" && card.cardType === "quiz") {
-    return draft.question || "クイズ";
-  }
-  if (draft && draft.cardType === "fill-blank" && card.cardType === "fill-blank") {
-    const text = draft.text ?? "";
-    return text.replace(/\[\[(\d+)\]\]/g, "□") || "穴埋め";
-  }
+  // タイトルを最優先（下書き → 公開済み）。空/未設定なら種別のプレースホルダ
+  const draftTitle = draft?.title ?? undefined;
+  const finalTitle = (draftTitle ?? card.title ?? "").trim();
+  if (finalTitle.length > 0) return finalTitle;
   return labelForCard(card);
 }
