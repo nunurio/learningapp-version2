@@ -163,13 +163,13 @@ function Carousel({
   )
 }
 
-function CarouselContent({ className, ...props }: React.ComponentProps<"div">) {
+function CarouselContent({ className, viewportClassName, ...props }: React.ComponentProps<"div"> & { viewportClassName?: string }) {
   const { carouselRef, orientation } = useCarousel()
 
   return (
     <div
       ref={carouselRef}
-      className="overflow-hidden"
+      className={cn("overflow-hidden", viewportClassName)}
       data-slot="carousel-content"
     >
       <div
@@ -262,6 +262,46 @@ function CarouselNext({
   )
 }
 
+function CarouselBottomNav({
+  className,
+  prevLabel = "Previous slide",
+  nextLabel = "Next slide",
+  size = "icon",
+  variant = "outline",
+}: {
+  className?: string
+  prevLabel?: string
+  nextLabel?: string
+  size?: React.ComponentProps<typeof Button>["size"]
+  variant?: React.ComponentProps<typeof Button>["variant"]
+}) {
+  const { scrollPrev, scrollNext, canScrollPrev, canScrollNext } = useCarousel()
+  return (
+    <div className={cn("flex items-center justify-center gap-3", className)}>
+      <Button
+        data-slot="carousel-prev-bottom"
+        variant={variant}
+        size={size}
+        disabled={!canScrollPrev}
+        onClick={scrollPrev}
+      >
+        <ArrowLeft />
+        <span className="sr-only">{prevLabel}</span>
+      </Button>
+      <Button
+        data-slot="carousel-next-bottom"
+        variant={variant}
+        size={size}
+        disabled={!canScrollNext}
+        onClick={scrollNext}
+      >
+        <ArrowRight />
+        <span className="sr-only">{nextLabel}</span>
+      </Button>
+    </div>
+  )
+}
+
 export {
   type CarouselApi,
   Carousel,
@@ -269,4 +309,5 @@ export {
   CarouselItem,
   CarouselPrevious,
   CarouselNext,
+  CarouselBottomNav,
 }

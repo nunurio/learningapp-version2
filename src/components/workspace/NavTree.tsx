@@ -568,7 +568,7 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
           <DropdownMenuTrigger asChild>
             <button
               aria-label="レッスンメニュー"
-              className="inline-flex items-center justify-center size-6 rounded hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
+              className="inline-flex items-center justify-center size-6 rounded hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ring-offset-background focus-visible:ring-offset-2"
               onClick={(e) => e.stopPropagation()}
             >
               <span aria-hidden>⋯</span>
@@ -643,7 +643,7 @@ function TreeCardRow({ id, title, level, selected, active, tags, progressPct, on
             <DropdownMenuTrigger asChild>
               <button
                 aria-label="カードメニュー"
-                className="ml-auto inline-flex items-center justify-center size-6 rounded hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
+                className="ml-auto inline-flex items-center justify-center size-6 rounded hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ring-offset-background focus-visible:ring-offset-2"
                 onClick={(e) => e.stopPropagation()}
               >
                 <span aria-hidden>⋯</span>

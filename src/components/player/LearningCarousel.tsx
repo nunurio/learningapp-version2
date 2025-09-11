@@ -271,12 +271,18 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
         <Carousel
           className="w-full max-w-2xl mx-auto px-2 sm:px-4"
           setApi={setApi}
-          opts={{ align: "start", loop: false }}
+          opts={{ align: "center", loop: false }}
         >
-          <CarouselContent className="-ml-4">
+          <CarouselContent
+            viewportClassName="py-3 sm:py-5"
+            className="ml-0 mr-0"
+          >
             {cards.map((card) => (
-              <CarouselItem key={card.id} className="pl-4">
-                <Card className="rounded-xl">
+              <CarouselItem key={card.id} className="px-4 sm:px-6">
+                <Card
+                  variant="elevated"
+                  className="rounded-2xl shadow-[0_10px_24px_-16px_hsl(0_0%_0%/0.22),0_4px_12px_-8px_hsl(0_0%_0%/0.14)] hover:shadow-[0_16px_36px_-20px_hsl(0_0%_0%/0.28),0_8px_18px_-10px_hsl(0_0%_0%/0.16)]"
+                >
                   <CardContent
                     className="p-6 min-h-[340px] sm:min-h-[440px] md:min-h-[500px] flex flex-col"
                     style={maxBodyHeight != null ? {

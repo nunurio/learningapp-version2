@@ -56,7 +56,7 @@ export const DialogContent = React.forwardRef<
           // Sizing: responsive width + vertical limit with scroll
           "w-[95vw] sm:w-full max-w-lg max-h-[85vh] sm:max-h-[85dvh] overflow-y-auto overscroll-contain scrollbar-gutter-stable",
           // Aesthetics
-          "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 shadow-lg outline-none",
+          "rounded-md border border-border bg-popover text-popover-foreground p-6 shadow-lg outline-none",
           className
         )}
         {...props}
