@@ -5,13 +5,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 First, run the development server:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
 pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
@@ -49,5 +43,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 2) Apply SQL under `supabase/schemas/*.sql` (or run the migrations in `supabase/migrations/`) to create tables, RLS, and triggers.
 
 3) Sign in to Supabase Auth in the app (RLS uses `auth.uid()`), then use the app normally.
+
+Dev server defaults to `http://localhost:3000`. E2E runs on `http://127.0.0.1:3100`.
+`metadataBase` prefers `NEXT_PUBLIC_SITE_URL`, otherwise falls back to `http://localhost:3001`.
+During E2E, we set `AI_MOCK=1` and may use `NEXT_PUBLIC_TIMELINE_SCALE` to shorten preview timelines.
 
 All writes go through Next.js Server Actions on the server. Reads are served via a single route handler (`/api/db`) and cached in a client-side store for smooth UX.

@@ -4,8 +4,8 @@ This document explains how the app’s UI/UX is implemented today: design system
 
 ## Overview
 - Tech: Next.js 15 (App Router) + React 19 + Tailwind v4 (via `@tailwindcss/postcss`).
-- Server-first: Pages are mostly client components for the mock/local-first UX; real data-fetch would move to RSC/Server Actions.
-- Data: Local-first (localStorage key `learnify_v1`) via `src/lib/localdb.ts` and simple AI mock/SSE.
+- Server-first: Prefer RSC/Server Actions for data access and mutations; client components are used at the leaves.
+- Data: Supabase + Server Actions（RLSでユーザー毎にスコープ）。`NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` を `.env.local` に設定。E2E では `AI_MOCK=1` を使用。
 - Design: Minimal UI, one-page-one-purpose, explicit “Preview → Commit” for AI generations.
 
 ## Design System
@@ -67,12 +67,12 @@ This document explains how the app’s UI/UX is implemented today: design system
 - Endpoints (Node runtime, dynamic):
   - `src/app/api/ai/outline/route.ts`
   - `src/app/api/ai/lesson-cards/route.ts`
+  - `src/app/api/ai/lesson-cards/plan/route.ts`
   - SSE format: `event: update|done|error`, `data: <json>\n\n`。
 - Client hook: `src/components/ai/useSSE.tsx`
   - `POST + ReadableStream` 自前パース（`\n\n` 区切り）。
   - Abort 安全化（`AbortError` を握りつぶし、reader lock を解放）。
 - Draft → Commit:
-  - `saveDraft(kind, payload)` で最新下書きを保存（`localdb`）。
   - Plan: `commitCoursePlan(draftId)` → コース+レッスン作成。
   - Lesson cards: `commitLessonCards({draftId, lessonId})` → カード反映。
   - 保存時に `toast()` 通知。

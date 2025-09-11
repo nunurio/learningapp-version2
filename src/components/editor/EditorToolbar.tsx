@@ -111,17 +111,48 @@ function insertHr(src: string, selStart: number, selEnd: number) {
 
 function toggleHeading(src: string, selStart: number, selEnd: number, level: number) {
   const hashes = "#".repeat(Math.min(6, Math.max(1, level))) + " ";
-  return toggleLinesPrefix(src, selStart, selEnd, hashes);
+  // 行範囲を取得（toggleLinesPrefix と同等の境界計算）
+  const before = src.slice(0, selStart);
+  const startLineIdx = before.lastIndexOf("\n") + 1;
+  const after = src.slice(selEnd);
+  const endLineIdx = selEnd + after.indexOf("\n");
+  const effectiveEnd = endLineIdx === selEnd - 1 ? selEnd : (endLineIdx >= selEnd ? endLineIdx : src.length);
+  const block = src.slice(startLineIdx, effectiveEnd);
+  const lines = block.split(/\n/);
+  const allRequested = lines.every((l) => l.startsWith(hashes));
+  const nextLines = allRequested
+    // すでに同一レベル -> 見出しを除去
+    ? lines.map((l) => l.replace(/^#{1,6}\s+/, ""))
+    // 異なるレベル -> 既存の見出しを除去して目的レベルを付与
+    : lines.map((l) => hashes + l.replace(/^#{1,6}\s+/, ""));
+  const replaced = nextLines.join("\n");
+  const text = src.slice(0, startLineIdx) + replaced + src.slice(effectiveEnd);
+  const nextStart = startLineIdx;
+  const nextEnd = startLineIdx + replaced.length;
+  return { text, nextStart, nextEnd };
 }
 
 export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value, onChange, onApply, previewEnabled = false, onPreviewToggle, onUndo, onRedo, canUndo, canRedo }: Props) {
   const uiDisabled = !!disabled;
   const [fmt, setFmt] = React.useState({ bold: false, italic: false, code: false, strike: false, quote: false, ul: false, ol: false, h1: false, h2: false });
+  // 直前の選択範囲スナップショット（ボタンクリック時の選択ロスト対策）
+  const lastSelRef = React.useRef<{ start: number; end: number } | null>(null);
+
+  const snapshotSelection = React.useCallback(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const { start, end } = getSelection(ta);
+    lastSelRef.current = { start, end };
+  }, [textareaRef]);
 
   const computeFormat = React.useCallback(() => {
     const ta = textareaRef.current;
     if (!ta) return;
-    const { start, end } = getSelection(ta);
+    // フォーカスが textarea から外れている / 選択が消えている場合は直前スナップショットを使用
+    const cur = getSelection(ta);
+    const active = typeof document !== "undefined" ? (document.activeElement as Element | null) : null;
+    const useSnap = (active && active !== ta) || (cur.start === cur.end && lastSelRef.current && lastSelRef.current.start !== lastSelRef.current.end);
+    const { start, end } = useSnap && lastSelRef.current ? lastSelRef.current : cur;
     const s = value;
     const before = s.slice(0, start);
     const lineStart = before.lastIndexOf("\n") + 1;
@@ -150,7 +181,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
   React.useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
-    const handler: EventListener = () => computeFormat();
+    const handler: EventListener = () => { snapshotSelection(); computeFormat(); };
     ta.addEventListener("keyup", handler);
     ta.addEventListener("mouseup", handler);
     ta.addEventListener("input", handler);
@@ -161,14 +192,17 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
       ta.removeEventListener("input", handler);
       ta.removeEventListener("select", handler);
     };
-  }, [textareaRef, computeFormat]);
+  }, [textareaRef, computeFormat, snapshotSelection]);
 
   const withSelection = React.useCallback(
     (fn: (v: string, start: number, end: number) => { text: string; nextStart: number; nextEnd: number }) => {
       const ta = textareaRef.current;
       if (!ta) return;
-      ta.focus();
-      const { start, end } = getSelection(ta);
+      // 先に現在の選択/スナップショットを解決
+      const cur = getSelection(ta);
+      const active = typeof document !== "undefined" ? (document.activeElement as Element | null) : null;
+      const useSnap = (active && active !== ta) || (cur.start === cur.end && lastSelRef.current && lastSelRef.current.start !== lastSelRef.current.end);
+      const { start, end } = useSnap && lastSelRef.current ? lastSelRef.current : cur;
       const { text, nextStart, nextEnd } = fn(value, start, end);
       // onApplyがあれば履歴管理含めて親で処理
       if (onApply) {
@@ -209,7 +243,11 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
   const onRedoClick = (e: React.MouseEvent) => { e.preventDefault(); onRedo?.(); };
 
   return (
-    <div className="sticky top-14 z-40 w-full border-b bg-[hsl(var(--background))] pointer-events-auto">
+    <div
+      className="sticky top-14 z-40 w-full border-b bg-[hsl(var(--background))] pointer-events-auto"
+      // どのボタンを押す場合でも最初に選択範囲をスナップショット
+      onPointerDownCapture={() => snapshotSelection()}
+    >
       <div className="mx-auto max-w-5xl px-3 py-2 space-y-2">
         <TooltipProvider delayDuration={120} skipDelayDuration={0}>
         {/* Menubar */}

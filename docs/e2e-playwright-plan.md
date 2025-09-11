@@ -11,7 +11,7 @@
 - データ: Supabase（ローカル）＋Server Actions。`.env.local` に `NEXT_PUBLIC_SUPABASE_URL/ANON_KEY` あり。`supabase/config.toml` あり。
 - 主要画面: `/login`、`/dashboard`、`/courses/new`、`/courses/plan`、`/courses/[courseId]`、`/learn/[courseId]` など。
 - API/AI: `app/api/ai/outline` と `lesson-cards` はモック実装（`src/lib/ai/mock.ts`）。
-- 既存のテスト: 単体（Vitest）あり。E2E は未導入。
+- 既存のテスト: 単体（Vitest）と E2E（Playwright）が導入済み。
 
 影響ポイント: 認証・コース作成・AI 生成・レッスン/カード操作は E2E の主要シナリオ。Supabase ローカル（`supabase start`）またはテスト専用ルートでの初期化が前提。
 
@@ -19,7 +19,7 @@
 
 ## Next.js 15 × Playwright ベストプラクティス（要約）
 
-- サーバ起動は Playwright の `webServer` 機能を使う。ローカル開発では `pnpm dev`、CI では `pnpm build` 後に `pnpm start` を推奨。`reuseExistingServer: !process.env.CI`、`timeout: 120_000` を指定。参考: Playwright Web Server ドキュメント。 [出典1]
+- サーバ起動は Playwright の `webServer` 機能を使う。ローカル開発では `pnpm dev`（Turbopack Dev 明示）、CI では `pnpm build` 後に `pnpm start` を推奨。`reuseExistingServer: !process.env.CI`、`timeout: 120_000` を指定。参考: Playwright Web Server ドキュメント。 [出典1]
 - `use.baseURL` を設定し、`page.goto("/")` 等の相対パスを使用。 [出典1]
 - 認証は `storageState` を共有する手法が推奨（1アカウント共有／ワーカー毎アカウント）。`playwright/.auth` を `.gitignore` に追加。セットアップ専用 Project（`*.setup.ts`）で一度だけログイン→`storageState` 再利用が安定。 [出典2]
 - セレクタは `getByRole` と `getByLabel` などのロケータを最優先（DOM 構造・class 依存は避ける）。 [出典3]
@@ -54,8 +54,8 @@
 - オプション: `/api/test/reset` のような「テスト専用リセット」Route Handler を `ALLOW_TEST_RESET=1` ガード付きで用意（本番無効）。または Supabase CLI で `supabase db reset --use-test-data` を実行（CI 向け）。
 
 3) サーバ起動
-- ローカル: `webServer.command = pnpm dev`（Turbopack Dev を明示: `next dev --turbopack`）。`reuseExistingServer: true`。
-- CI: `pnpm build && pnpm start`（`webServer` は `start` を起動し、ビルドはワークフロー前段）。Turbopack Build は 15.5 時点で beta のため、安定重視なら `next build` を推奨（採用状況に合わせて選択）。
+- ローカル: `webServer.command = pnpm dev`（Turbopack Dev を明示）。`reuseExistingServer: true`。
+- CI: `pnpm build && pnpm start`（`webServer` は `start` を起動し、ビルドはワークフロー前段）。
 
 4) 並列とアカウント
 - 共有アカウント方式（状態を書き換えないスモーク/ナビゲーション）は Setup Project で一度ログイン→`storageState` を使い回し。
