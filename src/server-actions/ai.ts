@@ -3,7 +3,7 @@ import { safeRevalidatePath, safeRevalidateTag, getCurrentUserIdSafe } from "@/s
 import type { UUID, CoursePlan, LessonCards } from "@/lib/types";
 import * as supa from "@/lib/supabase/server";
 import type { Tables, TablesInsert } from "@/lib/database.types";
-import { DASHBOARD_TAG } from "@/lib/db/dashboard";
+import { dashboardUserTag } from "@/lib/db/dashboard";
 import { shouldUseMockAI, createLessonCardsPlanMock, createLessonCardsMock } from "@/lib/ai/mock";
 import { getCourse, listLessons } from "@/lib/db/queries";
 import { initAgents } from "@/lib/ai/agents";
@@ -56,7 +56,7 @@ export async function commitCoursePlanAction(draftId: string): Promise<{ courseI
   }
   await supaClient2.from("ai_drafts").delete().eq("id", draftId);
   safeRevalidatePath("/dashboard");
-  safeRevalidateTag(DASHBOARD_TAG);
+  safeRevalidateTag(dashboardUserTag(userId2));
   return { courseId: cid };
 }
 
@@ -92,7 +92,7 @@ export async function commitCoursePlanPartialAction(draftId: string, selectedInd
   }
   await supaClient3.from("ai_drafts").delete().eq("id", draftId);
   safeRevalidatePath("/dashboard");
-  safeRevalidateTag(DASHBOARD_TAG);
+  safeRevalidateTag(dashboardUserTag(userId3));
   return { courseId: cid };
 }
 
@@ -136,7 +136,7 @@ export async function commitLessonCardsAction(opts: { draftId: string; lessonId:
   const { data: lrow } = await supaClient4.from("lessons").select("course_id").eq("id", opts.lessonId).single();
   if (lrow?.course_id) safeRevalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
   safeRevalidatePath("/dashboard");
-  safeRevalidateTag(DASHBOARD_TAG);
+  safeRevalidateTag(dashboardUserTag(userId4));
   return { count, cardIds: ids };
 }
 
@@ -182,7 +182,7 @@ export async function commitLessonCardsPartialAction(opts: { draftId: string; le
   const { data: lrow } = await supaClient5.from("lessons").select("course_id").eq("id", opts.lessonId).single();
   if (lrow?.course_id) safeRevalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
   safeRevalidatePath("/dashboard");
-  safeRevalidateTag(DASHBOARD_TAG);
+  safeRevalidateTag(dashboardUserTag(userId5));
   return { count, cardIds: ids };
 }
 

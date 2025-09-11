@@ -3,26 +3,35 @@ import * as cache from "next/cache";
 import * as supa from "@/lib/supabase/server";
 import { dashboardUserTag } from "@/lib/db/dashboard";
 
-export function safeRevalidatePath(path: string, type?: "page" | "layout") {
+type NextCacheNS = {
+  revalidatePath?: (path: string, type?: "page" | "layout") => void;
+  revalidateTag?: (tag: string) => void;
+};
+type SupaServerNS = {
+  getCurrentUserId?: () => Promise<string | undefined>;
+};
+
+export async function safeRevalidatePath(path: string, type?: "page" | "layout") {
   try {
-    const fn: any = (cache as any).revalidatePath;
+    const fn = (cache as NextCacheNS).revalidatePath;
     if (!fn) return;
-    if (typeof type === "string") fn(path, type);
-    else fn(path);
+    return type ? fn(path, type) : fn(path);
   } catch {}
 }
 
-export function safeRevalidateTag(tag: string) {
+export async function safeRevalidateTag(tag: string) {
   try {
-    // @ts-expect-error: guard for optional existence in tests
-    cache.revalidateTag?.(tag);
+    const fn = (cache as NextCacheNS).revalidateTag;
+    if (!fn) return;
+    fn(tag);
   } catch {}
 }
 
 export async function getCurrentUserIdSafe(): Promise<string | undefined> {
   try {
-    if ("getCurrentUserId" in supa && typeof (supa as any).getCurrentUserId === "function") {
-      return await (supa as any).getCurrentUserId();
+    const api = supa as SupaServerNS;
+    if (typeof api.getCurrentUserId === "function") {
+      return await api.getCurrentUserId();
     }
   } catch {}
   return undefined;
