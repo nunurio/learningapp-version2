@@ -74,7 +74,43 @@ ${PEDAGOGY_BASICS}
 ], "sharedPrefix":"..."}
 `.trim();
 
-export const SINGLE_CARD_WRITER_INSTRUCTIONS = `
+// --- Card type policies (inlined) ----------------------------------------
+export type CardKind = "text" | "quiz" | "fill-blank";
+
+const POLICY_MAP: Record<CardKind, string> = {
+  text: [
+    "1カードで過不足なく要点をインプットできる密度。冗長な前置きは避け、例→要点→注意点→まとめの順。",
+    "text.body は Markdown 記法で記述（見出し、箇条書き、強調、インラインコード、必要に応じてコードブロック）。",
+    "HTML は使用しない。",
+  ].join("\n"),
+  quiz: [
+    "選択肢は2–5。**一意に正解**が決まる設計。問題は表層知識だけでなく理解/適用を測る。解説は『なぜ他は誤りか』まで短く触れる。",
+    "{question, options(>=2), answerIndex は範囲内, explanation?} を厳守。",
+  ].join("\n"),
+  "fill-blank": [
+    "[[n]] と answers の整合を厳守。用語の再認や定義のキーワード確認に用いる。",
+    "text に [[n]] プレースホルダ。answers は \"n\": \"解答\" 形式のみ。余分キーなし。",
+  ].join("\n"),
+};
+
+export function renderCardTypeGuidelines(kind?: CardKind): string {
+  if (!kind) {
+    return (
+      `- type が text のとき：${POLICY_MAP.text}\n` +
+      `- type が quiz のとき：${POLICY_MAP.quiz}\n` +
+      `- type が fill-blank のとき：${POLICY_MAP["fill-blank"]}`
+    );
+  }
+  return `- type が ${kind} のとき：${POLICY_MAP[kind]}`;
+}
+
+export function getPolicyText(kind?: CardKind): string {
+  return renderCardTypeGuidelines(kind);
+}
+
+// タイプ指定で instructions を動的生成（既存の定数は後方互換として維持）
+export function buildSingleCardWriterInstructions(kind?: CardKind): string {
+  return `
 あなたは教育コンテンツ作成の専門家です。
 ${JA_BASE_STYLE}
 
@@ -82,13 +118,13 @@ ${CONTRACT_JSON_ONLY}
 ${LEVEL_STYLE_RULES}
 
 # 生成方針
-- type が text のとき：1カードで過不足なく要点をインプットできる密度。冗長な前置きは避け、例→要点→注意点→まとめの順。
-- type が quiz のとき：選択肢は2–5。**一意に正解**が決まる設計。問題は表層知識だけでなく理解/適用を測る。解説は「なぜ他は誤りか」まで短く触れる。
-- type が fill-blank のとき：[[n]] と answers の整合を厳守。用語の再認や定義のキーワード確認に用いる。
+${renderCardTypeGuidelines(kind)}
 
 # 厳格ルール
 - 不要フィールドは **null** にする。
-- quiz: {question, options(>=2), answerIndex 範囲内, explanation?}
-- fill-blank: text に [[n]] プレースホルダ。answers は "n": "解答" 形式のみ。余分キーなし。
 `.trim();
+}
 
+// NOTE: 以前はデフォルト定数 `SINGLE_CARD_WRITER_INSTRUCTIONS` を公開していましたが
+// 呼び出し側でタイプ別に組み立てる運用へ一本化したため削除しました。
+// 必要な場合は `buildSingleCardWriterInstructions()` を直接呼び出してください。

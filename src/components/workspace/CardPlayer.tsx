@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { QuizOption } from "@/components/player/QuizOption";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import MarkdownView from "@/components/markdown/MarkdownView";
 import { useWorkspaceSelector, workspaceStore } from "@/lib/state/workspace-store";
 import { Star, StickyNote, HelpCircle } from "lucide-react";
 
@@ -547,7 +548,8 @@ function UnderstandingSlider({
 function TextLearn({ content, cardId, initialLevel, onSave }: { content: TextCardContent; cardId: string; initialLevel?: number; onSave: (p: Progress) => void }) {
   return (
     <div>
-      <p className="whitespace-pre-wrap text-gray-800">{content.body}</p>
+      {/* Markdown 表示（安全サニタイズ済み） */}
+      <MarkdownView markdown={content.body ?? ""} />
       <UnderstandingSlider cardId={cardId} initial={initialLevel} onSave={onSave} />
     </div>
   );

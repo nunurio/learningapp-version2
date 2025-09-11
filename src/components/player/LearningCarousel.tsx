@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { QuizOption } from "@/components/player/QuizOption";
 import { Card, CardContent } from "@/components/ui/card";
+import MarkdownView from "@/components/markdown/MarkdownView";
 
 type Props = {
   courseId: UUID;
@@ -382,7 +383,7 @@ function UnderstandingBar({ cardId, visible, initial, onCommit }: { cardId: stri
 }
 
 function TextContent({ content }: { content: TextCardContent }) {
-  return <p className="whitespace-pre-wrap text-gray-800">{content.body}</p>;
+  return <MarkdownView markdown={content.body ?? ""} />;
 }
 
 function QuizContent({ cardId, content, selected, onSelect, result, onCheck }: {

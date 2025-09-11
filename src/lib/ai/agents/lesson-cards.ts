@@ -6,17 +6,19 @@ import type { OutputGuardrail } from "@openai/agents";
 import { LessonCardsSchema, SingleLessonCardsSchema } from "@/lib/ai/schema";
 import type { LessonCards, CardType } from "@/lib/types";
 import { fallbackFromHistory } from "@/lib/ai/executor";
-import { SINGLE_CARD_WRITER_INSTRUCTIONS } from "@/lib/ai/prompts";
+import { buildSingleCardWriterInstructions, type CardKind } from "@/lib/ai/prompts";
 // outputType 指定により finalOutput は Zod 検証済み
 
-// 単体カード専用エージェント（1件ぴったり）
-export const SingleCardAgent = new Agent<UnknownContext, typeof SingleLessonCardsSchema>({
-  name: "Single Card Writer",
-  instructions: SINGLE_CARD_WRITER_INSTRUCTIONS,
-  outputType: SingleLessonCardsSchema,
-  outputGuardrails: [lessonCardsGuardrail as unknown as OutputGuardrail<typeof SingleLessonCardsSchema>],
-  model: process.env.OPENAI_MODEL,
-});
+// 単体カード専用エージェント（1件ぴったり）をタイプ別 instructions で都度生成
+function createSingleCardAgent(kind?: CardKind) {
+  return new Agent<UnknownContext, typeof SingleLessonCardsSchema>({
+    name: "Single Card Writer",
+    instructions: buildSingleCardWriterInstructions(kind),
+    outputType: SingleLessonCardsSchema,
+    outputGuardrails: [lessonCardsGuardrail as unknown as OutputGuardrail<typeof SingleLessonCardsSchema>],
+    model: process.env.OPENAI_MODEL,
+  });
+}
 
 export async function runSingleCardAgent(input: {
   lessonTitle: string;
@@ -36,7 +38,8 @@ export async function runSingleCardAgent(input: {
       sharedPrefix: input.sharedPrefix ?? null,
     },
   } as const;
-  const res = await runner.run(SingleCardAgent, JSON.stringify(payload), { maxTurns: 1 });
+  const agent = createSingleCardAgent(input.desiredCardType as unknown as CardKind);
+  const res = await runner.run(agent, JSON.stringify(payload), { maxTurns: 1 });
   // まず finalOutput を信頼（Zod 検証済み）
   let parsed = res.finalOutput;
   if (!parsed) {

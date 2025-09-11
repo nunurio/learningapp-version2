@@ -15,11 +15,11 @@ export const TooltipContent = React.forwardRef<
     ref={ref}
     sideOffset={sideOffset}
     className={cn(
-      "z-50 overflow-hidden rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 py-1 text-xs text-[hsl(var(--fg))] shadow-md",
+      // 明示的に不透明な背景/前景トークンを使用
+      "z-50 overflow-hidden rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--bg))] px-2 py-1 text-xs text-[hsl(var(--fg))] shadow-lg",
       className
     )}
     {...props}
   />
 ));
 TooltipContent.displayName = TooltipPrimitive.Content.displayName;
-
