@@ -3,6 +3,12 @@ import { revalidatePath } from "next/cache";
 import type { UUID, CoursePlan, LessonCards } from "@/lib/types";
 import { createClient, getCurrentUserId } from "@/lib/supabase/server";
 import type { Tables, TablesInsert } from "@/lib/database.types";
+import { shouldUseMockAI, createLessonCardsPlanMock, createLessonCardsMock } from "@/lib/ai/mock";
+import { getCourse, listLessons } from "@/lib/db/queries";
+import { initAgents } from "@/lib/ai/agents";
+import { runCardsPlanner } from "@/lib/ai/agents/planner";
+import { runSingleCardAgent } from "@/lib/ai/agents/lesson-cards";
+import type { AiUpdate } from "@/lib/ai/log";
 
 export async function saveDraftAction(
   kind: "outline" | "lesson-cards",
@@ -36,7 +42,7 @@ export async function commitCoursePlanAction(draftId: string): Promise<{ courseI
   const plan = draft.payload as CoursePlan;
   const { data: course, error: e2 } = await supa
     .from("courses")
-    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, status: "draft" } satisfies TablesInsert<"courses">)
+    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, level: (plan.course as { level?: string | null }).level ?? null, status: "draft" } satisfies TablesInsert<"courses">)
     .select("id")
     .single();
   if (e2) throw e2;
@@ -67,7 +73,7 @@ export async function commitCoursePlanPartialAction(draftId: string, selectedInd
   const plan = draft.payload as CoursePlan;
   const { data: course, error: e2 } = await supa
     .from("courses")
-    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, status: "draft" } satisfies TablesInsert<"courses">)
+    .insert({ owner_id: userId, title: plan.course.title, description: plan.course.description ?? null, category: plan.course.category ?? null, level: (plan.course as { level?: string | null }).level ?? null, status: "draft" } satisfies TablesInsert<"courses">)
     .select("id")
     .single();
   if (e2) throw e2;
@@ -169,4 +175,157 @@ export async function commitLessonCardsPartialAction(opts: { draftId: string; le
   const { data: lrow } = await supa.from("lessons").select("course_id").eq("id", opts.lessonId).single();
   if (lrow?.course_id) revalidatePath(`/courses/${lrow.course_id}/workspace`, "page");
   return { count, cardIds: ids };
+}
+
+// --- Batch generation (server-side parallel) ---------------------------------
+export async function generateLessonCardsParallelAction(input: {
+  courseId: UUID;
+  lessonId: UUID;
+  lessonTitle: string;
+  desiredCount?: number;
+}): Promise<{ draftId: string; payload: LessonCards; committed?: { count: number; cardIds: UUID[] }; updates: AiUpdate[] }> {
+  const updates: AiUpdate[] = [];
+  const now = () => Date.now();
+  updates.push({ ts: now(), text: "received" }, { ts: now(), text: "planCards" });
+
+  // Resolve planning context from DB
+  let plan: { lessonTitle: string; count: number; sharedPrefix?: string | null; cards: { type: LessonCards["cards"][number]["type"]; brief: string; title?: string | null }[] };
+  const useMock = shouldUseMockAI();
+  try {
+    const [course, lessons] = await Promise.all([getCourse(input.courseId), listLessons(input.courseId)]);
+    const idx = lessons.findIndex((l) => l.title === input.lessonTitle);
+    const level = (course as { level?: string | null } | undefined)?.level ?? "初心者";
+    const context = {
+      course: course ? { title: course.title, description: course.description ?? null, category: course.category ?? null, level } : { title: input.lessonTitle },
+      lessons: lessons.map((l) => ({ title: l.title })),
+      index: idx >= 0 ? idx : 0,
+    } as const;
+    if (useMock) {
+      plan = createLessonCardsPlanMock({ lessonTitle: input.lessonTitle, desiredCount: input.desiredCount, course: context.course, lessons: context.lessons, index: context.index });
+    } else {
+      initAgents();
+      const p = await runCardsPlanner({ lessonTitle: input.lessonTitle, desiredCount: input.desiredCount, context });
+      plan = { lessonTitle: p.lessonTitle, count: p.count, sharedPrefix: p.sharedPrefix ?? null, cards: p.cards };
+    }
+  } catch (e) {
+    throw e instanceof Error ? e : new Error(String(e));
+  }
+  // Use the actual cards length to avoid out-of-bounds when the
+  // planner's declared count and provided cards array disagree.
+  const total = plan.cards.length;
+  if (plan.count != null && plan.count !== total) {
+    updates.push({ ts: now(), text: `planMismatch(count=${plan.count}, cards=${total})` });
+  }
+  updates.push({ ts: now(), text: `planReady(${total})` });
+
+  // Parallel single-card generation with retry
+  // NOTE: Be robust to non-numeric env values (e.g. "auto", "true").
+  const DEFAULT_CONCURRENCY = 10;
+  const rawConcurrency = process.env.AI_CONCURRENCY ?? process.env.NEXT_PUBLIC_AI_CONCURRENCY;
+  let resolvedConcurrency = DEFAULT_CONCURRENCY;
+  if (typeof rawConcurrency === "string" && rawConcurrency.trim().length > 0) {
+    const parsed = Number.parseInt(rawConcurrency.trim(), 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      resolvedConcurrency = parsed;
+    } else {
+      // Fallback and record the fallback reason for diagnostics.
+      updates.push({ ts: now(), text: `concurrencyFallback(${rawConcurrency})→${DEFAULT_CONCURRENCY}` });
+    }
+  }
+  // Cap to a sensible range. If total=0, spawn a single no-op worker.
+  const concurrency = total > 0 ? Math.max(1, Math.min(resolvedConcurrency, total)) : 1;
+  const slots: (LessonCards["cards"][number] | undefined)[] = Array.from({ length: total });
+  let nextIndex = 0;
+  let completed = 0;
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  async function generateWithRetry(i: number, item: { type: LessonCards["cards"][number]["type"]; brief: string; title?: string | null }) {
+    const maxAttempts = 3;
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const payload = useMock
+          ? createLessonCardsMock({ lessonTitle: plan.lessonTitle, desiredCount: 1, desiredCardType: item.type, userBrief: item.brief })
+          : await runSingleCardAgent({ lessonTitle: plan.lessonTitle, desiredCardType: item.type, userBrief: item.brief, sharedPrefix: plan.sharedPrefix ?? undefined });
+        const card = payload.cards[0];
+        if (item.title && "title" in card) (card as { title?: string | null }).title = item.title;
+        slots[i] = card;
+        return;
+      } catch (e) {
+        lastError = e;
+        if (attempt < maxAttempts) {
+          const base = 250 * Math.pow(2, attempt - 1);
+          const jitter = Math.floor(Math.random() * 120);
+          await sleep(base + jitter);
+          continue;
+        }
+        break;
+      }
+    }
+    // fill placeholder if all attempts failed
+    const msg = (lastError as { message?: string } | undefined)?.message ?? "unknown";
+    slots[i] = { type: "text", title: item.title ?? null, body: `生成に失敗しました: ${msg}` } as LessonCards["cards"][number];
+  }
+
+  async function worker() {
+    while (true) {
+      const i = nextIndex++;
+      if (i >= total) break;
+      const item = plan.cards[i];
+      // Extra guard: skip if planner forgot to supply this index
+      if (!item) {
+        updates.push({ ts: now(), text: `skipMissing ${i + 1}/${total}` });
+      } else {
+        await generateWithRetry(i, item);
+      }
+      completed += 1;
+      updates.push({ ts: now(), text: `generateCard ${completed}/${total}` });
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }).map(() => worker()));
+
+  const cards = slots.map((c, i) => c ?? ({ type: "text", title: null, body: `未生成スロット ${i + 1}` } as LessonCards["cards"][number]));
+  const payload: LessonCards = { lessonTitle: input.lessonTitle, cards };
+
+  // Persist draft and commit immediately
+  const draft = await saveDraftAction("lesson-cards", payload);
+  updates.push({ ts: now(), text: "persistPreview" });
+  const committed = await commitLessonCardsAction({ draftId: draft.id, lessonId: input.lessonId });
+  if (committed) updates.push({ ts: now(), text: `コミット ${committed.count} 件` });
+
+  return { draftId: draft.id, payload, committed, updates };
+}
+
+// --- Single card generation (server-side) -----------------------------------
+export async function generateSingleCardAction(input: {
+  courseId?: UUID;
+  lessonId: UUID;
+  lessonTitle: string;
+  desiredCardType?: LessonCards["cards"][number]["type"];
+  userBrief?: string;
+}): Promise<{ draftId: string; payload: LessonCards; committed?: { count: number; cardIds: UUID[] }; updates: AiUpdate[] }> {
+  const updates: AiUpdate[] = [];
+  const now = () => Date.now();
+  updates.push({ ts: now(), text: "received(single)" });
+
+  let course: { title: string; description?: string | null; category?: string | null; level?: string | null } | undefined;
+  if (input.courseId) {
+    try {
+      const co = await getCourse(input.courseId);
+      if (co) course = { title: co.title, description: co.description ?? null, category: co.category ?? null, level: (co as { level?: string | null }).level ?? "初心者" };
+    } catch {}
+  }
+
+  const useMock = shouldUseMockAI();
+  const payload = useMock
+    ? createLessonCardsMock({ lessonTitle: input.lessonTitle, desiredCount: 1, desiredCardType: input.desiredCardType, userBrief: input.userBrief })
+    : (initAgents(), await runSingleCardAgent({ lessonTitle: input.lessonTitle, course, desiredCardType: input.desiredCardType, userBrief: input.userBrief }));
+
+  const draft = await saveDraftAction("lesson-cards", payload);
+  updates.push({ ts: now(), text: "persistPreview" });
+  const committed = await commitLessonCardsPartialAction({ draftId: draft.id, lessonId: input.lessonId, selectedIndexes: [0] });
+  if (committed) updates.push({ ts: now(), text: `コミット ${committed.count} 件` });
+  return { draftId: draft.id, payload, committed, updates };
 }

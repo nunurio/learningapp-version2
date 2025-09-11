@@ -19,6 +19,7 @@ create table if not exists public.courses (
   title text not null,
   description text,
   category text,
+  level text,
   status public.course_status not null default 'draft',
   slug text,
   created_at timestamptz not null default now(),
@@ -106,4 +107,3 @@ create table if not exists public.ai_drafts (
 );
 
 commit;
-

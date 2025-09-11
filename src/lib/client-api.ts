@@ -15,7 +15,9 @@ import { createCourseAction, updateCourseAction, deleteCourseAction } from "@/se
 import { addLessonAction, deleteLessonAction, reorderLessonsAction } from "@/server-actions/lessons";
 import { addCardAction, updateCardAction, deleteCardAction, deleteCardsAction, reorderCardsAction } from "@/server-actions/cards";
 import { saveProgressAction, rateSrsAction, toggleFlagAction, saveNoteAction } from "@/server-actions/progress";
-import { saveDraftAction, commitCoursePlanAction, commitCoursePlanPartialAction, commitLessonCardsAction, commitLessonCardsPartialAction } from "@/server-actions/ai";
+import { saveDraftAction, commitCoursePlanAction, commitCoursePlanPartialAction, commitLessonCardsAction, commitLessonCardsPartialAction, generateLessonCardsParallelAction, generateSingleCardAction } from "@/server-actions/ai";
+import type { AiUpdate } from "@/lib/ai/log";
+import type { CardType } from "@/lib/types";
 
 type Snapshot = {
   courses: Course[];
@@ -158,6 +160,16 @@ export async function commitLessonCards(opts: { draftId: string; lessonId: UUID 
 
 export async function commitLessonCardsPartial(opts: { draftId: string; lessonId: UUID; selectedIndexes: number[] }): Promise<{ count: number; cardIds: UUID[] } | undefined> {
   return await commitLessonCardsPartialAction(opts);
+}
+
+// AI generation (server-side parallel)
+export async function generateLessonCardsParallel(opts: { courseId: UUID; lessonId: UUID; lessonTitle: string; desiredCount?: number }): Promise<{ count: number; cardIds: UUID[]; updates: AiUpdate[] }> {
+  const res = await generateLessonCardsParallelAction(opts);
+  return { count: res.committed?.count ?? 0, cardIds: res.committed?.cardIds ?? [], updates: res.updates };
+}
+
+export async function generateSingleCard(opts: { courseId?: UUID; lessonId: UUID; lessonTitle: string; desiredCardType?: CardType; userBrief?: string }): Promise<{ draftId: string; payload: LessonCards; committed?: { count: number; cardIds: UUID[] }; updates: AiUpdate[] }> {
+  return await generateSingleCardAction(opts);
 }
 
 export type { Snapshot };

@@ -8,6 +8,7 @@ export type Course = {
   title: string;
   description?: string;
   category?: string;
+  level?: string;
   status: CourseStatus;
   createdAt: string; // ISO
   updatedAt: string; // ISO
@@ -74,6 +75,7 @@ export type CoursePlan = {
     title: string;
     description?: string | null;
     category?: string | null;
+    level?: string | null;
   };
   lessons: { title: string; summary?: string | null }[];
 };

@@ -5,97 +5,51 @@ import { lessonCardsGuardrail } from "@/lib/ai/agents/guardrails";
 import type { OutputGuardrail } from "@openai/agents";
 import { LessonCardsSchema, SingleLessonCardsSchema } from "@/lib/ai/schema";
 import type { LessonCards, CardType } from "@/lib/types";
-
-export const LessonCardsAgent = new Agent<UnknownContext, typeof LessonCardsSchema>({
-  name: "Lesson Card Writer",
-  instructions: [
-    "あなたは教育コンテンツ作成の専門家です。",
-    "text / quiz / fill-blank をバランス良く含め、fill-blankは[[n]]とanswers整合を厳守。",
-  ].join("\n"),
-  // 構造化出力: Zod スキーマで強制
-  outputType: LessonCardsSchema,
-  outputGuardrails: [lessonCardsGuardrail as unknown as OutputGuardrail<typeof LessonCardsSchema>],
-  model: process.env.OPENAI_MODEL,
-});
+import { fallbackFromHistory } from "@/lib/ai/executor";
+import { SINGLE_CARD_WRITER_INSTRUCTIONS } from "@/lib/ai/prompts";
+// outputType 指定により finalOutput は Zod 検証済み
 
 // 単体カード専用エージェント（1件ぴったり）
 export const SingleCardAgent = new Agent<UnknownContext, typeof SingleLessonCardsSchema>({
   name: "Single Card Writer",
-  instructions: [
-    "あなたは教育コンテンツ作成の専門家です。",
-    "text / quiz / fill-blank から適切な形式を1件だけ生成。",
-    "fill-blankは[[n]]とanswersの整合を厳守。",
-  ].join("\n"),
+  instructions: SINGLE_CARD_WRITER_INSTRUCTIONS,
   outputType: SingleLessonCardsSchema,
   outputGuardrails: [lessonCardsGuardrail as unknown as OutputGuardrail<typeof SingleLessonCardsSchema>],
   model: process.env.OPENAI_MODEL,
 });
 
-export async function runLessonCardsAgent(input: {
-  lessonTitle: string;
-  desiredCount?: number;
-  course?: { title: string; description?: string | null; category?: string | null };
-}): Promise<LessonCards> {
-  const dc = typeof input.desiredCount === "number" ? input.desiredCount : 6;
-  const count = Math.max(3, Math.min(dc, 20));
-  const sys = `次のレッスン用にカードを${count}件、バランスよく生成してください。`;
-  const res = await runner.run(
-    LessonCardsAgent,
-    `${sys}\n${JSON.stringify({ ...input, desiredCount: count })}`,
-    { maxTurns: 1 }
-  );
-  // 1) 構造化出力（推奨） 2) 文字列(JSON) 3) 最後のテキスト で後方互換的に解釈
-  const result = (() => {
-    const r: unknown = res;
-    if (r && typeof r === "object") {
-      const rec = r as Record<string, unknown>;
-      const a = rec.finalOutput as unknown;
-      const b = rec.finalText as unknown;
-      if (a && typeof a === "object") return a; // structured output
-      if (typeof a === "string") { try { return JSON.parse(a) as unknown; } catch {} }
-      if (typeof b === "string") { try { return JSON.parse(b) as unknown; } catch {} }
-    }
-    return undefined;
-  })();
-  if (!result) throw new Error("No agent output");
-  const parsed = LessonCardsSchema.safeParse(result);
-  if (!parsed.success) throw new Error("LessonCards schema mismatch");
-  return parsed.data as LessonCards;
-}
-
 export async function runSingleCardAgent(input: {
   lessonTitle: string;
-  course?: { title: string; description?: string | null; category?: string | null };
+  course?: { title: string; description?: string | null; category?: string | null; level?: string | null };
   desiredCardType?: CardType;
   userBrief?: string;
+  // prompt caching を狙う共通プレフィックス（全カードで同一）
+  sharedPrefix?: string;
 }): Promise<LessonCards> {
-  const count = 1;
-  const hints: string[] = [`次のレッスン用にカードを${count}件だけ生成してください。`];
-  if (input.desiredCardType) hints.push(`カードタイプは "${input.desiredCardType}" を必ず使用。`);
-  if (input.userBrief && input.userBrief.trim()) hints.push(`ユーザー要望: ${input.userBrief.trim()}`);
-  // 型に合わせるために最小限の日本語指示を追加
-  hints.push("title は任意。未使用フィールドは null で。type は text|quiz|fill-blank のいずれか。");
-  const sys = hints.join("\n");
-  const res = await runner.run(
-    SingleCardAgent,
-    `${sys}\n${JSON.stringify({ lessonTitle: input.lessonTitle, desiredCount: count, course: input.course, desiredCardType: input.desiredCardType, userBrief: input.userBrief })}`,
-    { maxTurns: 1 }
-  );
-  const result = (() => {
-    const r: unknown = res;
-    if (r && typeof r === "object") {
-      const rec = r as Record<string, unknown>;
-      const a = rec.finalOutput as unknown;
-      const b = rec.finalText as unknown;
-      if (a && typeof a === "object") return a; // structured output
-      if (typeof a === "string") { try { return JSON.parse(a) as unknown; } catch {} }
-      if (typeof b === "string") { try { return JSON.parse(b) as unknown; } catch {} }
+  const payload = {
+    task: "Write exactly 1 card as SingleLessonCards JSON.",
+    parameters: {
+      lessonTitle: input.lessonTitle,
+      course: input.course ?? null,
+      desiredCardType: input.desiredCardType ?? null,
+      userBrief: (input.userBrief ?? "").trim() || null,
+      sharedPrefix: input.sharedPrefix ?? null,
+    },
+  } as const;
+  const res = await runner.run(SingleCardAgent, JSON.stringify(payload), { maxTurns: 1 });
+  // まず finalOutput を信頼（Zod 検証済み）
+  let parsed = res.finalOutput;
+  if (!parsed) {
+    const fb = fallbackFromHistory(res, SingleLessonCardsSchema);
+    if (fb) parsed = fb;
+  }
+  if (!parsed) throw new Error("No agent output");
+  if (input.desiredCardType) {
+    const produced = parsed.cards[0]?.type;
+    if (produced !== input.desiredCardType) {
+      throw new Error(`type mismatch: expected ${input.desiredCardType}, got ${produced}`);
     }
-    return undefined;
-  })();
-  if (!result) throw new Error("No agent output");
-  const parsed = SingleLessonCardsSchema.safeParse(result);
-  if (!parsed.success) throw new Error("SingleLessonCards schema mismatch");
+  }
   // 返却型はLessonCards互換
-  return parsed.data as unknown as LessonCards;
+  return parsed as unknown as LessonCards;
 }
