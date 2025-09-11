@@ -2,13 +2,14 @@ import Link from "next/link";
 import { Header } from "@/components/ui/header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Sparkles, BookOpen, ArrowRight, Keyboard } from "lucide-react";
 import HeroCarousel from "@/components/dashboard/HeroCarousel";
 import { getDashboardSummaryCached } from "@/lib/db/dashboard";
-import DeleteCourseButton from "@/components/dashboard/DeleteCourseButton";
 import SrsReviewOverviewCard from "@/components/dashboard/SrsReviewOverviewCard";
 import ContinueLearningCard from "@/components/dashboard/ContinueLearningCard";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import CoursesTable from "@/components/dashboard/CoursesTable";
+import CoursesCards from "@/components/dashboard/CoursesCards";
 
 export default async function Home() {
   const data = await getDashboardSummaryCached();
@@ -102,74 +103,52 @@ export default async function Home() {
 
         {/* Courses */}
         <section aria-labelledby="your-courses" className="space-y-3">
-          <div>
-            <h2 id="your-courses" className="text-2xl font-bold text-[hsl(var(--fg))] mb-1">あなたのコース</h2>
-            <p className="text-sm text-[hsl(var(--fg))]/60">
-              {courses.length > 0 ? `${courses.length}個のコース` : "まだコースがありません"}
-            </p>
-          </div>
-
-          {courses.length === 0 ? (
-            <Card variant="elevated" className="p-12 text-center">
-              <div className="max-w-md mx-auto">
-                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
-                  <BookOpen className="h-10 w-10" aria-hidden />
-                </div>
-                <h3 className="text-xl font-semibold mb-3">まだコースがありません</h3>
-                <p className="text-[hsl(var(--fg))]/60 mb-6">
-                  テーマを入力するだけで、AIが最適な学習プランを作成します。
-                  今すぐ始めてみましょう！
+          <Tabs defaultValue="cards">
+            <div className="flex items-end justify-between">
+              <div>
+                <h2 id="your-courses" className="text-2xl font-bold text-[hsl(var(--fg))] mb-1">あなたのコース</h2>
+                <p className="text-sm text-[hsl(var(--fg))]/60">
+                  {courses.length > 0 ? `${courses.length}個のコース` : "まだコースがありません"}
                 </p>
-                <Button asChild variant="default" size="lg">
-                  <Link href="/courses/plan">
-                    <Sparkles className="mr-2 h-4 w-4" aria-hidden />
-                    最初のコースを作る
-                  </Link>
-                </Button>
               </div>
-            </Card>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {courses.map((c) => (
-                <Card key={c.id} variant="interactive" className="overflow-hidden group">
-                  <div className="h-2 bg-gradient-to-r from-[hsl(var(--primary-400))] to-[hsl(var(--primary-600))] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  <div className="p-6">
-                    <div className="flex items-start justify-between mb-3">
-                      <h3 className="font-semibold text-lg line-clamp-1 flex-1">{c.title}</h3>
-                      <Badge 
-                        variant={c.status === "published" ? "statusPublished" : "statusDraft"} 
-                        size="sm"
-                        aria-label={`ステータス: ${c.status}`}
-                      >
-                        {c.status === "published" ? "公開" : "下書き"}
-                      </Badge>
+              <TabsList aria-label="表示切替">
+                <TabsTrigger value="cards">カード</TabsTrigger>
+                <TabsTrigger value="table">テーブル</TabsTrigger>
+              </TabsList>
+            </div>
+            <TabsContent value="cards">
+              {courses.length === 0 ? (
+                <Card variant="elevated" className="p-12 text-center">
+                  <div className="max-w-md mx-auto">
+                    <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
+                      <BookOpen className="h-10 w-10" aria-hidden />
                     </div>
-                    {c.description && (
-                      <p className="text-sm text-[hsl(var(--fg))]/60 line-clamp-2 mb-4">
-                        {c.description}
-                      </p>
-                    )}
-                    <div className="flex items-center justify-between text-xs text-[hsl(var(--fg))]/50 mb-2">
-                      <span>更新: {new Date(c.updatedAt).toLocaleDateString()}</span>
-                      <span>完了率: {c.completionRate}%</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-[hsl(var(--fg))]/50 mb-4">
-                      <span>カード {c.completedCards}/{c.totalCards}</span>
-                      <span>フラグ {c.flaggedCards}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button asChild variant="default" size="sm" className="flex-1">
-                        <Link href={`/courses/${c.id}/workspace`}>
-                          ワークスペースを開く
-                        </Link>
-                      </Button>
-                      <DeleteCourseButton courseId={c.id} />
-                    </div>
+                    <h3 className="text-xl font-semibold mb-3">まだコースがありません</h3>
+                    <p className="text-[hsl(var(--fg))]/60 mb-6">
+                      テーマを入力するだけで、AIが最適な学習プランを作成します。
+                      今すぐ始めてみましょう！
+                    </p>
+                    <Button asChild variant="default" size="lg">
+                      <Link href="/courses/plan">
+                        <Sparkles className="mr-2 h-4 w-4" aria-hidden />
+                        最初のコースを作る
+                      </Link>
+                    </Button>
                   </div>
                 </Card>
-              ))}
-            </div>
-          )}
+              ) : (
+                <CoursesCards courses={courses} />
+              )}
+            </TabsContent>
+            <TabsContent value="table">
+              <Card variant="elevated" className="p-0">
+                <div className="p-4 pb-0 text-sm text-[hsl(var(--fg))]/60">一覧で比較・ソートできます。</div>
+                <div className="p-4 pt-2">
+                  <CoursesTable courses={courses} />
+                </div>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </section>
 
         {/* Activity (placeholder for P1) */}

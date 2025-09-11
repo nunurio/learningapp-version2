@@ -49,3 +49,6 @@ playwright/.auth
 playwright-report/
 test-results/
 blob-report/
+source.md
+memo.md
+sum.py

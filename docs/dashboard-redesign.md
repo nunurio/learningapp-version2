@@ -31,8 +31,10 @@
   - `app/dashboard/page.tsx` を RSC 化し、集約クエリをサーバーで実行。
   - クライアント島はインタラクション（検索入力/ソート/タブ切替など）のみに限定。
 - shadcn/ui 優先（既存の `ui/*` を最大活用）
-  - Card/Badge/Tabs/Tooltip/Progress/Avatar/Drawer/Dialog/Skeleton/Toaster/Resizable 等を活用。
-  - 未導入の Table/DataGrid/Chart は shadcn のガイドに沿って `@tanstack/react-table` + `recharts` を採用。
+  - Card/Badge/Tabs/Tooltip/Progress/Avatar/Drawer/Dialog/Skeleton/Toaster/Resizable 等を最優先で採用し、既存の `src/components/ui` に統一。
+  - 追加・更新は原則「shadcn/ui CLI（pnpm）」で行い、依存関係は CLI に任せる。
+  - 不足する基盤依存（Radix/Embla/TanStack/Charts/Resizable/Icons 等）は CLI が解決できない場合のみ手動で `pnpm add`。
+  - 未導入の Table/DataGrid/Chart は shadcn のガイドに沿って `@tanstack/react-table` + `recharts` を採用（依存は本書内の `pnpm add` を参照）。
 - 情報設計は「すぐ行動できるホーム」
   1) 今日のレビュー（SRS）→ 2) 継続学習（前回の続き）→ 3) コース一覧（進捗可視化）→ 4) 最近の活動 → 5) 通知。
 - 型安全・キャッシュ戦略
@@ -271,8 +273,59 @@ export default async function Page() {
 - `ActivityTimeline`（新規/流用）: 既存 `SSETimeline` の外観/アクセシビリティを流用。
 - `Skeleton.*`（新規）: 各セクション用スケルトンを用意し、Suspenseで包む。
 
-依存追加（必要に応じて）
-- `pnpm add @tanstack/react-table recharts date-fns`（チャートと集計に使用）。
+shadcn/ui セットアップ（pnpm CLI）
+- 初期化（既に `components.json` がある場合でも再実行で更新可）
+
+```bash
+pnpm dlx shadcn-ui@latest init
+```
+
+- 必要コンポーネントの追加（ダッシュボードで使用）
+
+```bash
+# 基本UI
+pnpm dlx shadcn-ui@latest add button card badge tabs tooltip progress avatar dialog drawer skeleton toast
+
+# ダッシュボードで特に使用
+pnpm dlx shadcn-ui@latest add carousel resizable table dropdown-menu popover command
+
+# 入力系の補助（必要に応じて）
+pnpm dlx shadcn-ui@latest add input label separator select
+```
+
+- メモ
+  - CLI が各コンポーネントの依存（例: `embla-carousel-react`、`react-resizable-panels`、`sonner`、`cmdk`、`lucide-react` など）を自動導入します。
+  - コンポーネントは `src/components/ui` 配下に生成され、エイリアスは `@/components` を前提に設定されます。
+
+依存追加（shadcn/ui コンポーネント群を活用するため）
+- 基本ユーティリティ/アイコン
+
+```bash
+pnpm add clsx class-variance-authority tailwind-merge lucide-react
+```
+
+- Radix（UIプリミティブ）
+
+```bash
+pnpm add @radix-ui/react-tooltip @radix-ui/react-dialog @radix-ui/react-tabs \
+  @radix-ui/react-dropdown-menu @radix-ui/react-popover @radix-ui/react-avatar
+```
+
+- カルーセル/レイアウト/トースト
+
+```bash
+pnpm add embla-carousel-react react-resizable-panels sonner vaul
+```
+
+- データ表示/チャート/日付
+
+```bash
+pnpm add @tanstack/react-table recharts date-fns
+```
+
+備考
+- 本プロジェクトは shadcn/ui のコンポーネントを `src/components/ui` にコードとして保持します（パッケージ配布ではなくコード採用）。
+- 原則は CLI の `init`/`add` で導入し、CLI が解決できない場合のみ下記 `pnpm add` をフォールバックとして利用します。
 
 ---
 
@@ -313,9 +366,27 @@ export default async function Page() {
 - [新規] `src/components/dashboard/ActivityTimeline.tsx`（既存SSE UI流用）。
 - [将来] `activity` テーブルとDBトリガー（コース/レッスン/カード/進捗/SRS/AIドラフトを記録）。
 
-5) チャート/テーブル依存（P3）
-- `pnpm add @tanstack/react-table recharts date-fns`。
-- `Chart`＆`DataTable` の shadcn スタイル化（テーマ準拠）。
+5) shadcn/ui 依存と不足UIの導入（P3）
+- まず CLI で必要コンポーネントを追加：
+
+```bash
+pnpm dlx shadcn-ui@latest init
+pnpm dlx shadcn-ui@latest add button card badge tabs tooltip progress avatar dialog drawer skeleton toast
+pnpm dlx shadcn-ui@latest add carousel resizable table dropdown-menu popover command
+pnpm dlx shadcn-ui@latest add input label separator select
+```
+
+- CLI で不足/失敗した依存のみ手動で追加：
+
+```bash
+pnpm add clsx class-variance-authority tailwind-merge lucide-react \
+  @radix-ui/react-tooltip @radix-ui/react-dialog @radix-ui/react-tabs \
+  @radix-ui/react-dropdown-menu @radix-ui/react-popover @radix-ui/react-avatar \
+  embla-carousel-react react-resizable-panels sonner vaul \
+  @tanstack/react-table recharts date-fns
+```
+
+- `Chart`＆`DataTable` を含む UI を shadcn スタイルで統一（テーマ準拠）。
 
 ---
 
@@ -331,6 +402,7 @@ export default async function Page() {
 - 一覧が多い場合、テーブル表示タブで列ソート/フィルタが可能。
 - 最近の活動が時系列で3件以上表示される（空時は空状態説明）。
 - 主要UIはキーボード操作・スクリーンリーダーで完結可能（操作系にラベル・ロール付与）。
+- 主要 UI は shadcn/ui コンポーネント（`src/components/ui`）で統一され、必要依存は `pnpm add` 済み。
 - `pnpm build` と `pnpm lint` が通る。
 
 ---
@@ -338,7 +410,7 @@ export default async function Page() {
 ## 11. 影響範囲/変更ファイル（予定）
 - 追加: `src/lib/db/dashboard.ts`、`src/components/dashboard/*`、（必要に応じ）`src/app/dashboard/layout.tsx`。
 - 変更: `src/app/dashboard/page.tsx`（RSC 化/セクション化）。
-- 依存: `@tanstack/react-table` / `recharts` / `date-fns`（追加）。
+- 依存: `clsx` / `class-variance-authority` / `tailwind-merge` / `lucide-react`、Radix 系（`@radix-ui/react-*`）、`embla-carousel-react`、`react-resizable-panels`、`sonner`、`vaul`、`@tanstack/react-table`、`recharts`、`date-fns`（追加）。
 
 ---
 
