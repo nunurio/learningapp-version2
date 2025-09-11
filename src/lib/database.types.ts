@@ -107,8 +107,8 @@ export type Database = {
           category: string | null
           created_at: string
           description: string | null
-          level: string | null
           id: string
+          level: string | null
           owner_id: string
           slug: string | null
           status: Database["public"]["Enums"]["course_status"]
@@ -119,8 +119,8 @@ export type Database = {
           category?: string | null
           created_at?: string
           description?: string | null
-          level?: string | null
           id?: string
+          level?: string | null
           owner_id: string
           slug?: string | null
           status?: Database["public"]["Enums"]["course_status"]
@@ -131,8 +131,8 @@ export type Database = {
           category?: string | null
           created_at?: string
           description?: string | null
-          level?: string | null
           id?: string
+          level?: string | null
           owner_id?: string
           slug?: string | null
           status?: Database["public"]["Enums"]["course_status"]
@@ -468,3 +468,4 @@ export const Constants = {
     },
   },
 } as const
+

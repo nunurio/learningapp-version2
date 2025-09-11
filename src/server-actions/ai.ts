@@ -210,7 +210,12 @@ export async function generateLessonCardsParallelAction(input: {
   } catch (e) {
     throw e instanceof Error ? e : new Error(String(e));
   }
-  const total = plan.count ?? plan.cards.length;
+  // Use the actual cards length to avoid out-of-bounds when the
+  // planner's declared count and provided cards array disagree.
+  const total = plan.cards.length;
+  if (plan.count != null && plan.count !== total) {
+    updates.push({ ts: now(), text: `planMismatch(count=${plan.count}, cards=${total})` });
+  }
   updates.push({ ts: now(), text: `planReady(${total})` });
 
   // Parallel single-card generation with retry
@@ -254,7 +259,12 @@ export async function generateLessonCardsParallelAction(input: {
       const i = nextIndex++;
       if (i >= total) break;
       const item = plan.cards[i];
-      await generateWithRetry(i, item);
+      // Extra guard: skip if planner forgot to supply this index
+      if (!item) {
+        updates.push({ ts: now(), text: `skipMissing ${i + 1}/${total}` });
+      } else {
+        await generateWithRetry(i, item);
+      }
       completed += 1;
       updates.push({ ts: now(), text: `generateCard ${completed}/${total}` });
     }

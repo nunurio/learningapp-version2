@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "coverage": "vitest --coverage",
+    "check:db-types:local": "supabase gen types typescript --local --schema public,graphql_public > src/lib/database.types.ts.gen && diff -u src/lib/database.types.ts src/lib/database.types.ts.gen",
     "check:lib-coverage": "pnpm coverage && node scripts/check-lib-coverage.mjs --min=85",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

@@ -1,0 +1,42 @@
+name: Check Supabase Types (local)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  types:
+    name: Generate and diff types
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+
+      - name: Start local database (Docker)
+        run: supabase db start
+
+      - name: Generate types from local DB
+        run: |
+          supabase gen types typescript --local --schema public,graphql_public > src/lib/database.types.ts.gen
+
+      - name: Diff generated types with committed file
+        run: |
+          diff -u src/lib/database.types.ts src/lib/database.types.ts.gen
+
+      - name: Upload generated types on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-database-types
+          path: src/lib/database.types.ts.gen
+
+      - name: Stop local database
+        if: always()
+        run: |
+          supabase db stop || supabase stop
+
