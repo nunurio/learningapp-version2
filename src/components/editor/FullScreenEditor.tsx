@@ -35,6 +35,8 @@ export function FullScreenEditor(props: Props) {
   const [savedAt, setSavedAt] = React.useState<string | null>(null);
   const debounceRef = React.useRef<number | null>(null);
   const [navPending, startTransition] = React.useTransition();
+  // 初回ドラフト読み込みが完了するまで自動保存を抑制
+  const [autosaveReady, setAutosaveReady] = React.useState(false);
 
   // 統一フォーム（カード種別ごとに分岐）
   const [form, setForm] = React.useState<SaveCardDraftInput>(() => {
@@ -90,12 +92,15 @@ export function FullScreenEditor(props: Props) {
         // ドラフトなし、またはユーザー編集中の場合は履歴初期化をスキップ
         pendingHistoryInitRef.current = null;
       }
+      // 既存ドラフト確認完了 → 自動保存を解放
+      setAutosaveReady(true);
     })();
     return () => { cancelled = true; };
   }, [props.cardId]);
 
-  // 下書き自動保存（500ms）
+  // 下書き自動保存（500ms）— 初回ロード完了までは抑制
   React.useEffect(() => {
+    if (!autosaveReady) return;
     setSaving("saving");
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(async () => {
@@ -104,7 +109,7 @@ export function FullScreenEditor(props: Props) {
       setSaving("saved");
     }, 500);
     return () => { if (debounceRef.current) window.clearTimeout(debounceRef.current); };
-  }, [form]);
+  }, [form, autosaveReady]);
 
   // workspace のドラフトと同期（ワークスペースへ戻った際の即時反映）
   React.useEffect(() => { workspaceStore.setDraft(form); }, [form]);
@@ -117,6 +122,8 @@ export function FullScreenEditor(props: Props) {
 
   // 進行中のデバウンスをフラッシュして即時保存するヘルパー
   const flushDraft = React.useCallback(async () => {
+    // 初期ロード未完了かつ未編集なら保存しない（既存ドラフトの上書きを防止）
+    if (!autosaveReady && !userEditedRef.current) return;
     if (debounceRef.current) {
       window.clearTimeout(debounceRef.current);
       debounceRef.current = null;
@@ -125,7 +132,7 @@ export function FullScreenEditor(props: Props) {
     const res = await saveCardDraft(form);
     setSavedAt(res.updatedAt);
     setSaving("saved");
-  }, [form]);
+  }, [form, autosaveReady]);
 
   // ナビゲーション前にフラッシュしてから遷移
   const handleBack = React.useCallback(async () => {
@@ -177,6 +184,7 @@ export function FullScreenEditor(props: Props) {
 
   const applyText = React.useCallback((nextText: string, nextStart?: number, nextEnd?: number) => {
     userEditedRef.current = true;
+    setAutosaveReady(true); // 編集開始をもって自動保存を有効化
     setForm((f) => ({ ...f, body: nextText }));
     const ta = textareaRef.current;
     const s = Math.max(0, nextStart ?? (ta?.selectionStart ?? 0));
@@ -277,12 +285,12 @@ export function FullScreenEditor(props: Props) {
             <div className="mx-auto max-w-5xl px-3 py-4 space-y-3">
               <Input
                 value={title}
-                onChange={(e) => { userEditedRef.current = true; setForm((f) => ({ ...f, title: e.target.value })); }}
+                onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => ({ ...f, title: e.target.value })); }}
                 placeholder="タイトル（任意）"
               />
               <Input
                 value={tagsCsv}
-                onChange={(e) => { userEditedRef.current = true; setForm((f) => ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) })); }}
+                onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) })); }}
                 placeholder="タグ, を, カンマ区切りで"
               />
               {preview ? (
@@ -319,35 +327,35 @@ export function FullScreenEditor(props: Props) {
           <div className="mx-auto max-w-5xl px-3 py-4 space-y-3">
             <Input
               value={title}
-              onChange={(e) => { userEditedRef.current = true; setForm((f) => ({ ...f, title: e.target.value })); }}
+              onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => ({ ...f, title: e.target.value })); }}
               placeholder="タイトル（任意）"
             />
             <Input
               value={tagsCsv}
-              onChange={(e) => { userEditedRef.current = true; setForm((f) => ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) })); }}
+              onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) })); }}
               placeholder="タグ, を, カンマ区切りで"
             />
             {form.cardType === "quiz" && (
               <div className="grid grid-cols-1 gap-3">
                 <Input
                   value={form.question ?? ""}
-                  onChange={(e) => { userEditedRef.current = true; setForm((f) => f.cardType === "quiz" ? ({ ...f, question: e.target.value }) : f); }}
+                  onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => f.cardType === "quiz" ? ({ ...f, question: e.target.value }) : f); }}
                   placeholder="設問"
                 />
                 <Textarea
                   value={(form.options ?? []).join("\n")}
-                  onChange={(e) => { userEditedRef.current = true; setForm((f) => f.cardType === "quiz" ? ({ ...f, options: e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean) }) : f); }}
+                  onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => f.cardType === "quiz" ? ({ ...f, options: e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean) }) : f); }}
                   placeholder={"選択肢を改行で入力"}
                 />
                 <Input
                   type="number"
                   value={form.answerIndex ?? 0}
-                  onChange={(e) => { userEditedRef.current = true; setForm((f) => f.cardType === "quiz" ? ({ ...f, answerIndex: Number(e.target.value) }) : f); }}
+                  onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => f.cardType === "quiz" ? ({ ...f, answerIndex: Number(e.target.value) }) : f); }}
                   placeholder="正解インデックス（0開始）"
                 />
                 <Input
                   value={form.explanation ?? ""}
-                  onChange={(e) => { userEditedRef.current = true; setForm((f) => f.cardType === "quiz" ? ({ ...f, explanation: e.target.value }) : f); }}
+                  onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => f.cardType === "quiz" ? ({ ...f, explanation: e.target.value }) : f); }}
                   placeholder="解説（任意）"
                 />
               </div>
@@ -356,12 +364,12 @@ export function FullScreenEditor(props: Props) {
               <div className="grid grid-cols-1 gap-3">
                 <Textarea
                   value={form.text ?? ""}
-                  onChange={(e) => { userEditedRef.current = true; setForm((f) => f.cardType === "fill-blank" ? ({ ...f, text: e.target.value }) : f); }}
+                  onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => f.cardType === "fill-blank" ? ({ ...f, text: e.target.value }) : f); }}
                   placeholder="本文（[[1]] 形式の空所を含む）"
                 />
                 <Textarea
                   value={Object.entries(form.answers ?? {}).map(([k,v]) => `${k}:${v}`).join("\n")}
-                  onChange={(e) => { userEditedRef.current = true; setForm((f) => {
+                  onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => {
                     if (f.cardType !== "fill-blank") return f;
                     const obj: Record<string, string> = {};
                     e.target.value.split("\n").forEach((line) => {
