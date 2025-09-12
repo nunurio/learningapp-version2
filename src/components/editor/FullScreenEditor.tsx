@@ -63,11 +63,24 @@ export function FullScreenEditor(props: Props) {
     };
   });
 
+  // ドラフト復元後に履歴をドラフト内容で初期化するためのフラグ
+  const pendingHistoryInitRef = React.useRef<string | null>(null);
+
   // 既存のローカル下書きがあれば最初に復元
   React.useEffect(() => {
     (async () => {
       const draft = await loadCardDraft(props.cardId);
-      if (draft) setForm(draft);
+      if (draft) {
+        setForm(draft);
+        // 復元済み本文を履歴初期値として反映できるようにマーク
+        if (draft.cardType === "text") {
+          pendingHistoryInitRef.current = draft.body ?? "";
+        } else {
+          pendingHistoryInitRef.current = null;
+        }
+      } else {
+        pendingHistoryInitRef.current = null;
+      }
     })();
   }, [props.cardId]);
 
@@ -121,6 +134,18 @@ export function FullScreenEditor(props: Props) {
     setCanUndo(false);
     setCanRedo(false);
   }, [props.cardId]);
+
+  // ローカル下書き復元後、Undo履歴をドラフト内容で再初期化
+  React.useEffect(() => {
+    if (pendingHistoryInitRef.current != null) {
+      const t = pendingHistoryInitRef.current;
+      historyRef.current = [{ text: t, start: 0, end: 0 }];
+      hIndexRef.current = 0;
+      setCanUndo(false);
+      setCanRedo(false);
+      pendingHistoryInitRef.current = null;
+    }
+  }, [form]);
 
   const applyText = React.useCallback((nextText: string, nextStart?: number, nextEnd?: number) => {
     setForm((f) => ({ ...f, body: nextText }));
