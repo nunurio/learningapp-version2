@@ -319,9 +319,23 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
           <MenubarMenu>
             <MenubarTrigger>File</MenubarTrigger>
             <MenubarContent>
-              {onBack && <MenubarItem onClick={onBack} disabled={uiDisabled}>Back to Workspace</MenubarItem>}
+              {onBack && (
+                <MenubarItem
+                  onSelect={(e) => { e?.preventDefault?.(); if (!uiDisabled) onBack(); }}
+                  disabled={uiDisabled}
+                >
+                  Back to Workspace
+                </MenubarItem>
+              )}
               <MenubarSeparator />
-              {onPublish && <MenubarItem onClick={() => void onPublish()} disabled={uiDisabled}>Publish</MenubarItem>}
+              {onPublish && (
+                <MenubarItem
+                  onSelect={(e) => { e?.preventDefault?.(); if (!uiDisabled) void onPublish(); }}
+                  disabled={uiDisabled}
+                >
+                  Publish
+                </MenubarItem>
+              )}
             </MenubarContent>
           </MenubarMenu>
           <MenubarMenu>
