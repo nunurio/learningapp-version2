@@ -66,12 +66,19 @@ export function FullScreenEditor(props: Props) {
 
   // ドラフト復元後に履歴をドラフト内容で初期化するためのフラグ
   const pendingHistoryInitRef = React.useRef<string | null>(null);
+  // ユーザーが編集を開始したか（ドラフト適用レース防止用）
+  const userEditedRef = React.useRef(false);
 
   // 既存のローカル下書きがあれば最初に復元
+  // ただし、読み込みが完了する前にユーザーが編集を始めていた場合は上書きしない
   React.useEffect(() => {
+    userEditedRef.current = false; // カード切替時に未編集へリセット
+    let cancelled = false;
+    const currentId = props.cardId;
     (async () => {
-      const draft = await loadCardDraft(props.cardId);
-      if (draft) {
+      const draft = await loadCardDraft(currentId);
+      if (cancelled || currentId !== props.cardId) return;
+      if (draft && !userEditedRef.current) {
         setForm(draft);
         // 復元済み本文を履歴初期値として反映できるようにマーク
         if (draft.cardType === "text") {
@@ -80,9 +87,11 @@ export function FullScreenEditor(props: Props) {
           pendingHistoryInitRef.current = null;
         }
       } else {
+        // ドラフトなし、またはユーザー編集中の場合は履歴初期化をスキップ
         pendingHistoryInitRef.current = null;
       }
     })();
+    return () => { cancelled = true; };
   }, [props.cardId]);
 
   // 下書き自動保存（500ms）
@@ -167,6 +176,7 @@ export function FullScreenEditor(props: Props) {
   }, [form]);
 
   const applyText = React.useCallback((nextText: string, nextStart?: number, nextEnd?: number) => {
+    userEditedRef.current = true;
     setForm((f) => ({ ...f, body: nextText }));
     const ta = textareaRef.current;
     const s = Math.max(0, nextStart ?? (ta?.selectionStart ?? 0));
@@ -178,6 +188,7 @@ export function FullScreenEditor(props: Props) {
   }, [pushHistory]);
 
   const undo = React.useCallback(() => {
+    userEditedRef.current = true;
     if (hIndexRef.current <= 0) return;
     hIndexRef.current -= 1;
     const snap = historyRef.current[hIndexRef.current];
@@ -188,6 +199,7 @@ export function FullScreenEditor(props: Props) {
   }, []);
 
   const redo = React.useCallback(() => {
+    userEditedRef.current = true;
     if (hIndexRef.current >= historyRef.current.length - 1) return;
     hIndexRef.current += 1;
     const snap = historyRef.current[hIndexRef.current];
@@ -265,12 +277,12 @@ export function FullScreenEditor(props: Props) {
             <div className="mx-auto max-w-5xl px-3 py-4 space-y-3">
               <Input
                 value={title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                onChange={(e) => { userEditedRef.current = true; setForm((f) => ({ ...f, title: e.target.value })); }}
                 placeholder="タイトル（任意）"
               />
               <Input
                 value={tagsCsv}
-                onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) }))}
+                onChange={(e) => { userEditedRef.current = true; setForm((f) => ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) })); }}
                 placeholder="タグ, を, カンマ区切りで"
               />
               {preview ? (
@@ -307,35 +319,35 @@ export function FullScreenEditor(props: Props) {
           <div className="mx-auto max-w-5xl px-3 py-4 space-y-3">
             <Input
               value={title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              onChange={(e) => { userEditedRef.current = true; setForm((f) => ({ ...f, title: e.target.value })); }}
               placeholder="タイトル（任意）"
             />
             <Input
               value={tagsCsv}
-              onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) }))}
+              onChange={(e) => { userEditedRef.current = true; setForm((f) => ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) })); }}
               placeholder="タグ, を, カンマ区切りで"
             />
             {form.cardType === "quiz" && (
               <div className="grid grid-cols-1 gap-3">
                 <Input
                   value={form.question ?? ""}
-                  onChange={(e) => setForm((f) => f.cardType === "quiz" ? ({ ...f, question: e.target.value }) : f)}
+                  onChange={(e) => { userEditedRef.current = true; setForm((f) => f.cardType === "quiz" ? ({ ...f, question: e.target.value }) : f); }}
                   placeholder="設問"
                 />
                 <Textarea
                   value={(form.options ?? []).join("\n")}
-                  onChange={(e) => setForm((f) => f.cardType === "quiz" ? ({ ...f, options: e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean) }) : f)}
+                  onChange={(e) => { userEditedRef.current = true; setForm((f) => f.cardType === "quiz" ? ({ ...f, options: e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean) }) : f); }}
                   placeholder={"選択肢を改行で入力"}
                 />
                 <Input
                   type="number"
                   value={form.answerIndex ?? 0}
-                  onChange={(e) => setForm((f) => f.cardType === "quiz" ? ({ ...f, answerIndex: Number(e.target.value) }) : f)}
+                  onChange={(e) => { userEditedRef.current = true; setForm((f) => f.cardType === "quiz" ? ({ ...f, answerIndex: Number(e.target.value) }) : f); }}
                   placeholder="正解インデックス（0開始）"
                 />
                 <Input
                   value={form.explanation ?? ""}
-                  onChange={(e) => setForm((f) => f.cardType === "quiz" ? ({ ...f, explanation: e.target.value }) : f)}
+                  onChange={(e) => { userEditedRef.current = true; setForm((f) => f.cardType === "quiz" ? ({ ...f, explanation: e.target.value }) : f); }}
                   placeholder="解説（任意）"
                 />
               </div>
@@ -344,12 +356,12 @@ export function FullScreenEditor(props: Props) {
               <div className="grid grid-cols-1 gap-3">
                 <Textarea
                   value={form.text ?? ""}
-                  onChange={(e) => setForm((f) => f.cardType === "fill-blank" ? ({ ...f, text: e.target.value }) : f)}
+                  onChange={(e) => { userEditedRef.current = true; setForm((f) => f.cardType === "fill-blank" ? ({ ...f, text: e.target.value }) : f); }}
                   placeholder="本文（[[1]] 形式の空所を含む）"
                 />
                 <Textarea
                   value={Object.entries(form.answers ?? {}).map(([k,v]) => `${k}:${v}`).join("\n")}
-                  onChange={(e) => setForm((f) => {
+                  onChange={(e) => { userEditedRef.current = true; setForm((f) => {
                     if (f.cardType !== "fill-blank") return f;
                     const obj: Record<string, string> = {};
                     e.target.value.split("\n").forEach((line) => {
@@ -357,7 +369,7 @@ export function FullScreenEditor(props: Props) {
                       const [k, ...rest] = s.split(":"); obj[k.trim()] = rest.join(":");
                     });
                     return { ...f, answers: obj };
-                  })}
+                  }); }}
                   placeholder={"1:answer\n2:another"}
                 />
               </div>
