@@ -260,25 +260,51 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
   const applyOl = () => withSelection((v, s, e2) => toggleLinesPrefix(v, s, e2, "1. "));
   const applyHr = () => withSelection((v, s, e2) => insertHr(v, s, e2));
 
-  const onBold = (e: React.MouseEvent) => { e.preventDefault(); applyBold(); };
-  const onItalic = (e: React.MouseEvent) => { e.preventDefault(); applyItalic(); };
-  const onCode = (e: React.MouseEvent) => { e.preventDefault(); applyCode(); };
-  const onStrike = (e: React.MouseEvent) => { e.preventDefault(); applyStrike(); };
-  const onH = (lvl: number) => (e: React.MouseEvent) => { e.preventDefault(); applyHeading(lvl); };
-  const onQuote = (e: React.MouseEvent) => { e.preventDefault(); applyQuote(); };
-  const onUl = (e: React.MouseEvent) => { e.preventDefault(); applyUl(); };
-  const onOl = (e: React.MouseEvent) => { e.preventDefault(); applyOl(); };
-  const onHr = (e: React.MouseEvent) => { e.preventDefault(); applyHr(); };
-  const onUndoClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (uiDisabled || !canUndo) return;
-    onUndo?.();
+  // 共通ラッパー: キーボード/ポインタ両対応。マウス時は onPointerDown で先に処理し、
+  // 後続の click を抑止して二重実行を回避する（選択保持とテスト安定性のため）。
+  const suppressClickRef = React.useRef(false);
+  const run = (fn: () => void) => {
+    const onPointerDown = (e: React.PointerEvent) => {
+      e.preventDefault();
+      suppressClickRef.current = true;
+      snapshotSelection();
+      fn();
+    };
+    const onClick = (e: React.SyntheticEvent) => {
+      if (suppressClickRef.current) {
+        suppressClickRef.current = false;
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      snapshotSelection();
+      fn();
+    };
+    return { onPointerDown, onClick } as const;
   };
-  const onRedoClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (uiDisabled || !canRedo) return;
-    onRedo?.();
-  };
+
+  const onBold = run(applyBold);
+  const onItalic = run(applyItalic);
+  const onCode = run(applyCode);
+  const onStrike = run(applyStrike);
+  const onH = (lvl: number) => run(() => applyHeading(lvl));
+  const onQuote = run(applyQuote);
+  const onUl = run(applyUl);
+  const onOl = run(applyOl);
+  const onHr = run(applyHr);
+  const onUndoAction = (e?: React.SyntheticEvent | Event) => { e?.preventDefault?.(); if (uiDisabled || !canUndo) return; onUndo?.(); };
+  const onRedoAction = (e?: React.SyntheticEvent | Event) => { e?.preventDefault?.(); if (uiDisabled || !canRedo) return; onRedo?.(); };
+
+  // Menubar 用: Radix の onSelect は関数のみ受け付けるため、ボタン用 run は使わない
+  const onSelectBold = (e?: React.SyntheticEvent | Event) => { e?.preventDefault?.(); snapshotSelection(); applyBold(); };
+  const onSelectItalic = (e?: React.SyntheticEvent | Event) => { e?.preventDefault?.(); snapshotSelection(); applyItalic(); };
+  const onSelectCode = (e?: React.SyntheticEvent | Event) => { e?.preventDefault?.(); snapshotSelection(); applyCode(); };
+  const onSelectStrike = (e?: React.SyntheticEvent | Event) => { e?.preventDefault?.(); snapshotSelection(); applyStrike(); };
+  const onSelectHeading = (lvl: number) => (e?: React.SyntheticEvent | Event) => { e?.preventDefault?.(); snapshotSelection(); applyHeading(lvl); };
+  const onSelectQuote = (e?: React.SyntheticEvent | Event) => { e?.preventDefault?.(); snapshotSelection(); applyQuote(); };
+  const onSelectUl = (e?: React.SyntheticEvent | Event) => { e?.preventDefault?.(); snapshotSelection(); applyUl(); };
+  const onSelectOl = (e?: React.SyntheticEvent | Event) => { e?.preventDefault?.(); snapshotSelection(); applyOl(); };
+  const onSelectHr = (e?: React.SyntheticEvent | Event) => { e?.preventDefault?.(); snapshotSelection(); applyHr(); };
 
   return (
     <div
@@ -301,8 +327,8 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
           <MenubarMenu>
             <MenubarTrigger>Edit</MenubarTrigger>
             <MenubarContent>
-              <MenubarItem onMouseDown={onUndo} disabled={uiDisabled || !canUndo}>Undo</MenubarItem>
-              <MenubarItem onMouseDown={onRedo} disabled={uiDisabled || !canRedo}>Redo</MenubarItem>
+              <MenubarItem onSelect={onUndoAction} disabled={uiDisabled || !canUndo}>Undo</MenubarItem>
+              <MenubarItem onSelect={onRedoAction} disabled={uiDisabled || !canRedo}>Redo</MenubarItem>
             </MenubarContent>
           </MenubarMenu>
           <MenubarMenu>
@@ -311,25 +337,25 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
               <MenubarSub>
                 <MenubarSubTrigger>Heading</MenubarSubTrigger>
                 <MenubarSubContent>
-                  <MenubarItem onMouseDown={onH(1)} disabled={uiDisabled}>H1</MenubarItem>
-                  <MenubarItem onMouseDown={onH(2)} disabled={uiDisabled}>H2</MenubarItem>
-                  <MenubarItem onMouseDown={onH(3)} disabled={uiDisabled}>H3</MenubarItem>
-                  <MenubarItem onMouseDown={onH(4)} disabled={uiDisabled}>H4</MenubarItem>
+                  <MenubarItem onSelect={onSelectHeading(1)} disabled={uiDisabled}>H1</MenubarItem>
+                  <MenubarItem onSelect={onSelectHeading(2)} disabled={uiDisabled}>H2</MenubarItem>
+                  <MenubarItem onSelect={onSelectHeading(3)} disabled={uiDisabled}>H3</MenubarItem>
+                  <MenubarItem onSelect={onSelectHeading(4)} disabled={uiDisabled}>H4</MenubarItem>
                 </MenubarSubContent>
               </MenubarSub>
-              <MenubarItem onMouseDown={onQuote} disabled={uiDisabled}>Blockquote</MenubarItem>
-              <MenubarItem onMouseDown={onHr} disabled={uiDisabled}>Horizontal Rule</MenubarItem>
-              <MenubarItem onMouseDown={onUl} disabled={uiDisabled}>Bullet List</MenubarItem>
-              <MenubarItem onMouseDown={onOl} disabled={uiDisabled}>Ordered List</MenubarItem>
+              <MenubarItem onSelect={onSelectQuote} disabled={uiDisabled}>Blockquote</MenubarItem>
+              <MenubarItem onSelect={onSelectHr} disabled={uiDisabled}>Horizontal Rule</MenubarItem>
+              <MenubarItem onSelect={onSelectUl} disabled={uiDisabled}>Bullet List</MenubarItem>
+              <MenubarItem onSelect={onSelectOl} disabled={uiDisabled}>Ordered List</MenubarItem>
             </MenubarContent>
           </MenubarMenu>
           <MenubarMenu>
             <MenubarTrigger>Format</MenubarTrigger>
             <MenubarContent>
-              <MenubarItem onMouseDown={onBold} disabled={uiDisabled}>Bold</MenubarItem>
-              <MenubarItem onMouseDown={onItalic} disabled={uiDisabled}>Italic</MenubarItem>
-              <MenubarItem onMouseDown={onCode} disabled={uiDisabled}>Inline Code</MenubarItem>
-              <MenubarItem onMouseDown={onStrike} disabled={uiDisabled}>Strikethrough</MenubarItem>
+              <MenubarItem onSelect={onSelectBold} disabled={uiDisabled}>Bold</MenubarItem>
+              <MenubarItem onSelect={onSelectItalic} disabled={uiDisabled}>Italic</MenubarItem>
+              <MenubarItem onSelect={onSelectCode} disabled={uiDisabled}>Inline Code</MenubarItem>
+              <MenubarItem onSelect={onSelectStrike} disabled={uiDisabled}>Strikethrough</MenubarItem>
             </MenubarContent>
           </MenubarMenu>
         </Menubar>
@@ -337,13 +363,21 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
         {/* Quick toolbar (全て Button に統一) */}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
+            {/* [P2] キーボード操作を受け付けない書式ボタン
+                現状、下記の太字/斜体ボタン（および続く各書式ボタン）は onMouseDown のみで
+                ハンドラを登録しているため、フォーカス後に Space/Enter を押しても動作しません。
+                Radix の Trigger に対しても onClick（または onSelect）を実装して、
+                キーボード/スクリーンリーダー操作でも発火するようにする必要があります。
+                選択範囲保持のための onPointerDownCapture は別途維持しつつ、
+                ボタン自体は onClick を追加してアクセシビリティを担保してください。
+                （同様のパターンが上部 Menubar の Undo/Redo/Heading などにも存在） */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   size="sm"
                   variant={fmt.bold ? "secondary" : "outline"}
                   className="hover:bg-accent/20"
-                  onMouseDown={onBold}
+                  {...onBold}
                   aria-pressed={fmt.bold}
                   aria-label="Bold (⌘B)"
                   disabled={uiDisabled}
@@ -359,7 +393,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
                   size="sm"
                   variant={fmt.italic ? "secondary" : "outline"}
                   className="hover:bg-accent/20"
-                  onMouseDown={onItalic}
+                  {...onItalic}
                   aria-pressed={fmt.italic}
                   aria-label="Italic (⌘I)"
                   disabled={uiDisabled}
@@ -375,7 +409,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
                   size="sm"
                   variant={fmt.code ? "secondary" : "outline"}
                   className="hover:bg-accent/20"
-                  onMouseDown={onCode}
+                  {...onCode}
                   aria-pressed={fmt.code}
                   aria-label="Inline Code"
                   disabled={uiDisabled}
@@ -391,7 +425,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
                   size="sm"
                   variant={fmt.strike ? "secondary" : "outline"}
                   className="hover:bg-accent/20"
-                  onMouseDown={onStrike}
+                  {...onStrike}
                   aria-pressed={fmt.strike}
                   aria-label="Strikethrough"
                   disabled={uiDisabled}
@@ -410,7 +444,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
                   size="sm"
                   variant={fmt.h1 ? "secondary" : "outline"}
                   className="hover:bg-accent/20"
-                  onMouseDown={onH(1)}
+                  {...onH(1)}
                   aria-pressed={fmt.h1}
                   aria-label="Heading 1"
                   disabled={uiDisabled}
@@ -426,7 +460,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
                   size="sm"
                   variant={fmt.h2 ? "secondary" : "outline"}
                   className="hover:bg-accent/20"
-                  onMouseDown={onH(2)}
+                  {...onH(2)}
                   aria-pressed={fmt.h2}
                   aria-label="Heading 2"
                   disabled={uiDisabled}
@@ -442,7 +476,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
                   size="sm"
                   variant={fmt.quote ? "secondary" : "outline"}
                   className="hover:bg-accent/20"
-                  onMouseDown={onQuote}
+                  {...onQuote}
                   aria-pressed={fmt.quote}
                   aria-label="Blockquote"
                   disabled={uiDisabled}
@@ -458,7 +492,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
                   size="sm"
                   variant={fmt.ul ? "secondary" : "outline"}
                   className="hover:bg-accent/20"
-                  onMouseDown={onUl}
+                  {...onUl}
                   aria-pressed={fmt.ul}
                   aria-label="Bullet list"
                   disabled={uiDisabled}
@@ -474,7 +508,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
                   size="sm"
                   variant={fmt.ol ? "secondary" : "outline"}
                   className="hover:bg-accent/20"
-                  onMouseDown={onOl}
+                  {...onOl}
                   aria-pressed={fmt.ol}
                   aria-label="Ordered list"
                   disabled={uiDisabled}
@@ -486,7 +520,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button size="sm" variant="outline" className="hover:bg-accent/20" onMouseDown={onHr} disabled={uiDisabled}>
+                <Button size="sm" variant="outline" className="hover:bg-accent/20" {...onHr} disabled={uiDisabled}>
                   <Minus className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
@@ -501,7 +535,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
                 size="sm"
                 variant={previewEnabled ? "secondary" : "outline"}
                 className="hover:bg-accent/20"
-                onMouseDown={(e) => { e.preventDefault(); onPreviewToggle?.(!previewEnabled); }}
+                onClick={(e) => { e.preventDefault(); onPreviewToggle?.(!previewEnabled); }}
                 aria-pressed={!!previewEnabled}
                 aria-label="Preview"
                 disabled={uiDisabled}
@@ -518,7 +552,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
                 size="sm"
                 variant="outline"
                 className="hover:bg-accent/20"
-                onMouseDown={onUndoClick}
+                onClick={onUndoAction}
                 disabled={uiDisabled || !canUndo}
                 aria-disabled={uiDisabled || !canUndo}
               >
@@ -533,7 +567,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
                 size="sm"
                 variant="outline"
                 className="hover:bg-accent/20"
-                onMouseDown={onRedoClick}
+                onClick={onRedoAction}
                 disabled={uiDisabled || !canRedo}
                 aria-disabled={uiDisabled || !canRedo}
               >
