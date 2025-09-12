@@ -34,6 +34,7 @@ export function FullScreenEditor(props: Props) {
   const [saving, setSaving] = React.useState<"idle" | "saving" | "saved">("idle");
   const [savedAt, setSavedAt] = React.useState<string | null>(null);
   const debounceRef = React.useRef<number | null>(null);
+  const [navPending, startTransition] = React.useTransition();
 
   // 統一フォーム（カード種別ごとに分岐）
   const [form, setForm] = React.useState<SaveCardDraftInput>(() => {
@@ -104,6 +105,24 @@ export function FullScreenEditor(props: Props) {
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const previewRef = React.useRef<HTMLDivElement | null>(null);
   const [preview, setPreview] = React.useState(true);
+
+  // 進行中のデバウンスをフラッシュして即時保存するヘルパー
+  const flushDraft = React.useCallback(async () => {
+    if (debounceRef.current) {
+      window.clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    setSaving("saving");
+    const res = await saveCardDraft(form);
+    setSavedAt(res.updatedAt);
+    setSaving("saved");
+  }, [form]);
+
+  // ナビゲーション前にフラッシュしてから遷移
+  const handleBack = React.useCallback(async () => {
+    await flushDraft();
+    startTransition(() => router.push(`/courses/${props.courseId}/workspace`));
+  }, [flushDraft, router, props.courseId]);
 
   // 履歴（Undo/Redo）管理
   type Snap = { text: string; start: number; end: number };
@@ -200,7 +219,7 @@ export function FullScreenEditor(props: Props) {
       {/* ヘッダー */}
       <div className="sticky top-0 z-10 border-b bg-[hsl(var(--background))]">
         <div className="mx-auto max-w-5xl px-3 py-2 flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.push(`/courses/${props.courseId}/workspace`)}>
+          <Button variant="outline" onClick={() => void handleBack()} disabled={navPending}>
             ワークスペースに戻る
           </Button>
           <div className="flex-1" />
@@ -208,14 +227,8 @@ export function FullScreenEditor(props: Props) {
             {saving === "saving" ? "保存中…" : saving === "saved" ? (savedAt ? `保存済み（${new Date(savedAt).toLocaleTimeString()}）` : "保存済み") : "-"}
           </div>
           <Button onClick={async () => {
-            // [P1] 公開直前にデバウンス中の自動保存をフラッシュして、最新フォームを保存してから公開
-            if (debounceRef.current) {
-              window.clearTimeout(debounceRef.current);
-              debounceRef.current = null;
-            }
-            setSaving("saving");
-            const res = await saveCardDraft(form);
-            setSavedAt(res.updatedAt);
+            // [P1] 公開直前にデバウンス中の自動保存をフラッシュ
+            await flushDraft();
             await publishCard(props.cardId);
             workspaceStore.clearDraft(props.cardId);
             workspaceStore.bumpVersion();
@@ -228,16 +241,10 @@ export function FullScreenEditor(props: Props) {
       {form.cardType === "text" ? (
         <>
           <EditorToolbar
-            onBack={() => router.push(`/courses/${props.courseId}/workspace`) }
+            onBack={() => void handleBack() }
             onPublish={async () => {
               // [P1] ツールバー経由の公開でも同様にフラッシュして保存→公開
-              if (debounceRef.current) {
-                window.clearTimeout(debounceRef.current);
-                debounceRef.current = null;
-              }
-              setSaving("saving");
-              const res = await saveCardDraft(form);
-              setSavedAt(res.updatedAt);
+              await flushDraft();
               await publishCard(props.cardId);
               workspaceStore.clearDraft(props.cardId);
               workspaceStore.bumpVersion();

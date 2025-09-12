@@ -96,6 +96,94 @@ describe("FullScreenEditor (text card)", () => {
     expect(screen.getByRole("article")).toBeInTheDocument();
   });
 
+  it("flushes draft before header back navigation", async () => {
+    const user = userEvent.setup();
+    push.mockClear();
+    render(
+      <FullScreenEditor
+        courseId={"COURSE" as unknown as UUID}
+        cardId={"CARD-H" as unknown as UUID}
+        cardType="text"
+        title={null}
+        body=""
+      />
+    );
+
+    const ta = screen.getByRole("textbox", { name: "Markdown を記述…" }) as HTMLTextAreaElement;
+    await user.type(ta, "Back flush header");
+
+    // Arrange: make saveCardDraft awaitable to assert push order
+    const { saveCardDraft } = await import("@/lib/data");
+    let resolveSave: ((v: { updatedAt: string }) => void) | undefined;
+    const gate = new Promise<{ updatedAt: string }>((res) => { resolveSave = res; });
+    vi.mocked(saveCardDraft).mockImplementationOnce(async (_i: SaveCardDraftInput) => gate);
+
+    // Act: click header "ワークスペースに戻る"
+    await user.click(screen.getByRole("button", { name: "ワークスペースに戻る" }));
+
+    // Assert: draft save started and push not yet called
+    expect(saveCardDraft).toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+
+    // Resolve save and allow microtasks to flush
+    expect(resolveSave).toBeDefined();
+    resolveSave?.({ updatedAt: new Date().toISOString() });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/courses/COURSE/workspace"));
+
+    // Latest body was passed to save
+    const last = vi.mocked(saveCardDraft).mock.calls.at(-1);
+    expect(last).toBeTruthy();
+    if (last) {
+      const [args] = last as [SaveCardDraftInput];
+      expect(args).toMatchObject({ body: "Back flush header" });
+    }
+  });
+
+  it("flushes draft before toolbar Back to Workspace", async () => {
+    const user = userEvent.setup();
+    push.mockClear();
+    render(
+      <FullScreenEditor
+        courseId={"COURSE" as unknown as UUID}
+        cardId={"CARD-T" as unknown as UUID}
+        cardType="text"
+        title={null}
+        body=""
+      />
+    );
+
+    const ta = screen.getByRole("textbox", { name: "Markdown を記述…" }) as HTMLTextAreaElement;
+    await user.type(ta, "Back flush toolbar");
+
+    const { saveCardDraft } = await import("@/lib/data");
+    let resolveSave: ((v: { updatedAt: string }) => void) | undefined;
+    const gate = new Promise<{ updatedAt: string }>((res) => { resolveSave = res; });
+    vi.mocked(saveCardDraft).mockImplementationOnce(async (_i: SaveCardDraftInput) => gate);
+
+    // Open Menubar > File, click Back to Workspace
+    await user.click(screen.getByRole("menuitem", { name: "File" }));
+    await user.click(screen.getByRole("menuitem", { name: "Back to Workspace" }));
+
+    expect(saveCardDraft).toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    expect(resolveSave).toBeDefined();
+    resolveSave?.({ updatedAt: new Date().toISOString() });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/courses/COURSE/workspace"));
+    const last = vi.mocked(saveCardDraft).mock.calls.at(-1);
+    expect(last).toBeTruthy();
+    if (last) {
+      const [args] = last as [SaveCardDraftInput];
+      expect(args).toMatchObject({ body: "Back flush toolbar" });
+    }
+  });
   it("undo/redo navigates history snapshots", async () => {
     const user = userEvent.setup();
     render(
