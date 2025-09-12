@@ -247,9 +247,9 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
               <label className="block text-sm">本文</label>
               <div className="flex items-center gap-2">
                 {card && (
-                  <Link href={`/courses/${courseId}/edit/${card.id}`} className="inline-flex">
-                    <Button size="sm" variant="default">編集モードで開く</Button>
-                  </Link>
+                  <Button asChild size="sm" variant="default">
+                    <Link href={`/courses/${courseId}/edit/${card.id}`}>編集モードで開く</Link>
+                  </Button>
                 )}
                 <Button
                   size="sm"
