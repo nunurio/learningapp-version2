@@ -246,7 +246,8 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
           <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
             <DialogTrigger asChild>
               <Button size="icon" variant="ghost" aria-label="ノート" className="h-8 w-8">
-                <StickyNote className="h-4 w-4" />
+                {/* メモが存在する場合は目立つ色で塗りつぶし */}
+                <StickyNote className={note && note.trim().length > 0 ? "h-4 w-4 fill-current text-sky-500" : "h-4 w-4"} />
               </Button>
             </DialogTrigger>
             <DialogContent>

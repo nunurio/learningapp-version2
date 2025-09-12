@@ -18,7 +18,7 @@ export const ShadSelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-9 w-[220px] items-center justify-between rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2 text-sm text-[hsl(var(--fg))] shadow-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] disabled:cursor-not-allowed disabled:opacity-60",
+      "flex h-9 w-[220px] items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring ring-offset-background focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
       className
     )}
     {...props}
@@ -40,7 +40,7 @@ export const ShadSelectContent = React.forwardRef<
       ref={ref}
       position={position}
       className={cn(
-        "z-50 min-w-[12rem] overflow-hidden rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--fg))] shadow-md",
+        "z-50 min-w-[12rem] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md",
         className
       )}
       {...props}
@@ -74,4 +74,3 @@ export const ShadSelectItem = React.forwardRef<
   </SelectPrimitive.Item>
 ));
 ShadSelectItem.displayName = SelectPrimitive.Item.displayName;
-

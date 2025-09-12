@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { Card as CardModel, Progress, QuizCardContent, FillBlankCardContent, TextCardContent, UUID } from "@/lib/types";
-import { snapshot as fetchSnapshot, saveProgress as saveProgressApi } from "@/lib/client-api";
+import * as clientApi from "@/lib/client-api";
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext, type CarouselApi } from "@/components/ui/carousel";
 import { Progress as LinearProgress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,10 @@ import { Input } from "@/components/ui/input";
 import { QuizOption } from "@/components/player/QuizOption";
 import { Card, CardContent } from "@/components/ui/card";
 import MarkdownView from "@/components/markdown/MarkdownView";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Star, StickyNote, HelpCircle } from "lucide-react";
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 type Props = {
   courseId: UUID;
@@ -32,6 +36,10 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
   const [levels, setLevels] = React.useState<Record<string, number | undefined>>({});
   const [quizSel, setQuizSel] = React.useState<Record<string, number | null>>({});
   const [fillAns, setFillAns] = React.useState<Record<string, Record<string, string>>>({});
+  const [flagged, setFlagged] = React.useState<Set<UUID>>(new Set());
+  const [notes, setNotes] = React.useState<Record<string, string | undefined>>({});
+  const [noteOpenFor, setNoteOpenFor] = React.useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = React.useState<string>("");
 
   // 画面下端までの最大高さを計測してセット（スライダー領域を差し引く）
   const measureLayout = React.useCallback(() => {
@@ -59,7 +67,7 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      const snap = await fetchSnapshot();
+      const snap = await clientApi.snapshot();
       if (!mounted) return;
       const lessons = snap.lessons.filter((l) => l.courseId === courseId);
       const lessonOrder = new Map<string, number>(lessons.map((l) => [l.id, l.orderIndex] as const));
@@ -131,8 +139,23 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
       setQuizSel(initQuizSel);
       setFillAns(initFillAns);
 
+      // ノート初期化（スナップショットから）
+      const noteMap: Record<string, string | undefined> = {};
+      for (const n of snap.notes) {
+        noteMap[n.cardId] = n.text;
+      }
+      setNotes(noteMap);
+
       setCards(effectiveCards);
       setActive(startIndex);
+
+      // フラグ済みをロード（コース単位）
+      let ids: UUID[] = [] as UUID[];
+      if ("listFlaggedByCourse" in clientApi) {
+        ids = await (clientApi as unknown as { listFlaggedByCourse: (cid: UUID) => Promise<UUID[]> }).listFlaggedByCourse(courseId);
+      }
+      if (!mounted) return;
+      setFlagged(new Set(ids));
     })();
     return () => { mounted = false; };
   }, [courseId, initialCardId, initialLessonId]);
@@ -222,7 +245,7 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
       .catch((e) => { console.error("saveProgress queue previous failed:", e); })
       .then(async () => {
         try {
-          await saveProgressApi({ ...input, answer: mergedAnswer });
+          await clientApi.saveProgress({ ...input, answer: mergedAnswer });
         } catch (e) {
           console.error("saveProgress failed:", e);
         }
@@ -245,12 +268,18 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
         <Carousel
           className="w-full max-w-2xl mx-auto px-2 sm:px-4"
           setApi={setApi}
-          opts={{ align: "start", loop: false }}
+          opts={{ align: "center", loop: false }}
         >
-          <CarouselContent className="-ml-4">
+          <CarouselContent
+            viewportClassName="py-3 sm:py-5"
+            className="ml-0 mr-0"
+          >
             {cards.map((card) => (
-              <CarouselItem key={card.id} className="pl-4">
-                <Card className="rounded-xl">
+              <CarouselItem key={card.id} className="px-4 sm:px-6">
+                <Card
+                  variant="elevated"
+                  className="rounded-2xl shadow-[0_10px_24px_-16px_hsl(0_0%_0%/0.22),0_4px_12px_-8px_hsl(0_0%_0%/0.14)] hover:shadow-[0_16px_36px_-20px_hsl(0_0%_0%/0.28),0_8px_18px_-10px_hsl(0_0%_0%/0.16)]"
+                >
                   <CardContent
                     className="p-6 min-h-[340px] sm:min-h-[440px] md:min-h-[500px] flex flex-col"
                     style={maxBodyHeight != null ? {
@@ -261,10 +290,103 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
                       overflowY: "auto",
                     } : undefined}
                   >
-                    {/* タイトル */}
-                    <div className="mb-3">
-                      <span className="px-2 py-1 rounded bg-black/5 text-xs">{card.cardType}</span>
-                      {card.title ? <span className="ml-2 font-medium">{card.title}</span> : null}
+                    {/* タイトル + アクション */}
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <span className="px-2 py-1 rounded bg-black/5 text-xs">{card.cardType}</span>
+                        {card.title ? <span className="ml-2 font-medium">{card.title}</span> : null}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          aria-label={flagged.has(card.id) ? "フラグ解除" : "フラグ"}
+                          onClick={async () => {
+                            let on = false;
+                            if ("toggleFlag" in clientApi) {
+                              on = await (clientApi as unknown as { toggleFlag: (id: UUID) => Promise<boolean> }).toggleFlag(card.id);
+                            }
+                            setFlagged((s) => {
+                              const copy = new Set(s);
+                              if (on) copy.add(card.id); else copy.delete(card.id);
+                              return copy;
+                            });
+                          }}
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                        >
+                          <Star className={flagged.has(card.id) ? "h-4 w-4 fill-current text-yellow-500" : "h-4 w-4"} />
+                        </Button>
+                        <Dialog
+                          open={noteOpenFor === card.id}
+                          onOpenChange={async (open) => {
+                            if (open) {
+                              setNoteOpenFor(card.id);
+                              // 未取得の場合のみ取得
+                              let existing = notes[card.id];
+                              if (typeof existing === "undefined") {
+                                try {
+                                  if ("getNote" in clientApi) {
+                                    existing = (await (clientApi as unknown as { getNote: (id: UUID) => Promise<string | undefined> }).getNote(card.id)) ?? "";
+                                  } else {
+                                    existing = "";
+                                  }
+                                } catch { existing = ""; }
+                              }
+                              setNoteDraft(existing ?? "");
+                            } else {
+                              setNoteOpenFor(null);
+                            }
+                          }}
+                        >
+                          <DialogTrigger asChild>
+                            <Button size="icon" variant="ghost" aria-label="ノート" className="h-8 w-8">
+                              <StickyNote className={(notes[card.id] && (notes[card.id] ?? "").trim().length > 0) ? "h-4 w-4 fill-current text-sky-500" : "h-4 w-4"} />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>ノート</DialogTitle>
+                              <DialogDescription>このカードのメモを保存</DialogDescription>
+                            </DialogHeader>
+                            <Textarea value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} placeholder="メモ…" />
+                            <div className="mt-3 flex justify-end">
+                              <Button
+                                onClick={async () => {
+                                  if ("saveNote" in clientApi) {
+                                    await (clientApi as unknown as { saveNote: (id: UUID, text: string) => Promise<void> }).saveNote(card.id, noteDraft);
+                                  }
+                                  setNotes((m) => ({ ...m, [card.id]: noteDraft }));
+                                  setNoteOpenFor(null);
+                                }}
+                                variant="default"
+                              >保存</Button>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+
+                        {/* 学習モード用ヘルプ（Tooltip） */}
+                        <TooltipProvider delayDuration={100}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="icon" variant="ghost" aria-label="ヘルプ" className="h-8 w-8">
+                                <HelpCircle className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" align="end" className="max-w-xs">
+                              <div className="space-y-1">
+                                <p className="font-medium">学習モードの使い方</p>
+                                <ul className="list-disc list-inside text-[11px] leading-snug">
+                                  <li>左右の矢印／スワイプでカード移動</li>
+                                  <li>クイズ/穴埋めは「Check」後に理解度を選択</li>
+                                  <li>理解度が3以上で完了として保存</li>
+                                  <li>★で要復習に追加、付箋でメモ保存</li>
+                                  <li>右上ボタンでワークスペースに戻る</li>
+                                </ul>
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
                     </div>
                     {/* カード本文 */}
                     <div className="text-[15px]">

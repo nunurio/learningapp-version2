@@ -15,8 +15,7 @@ export const TooltipContent = React.forwardRef<
     ref={ref}
     sideOffset={sideOffset}
     className={cn(
-      // 明示的に不透明な背景/前景トークンを使用
-      "z-50 overflow-hidden rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--bg))] px-2 py-1 text-xs text-[hsl(var(--fg))] shadow-lg",
+      "z-50 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground px-2 py-1 text-xs shadow-md",
       className
     )}
     {...props}

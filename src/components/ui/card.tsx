@@ -9,7 +9,18 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, variant = "default", ...props }, ref) => {
     const variantStyles = {
       default: "border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm",
-      elevated: "bg-[hsl(var(--card))] shadow-lg hover:shadow-xl transition-shadow duration-300",
+      elevated:
+        [
+          // base surface
+          "relative isolate border border-[hsl(var(--border))] bg-[hsl(var(--card))]",
+          // soft depth shadow (matches dashboard screenshot tone)
+          "shadow-[0_16px_40px_-20px_hsl(0_0%_0%/0.25),0_6px_18px_-8px_hsl(0_0%_0%/0.12)]",
+          // hover depth
+          "hover:shadow-[0_24px_60px_-24px_hsl(0_0%_0%/0.35),0_10px_24px_-10px_hsl(0_0%_0%/0.18)]",
+          "transition-shadow duration-300",
+          // subtle inner highlight for crisp edge
+          "before:content-[''] before:absolute before:inset-0 before:pointer-events-none before:shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:before:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
+        ].join(" "),
       glass: "bg-white/10 backdrop-blur-md border border-white/20 shadow-xl",
       gradient: "bg-gradient-to-br from-[hsl(var(--card))] to-[hsl(var(--accent))] border border-[hsl(var(--border))]/50 shadow-md",
       interactive: "border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-pointer",
