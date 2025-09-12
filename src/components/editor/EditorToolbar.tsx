@@ -68,12 +68,23 @@ function wrapOrUnwrap(
   markRight = markLeft
 ) {
   const selected = src.slice(selStart, selEnd);
-  const has = selected.startsWith(markLeft) && selected.endsWith(markRight);
-  if (has) {
+  const aroundLeft = src.slice(Math.max(0, selStart - markLeft.length), selStart);
+  const aroundRight = src.slice(selEnd, selEnd + markRight.length);
+  const hasInline = selected.startsWith(markLeft) && selected.endsWith(markRight);
+  const hasAround = aroundLeft === markLeft && aroundRight === markRight;
+  if (hasInline) {
     const unwrapped = selected.slice(markLeft.length, selected.length - markRight.length);
     const text = replaceRange(src, selStart, selEnd, unwrapped);
     const nextStart = selStart;
     const nextEnd = selStart + unwrapped.length;
+    return { text, nextStart, nextEnd };
+  }
+  if (hasAround) {
+    const fullStart = selStart - markLeft.length;
+    const fullEnd = selEnd + markRight.length;
+    const text = replaceRange(src, fullStart, fullEnd, selected);
+    const nextStart = fullStart;
+    const nextEnd = fullStart + selected.length;
     return { text, nextStart, nextEnd };
   }
   const wrapped = markLeft + selected + markRight;
@@ -215,11 +226,11 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
     (fn: (v: string, start: number, end: number) => { text: string; nextStart: number; nextEnd: number }) => {
       const ta = textareaRef.current;
       if (!ta) return;
-      // 先に現在の選択/スナップショットを解決
+      // クリック直前に onPointerDownCapture で保存したスナップショットを最優先で使う
+      // （RAF による選択復元やフォーカス移動によるレースを避ける）
       const cur = getSelection(ta);
-      const active = typeof document !== "undefined" ? (document.activeElement as Element | null) : null;
-      const useSnap = (active && active !== ta) || (cur.start === cur.end && lastSelRef.current && lastSelRef.current.start !== lastSelRef.current.end);
-      const { start, end } = useSnap && lastSelRef.current ? lastSelRef.current : cur;
+      const snap = lastSelRef.current;
+      const { start, end } = snap ?? cur;
       const { text, nextStart, nextEnd } = fn(value, start, end);
       // onApplyがあれば履歴管理含めて親で処理
       if (onApply) {
@@ -228,8 +239,10 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
         onChange(text);
         requestAnimationFrame(() => {
           try {
-            ta.setSelectionRange(nextStart, nextEnd);
-            ta.focus();
+            if (typeof document !== "undefined" && document.activeElement === ta) {
+              ta.setSelectionRange(nextStart, nextEnd);
+              ta.focus();
+            }
           } catch {}
         });
       }
@@ -256,8 +269,16 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
   const onUl = (e: React.MouseEvent) => { e.preventDefault(); applyUl(); };
   const onOl = (e: React.MouseEvent) => { e.preventDefault(); applyOl(); };
   const onHr = (e: React.MouseEvent) => { e.preventDefault(); applyHr(); };
-  const onUndoClick = (e: React.MouseEvent) => { e.preventDefault(); onUndo?.(); };
-  const onRedoClick = (e: React.MouseEvent) => { e.preventDefault(); onRedo?.(); };
+  const onUndoClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (uiDisabled || !canUndo) return;
+    onUndo?.();
+  };
+  const onRedoClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (uiDisabled || !canRedo) return;
+    onRedo?.();
+  };
 
   return (
     <div
@@ -280,8 +301,8 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
           <MenubarMenu>
             <MenubarTrigger>Edit</MenubarTrigger>
             <MenubarContent>
-              <MenubarItem onMouseDown={onUndo} disabled={uiDisabled}>Undo</MenubarItem>
-              <MenubarItem onMouseDown={onRedo} disabled={uiDisabled}>Redo</MenubarItem>
+              <MenubarItem onMouseDown={onUndo} disabled={uiDisabled || !canUndo}>Undo</MenubarItem>
+              <MenubarItem onMouseDown={onRedo} disabled={uiDisabled || !canRedo}>Redo</MenubarItem>
             </MenubarContent>
           </MenubarMenu>
           <MenubarMenu>
@@ -493,7 +514,14 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="sm" variant="outline" className="hover:bg-accent/20" onMouseDown={onUndoClick} disabled={uiDisabled}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="hover:bg-accent/20"
+                onMouseDown={onUndoClick}
+                disabled={uiDisabled || !canUndo}
+                aria-disabled={uiDisabled || !canUndo}
+              >
                 <Undo className="h-4 w-4 mr-1" /> Undo
               </Button>
             </TooltipTrigger>
@@ -501,7 +529,14 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="sm" variant="outline" className="hover:bg-accent/20" onMouseDown={onRedoClick} disabled={uiDisabled}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="hover:bg-accent/20"
+                onMouseDown={onRedoClick}
+                disabled={uiDisabled || !canRedo}
+                aria-disabled={uiDisabled || !canRedo}
+              >
                 <Redo className="h-4 w-4 mr-1" /> Redo
               </Button>
             </TooltipTrigger>
