@@ -189,9 +189,11 @@ export function FullScreenEditor(props: Props) {
       const target = ratio * Math.max(0, pv.scrollHeight - pv.clientHeight);
       pv.scrollTop = target;
     };
-    ta.addEventListener("scroll", onScroll);
-    return () => ta.removeEventListener("scroll", onScroll);
-  }, [textareaRef.current, previewRef.current]);
+    // 初期表示で位置を同期しておく（プレビュー再表示時など）
+    onScroll();
+    ta.addEventListener("scroll", onScroll, { passive: true });
+    return () => ta.removeEventListener("scroll", onScroll as EventListener);
+  }, [preview]);
 
   return (
     <div className="h-screen w-full flex flex-col">
