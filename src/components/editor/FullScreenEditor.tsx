@@ -232,6 +232,7 @@ export function FullScreenEditor(props: Props) {
                       value={form.body ?? ""}
                       onChange={(e) => applyText(e.target.value, e.currentTarget.selectionStart ?? 0, e.currentTarget.selectionEnd ?? 0)}
                       placeholder="Markdown を記述…"
+                      aria-label="Markdown を記述…"
                     />
                   </div>
                   <div ref={previewRef} className="h-[60vh] min-h-[60vh] overflow-auto p-4 bg-[hsl(var(--background))]">
@@ -245,6 +246,7 @@ export function FullScreenEditor(props: Props) {
                   value={form.body ?? ""}
                   onChange={(e) => applyText(e.target.value, e.currentTarget.selectionStart ?? 0, e.currentTarget.selectionEnd ?? 0)}
                   placeholder="Markdown を記述…"
+                  aria-label="Markdown を記述…"
                 />
               )}
             </div>

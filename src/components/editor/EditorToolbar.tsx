@@ -166,7 +166,8 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
     };
     setFmt({
       bold: hasWrap("**"),
-      italic: hasWrap("*"),
+      // 太字(**)のみを斜体(*)と誤判定しないよう相互排他にする
+      italic: hasWrap("*") && !hasWrap("**"),
       code: hasWrap("`"),
       strike: hasWrap("~~"),
       quote: /^>\s/.test(line),

@@ -44,7 +44,8 @@ describe("FullScreenEditor (text card)", () => {
         body=""
       />
     );
-    const ta = screen.getByRole("textbox") as HTMLTextAreaElement;
+    // Editor の textarea をアクセシブル名で特定（タイトル/タグ input と区別）
+    const ta = screen.getByRole("textbox", { name: "Markdown を記述…" }) as HTMLTextAreaElement;
     await user.type(ta, "Hello Markdown");
 
     // advance debounce (500ms)
@@ -106,7 +107,7 @@ describe("FullScreenEditor (text card)", () => {
         body=""
       />
     );
-    const ta = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const ta = screen.getByRole("textbox", { name: "Markdown を記述…" }) as HTMLTextAreaElement;
 
     // type two snapshots
     await user.type(ta, "Hello");
