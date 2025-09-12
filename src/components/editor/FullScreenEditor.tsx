@@ -206,6 +206,14 @@ export function FullScreenEditor(props: Props) {
             {saving === "saving" ? "保存中…" : saving === "saved" ? (savedAt ? `保存済み（${new Date(savedAt).toLocaleTimeString()}）` : "保存済み") : "-"}
           </div>
           <Button onClick={async () => {
+            // [P1] 公開直前にデバウンス中の自動保存をフラッシュして、最新フォームを保存してから公開
+            if (debounceRef.current) {
+              window.clearTimeout(debounceRef.current);
+              debounceRef.current = null;
+            }
+            setSaving("saving");
+            const res = await saveCardDraft(form);
+            setSavedAt(res.updatedAt);
             await publishCard(props.cardId);
             workspaceStore.clearDraft(props.cardId);
             workspaceStore.bumpVersion();
@@ -220,6 +228,14 @@ export function FullScreenEditor(props: Props) {
           <EditorToolbar
             onBack={() => router.push(`/courses/${props.courseId}/workspace`) }
             onPublish={async () => {
+              // [P1] ツールバー経由の公開でも同様にフラッシュして保存→公開
+              if (debounceRef.current) {
+                window.clearTimeout(debounceRef.current);
+                debounceRef.current = null;
+              }
+              setSaving("saving");
+              const res = await saveCardDraft(form);
+              setSavedAt(res.updatedAt);
               await publishCard(props.cardId);
               workspaceStore.clearDraft(props.cardId);
               workspaceStore.bumpVersion();
