@@ -92,8 +92,22 @@ function toggleLinesPrefix(src: string, selStart: number, selEnd: number, prefix
   const effectiveEnd = endLineIdx === selEnd - 1 ? selEnd : (endLineIdx >= selEnd ? endLineIdx : src.length);
   const block = src.slice(startLineIdx, effectiveEnd);
   const lines = block.split(/\n/);
-  const allPrefixed = lines.every((l) => l.startsWith(prefix));
-  const nextLines = lines.map((l) => (allPrefixed ? l.replace(new RegExp("^" + prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), "") : prefix + l));
+  // 番号付きリスト(ordered list)は "1. " で判定せず、任意の数字プレフィックスを検出/除去する
+  const isOrdered = prefix === "1. ";
+  const orderedPattern = /^\d+\.\s/;
+  const allPrefixed = isOrdered
+    ? lines.every((l) => orderedPattern.test(l))
+    : lines.every((l) => l.startsWith(prefix));
+  const nextLines = lines.map((l, i) => {
+    if (allPrefixed) {
+      // 解除フェーズ
+      if (isOrdered) return l.replace(orderedPattern, "");
+      const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return l.replace(new RegExp("^" + esc), "");
+    }
+    // 適用フェーズ（番号は現状 1. で統一。連番は別要件）
+    return prefix + l;
+  });
   const replaced = nextLines.join("\n");
   const text = src.slice(0, startLineIdx) + replaced + src.slice(effectiveEnd);
   // ざっくり選択継続（先頭行へ）
