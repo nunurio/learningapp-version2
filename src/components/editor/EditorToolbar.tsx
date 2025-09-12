@@ -178,9 +178,11 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
     });
   }, [textareaRef, value]);
 
-  React.useEffect(() => { computeFormat(); }, [computeFormat]);
+  // textarea の差し替え（プレビュー切替やタブ移動）でも再計算・再登録されるよう
+  // 参照そのものではなく現在の要素ノード `ta` を依存に使う
+  const ta = textareaRef.current;
+  React.useEffect(() => { computeFormat(); }, [computeFormat, ta]);
   React.useEffect(() => {
-    const ta = textareaRef.current;
     if (!ta) return;
     const handler: EventListener = () => { snapshotSelection(); computeFormat(); };
     ta.addEventListener("keyup", handler);
@@ -193,7 +195,7 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
       ta.removeEventListener("input", handler);
       ta.removeEventListener("select", handler);
     };
-  }, [textareaRef, computeFormat, snapshotSelection]);
+  }, [ta, computeFormat, snapshotSelection]);
 
   const withSelection = React.useCallback(
     (fn: (v: string, start: number, end: number) => { text: string; nextStart: number; nextEnd: number }) => {
