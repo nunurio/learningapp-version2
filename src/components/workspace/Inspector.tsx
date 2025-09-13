@@ -32,6 +32,8 @@ import { SortableList } from "@/components/dnd/SortableList";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { saveCardDraft, loadCardDraft, publishCard, type SaveCardDraftInput } from "@/lib/data";
 import { workspaceStore, useWorkspace } from "@/lib/state/workspace-store";
+import Link from "next/link";
+// Milkdown 削除に伴い自家製エディタへ移行（Inspectorでは素のTextareaを使用）
 
 type Props = {
   courseId: UUID;
@@ -60,6 +62,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   const [selectedIndexes, setSelectedIndexes] = React.useState<Record<string, Record<number, boolean>>>({});
   // fill-blank 回答の一時テキスト（未完成行の入力を保持）
   const [answersText, setAnswersText] = React.useState<string>("");
+  const [richMode, setRichMode] = React.useState(false);
 
   const refreshLists = React.useCallback(async function refreshLists() {
     const snap = await fetchSnapshot();
@@ -92,6 +95,8 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
       if (!card) { setForm(null); return; }
       const draft = await loadCardDraft(card.id);
       if (!mounted) return;
+      // カード切替時は素のMarkdown編集に戻す
+      setRichMode(false);
       if (draft) {
         setForm(draft);
         workspaceStore.setDraft(draft);
@@ -237,15 +242,49 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
             />
           </div>
           {form.cardType === "text" && (
-            <div>
-              <label className="block text-sm mb-1">本文</label>
-              <Textarea value={form.cardType === "text" ? form.body : ""} onChange={(e) => setForm((f) => {
-                if (!f || f.cardType !== "text") return f;
-                const next = { ...f, body: e.target.value } as SaveCardDraftInput;
-                workspaceStore.setDraft(next);
-                return next;
-              })} />
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-sm">本文</label>
+              <div className="flex items-center gap-2">
+                {card && (
+                  <Button asChild size="sm" variant="default">
+                    <Link href={`/courses/${courseId}/edit/${card.id}`}>編集モードで開く</Link>
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRichMode((v) => !v)}
+                  aria-pressed={richMode}
+                >
+                  {richMode ? "素のMarkdown" : "軽量編集"}
+                </Button>
+              </div>
             </div>
+            {richMode ? (
+              <Textarea
+                value={form.body ?? ""}
+                onChange={(e) => setForm((f) => {
+                  if (!f || f.cardType !== "text") return f;
+                  const next = { ...f, body: e.target.value } as SaveCardDraftInput;
+                  workspaceStore.setDraft(next);
+                  return next;
+                })}
+                placeholder="Markdown を記述…"
+              />
+            ) : (
+              <Textarea
+                value={form.body ?? ""}
+                onChange={(e) => setForm((f) => {
+                  if (!f || f.cardType !== "text") return f;
+                  const next = { ...f, body: e.target.value } as SaveCardDraftInput;
+                  workspaceStore.setDraft(next);
+                  return next;
+                })}
+                placeholder="Markdown を記述…"
+              />
+            )}
+          </div>
           )}
           {form.cardType === "quiz" && (
             <div className="grid grid-cols-1 gap-2">

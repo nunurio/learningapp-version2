@@ -78,6 +78,25 @@
   --radius-xl: 1rem;
   --radius-2xl: 1.5rem;
   --radius-full: 9999px;
+
+  /* shadcn/ui compatibility aliases (map project tokens → shadcn tokens) */
+  /* Base */
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --border: var(--border);
+  --input: var(--border);
+  --ring: var(--primary);
+  /* Surfaces */
+  --card-foreground: var(--fg);
+  --popover: var(--bg);
+  --popover-foreground: var(--fg);
+  /* Accents */
+  --primary-foreground: var(--primary-fg);
+  --secondary: var(--secondary-500);
+  --secondary-foreground: var(--primary-fg);
+  --accent-foreground: var(--fg);
+  --muted-foreground: var(--fg);
+  --destructive-foreground: var(--primary-fg);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -99,6 +118,22 @@
     --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(221 83% 70%) 100%);
     --gradient-card: linear-gradient(180deg, hsl(222 84% 8%) 0%, hsl(222 84% 5%) 100%);
     --gradient-hero: linear-gradient(135deg, hsl(217 91% 60% / 20%) 0%, hsl(221 83% 70% / 20%) 100%);
+
+    /* shadcn/ui compatibility aliases (dark) */
+    --background: var(--bg);
+    --foreground: var(--fg);
+    --border: var(--border);
+    --input: var(--border);
+    --ring: var(--primary);
+    --card-foreground: var(--fg);
+    --popover: var(--bg);
+    --popover-foreground: var(--fg);
+    --primary-foreground: var(--primary-fg);
+    --secondary: var(--secondary-500);
+    --secondary-foreground: var(--primary-fg);
+    --accent-foreground: var(--fg);
+    --muted-foreground: var(--fg);
+    --destructive-foreground: var(--primary-fg);
   }
 }
 
@@ -344,6 +379,32 @@ body {
   transform: translateY(-4px);
   box-shadow: var(--shadow-xl);
   background: var(--gradient-card);
+}
+
+/* --- Markdown list fixes -------------------------------------------------- */
+/* Tailwind Preflight resets remove list markers. Restore them inside
+   our markdown wrapper (used by ReactMarkdown with GitHub style). */
+:where(.markdown-body) ul,
+:where(.markdown-body) ol {
+  list-style: revert;
+  padding-left: 1.5rem;
+}
+
+/* Keep nested lists compact and preserve markers */
+:where(.markdown-body) ul ul,
+:where(.markdown-body) ul ol,
+:where(.markdown-body) ol ul,
+:where(.markdown-body) ol ol {
+  margin-top: 0;
+  margin-bottom: 0;
+  list-style: inherit;
+}
+
+/* Remove underline/border under #, ## headings in preview */
+:where(.markdown-body) h1,
+:where(.markdown-body) h2 {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
 }
 
 /* --- Modern Button Styles ---------------------------------------- */

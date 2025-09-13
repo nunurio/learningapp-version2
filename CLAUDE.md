@@ -11,6 +11,8 @@
 - `pnpm build`: production build (Turbopack enabled).
 - `pnpm start`: run the built app.
 - `pnpm lint`: run ESLint (Next.js + TypeScript rules).
+- `pnpm test`: run unit/component tests (Vitest + React Testing Library).
+- `pnpm test:e2e`: run E2E tests (Playwright).
 
 ## Coding Style & Naming Conventions
 - Language: TypeScript (strict). Prefer functional React components and hooks. Use `"use client"` only when required.
@@ -19,18 +21,18 @@
 - Routes/components: follow Next’s `page.tsx`/`layout.tsx` convention and lower‑case directory names (e.g., `courses/plan`).
 
 ## Testing Guidelines
-- No tests yet in this repo. If adding, prefer Vitest + React Testing Library.
-- Naming: co‑locate as `*.test.ts` or `*.test.tsx` next to the file under test.
-- Scope: unit test `src/lib/*` (e.g., lesson/card ordering) and component behavior for key flows (add/delete/reorder).
+- Tests are present in this repo: Vitest + React Testing Library for unit/component tests, and Playwright for E2E.
+- Naming: co‑locate as `*.test.ts` or `*.test.tsx` next to the file under test. E2E lives under `e2e/`.
+- Scope: unit tests for `src/lib/*` and key component flows (add/delete/reorder), plus E2E coverage for main user journeys.
 
 ## Commit & Pull Request Guidelines
 - Commits: history has no established convention; use Conventional Commits (e.g., `feat:`, `fix:`, `chore:`) and keep changes focused.
 - PRs: include purpose, linked issue, and screenshots/GIFs for UI changes. Ensure `pnpm lint` and `pnpm build` pass locally.
 
 ## Security & Configuration Tips
-- Data persistence: The app now uses Supabase + Server Actions. No local `localStorage`-backed DB. Use Supabase dashboard to inspect/clear data during development.
+- Data persistence: Supabase + Server Actions. No `localStorage`-backed DB; inspect/clear via Supabase when needed.
 - Environment: no secrets required for the mock setup. If introducing env vars, use `.env.local` (ignored) and the `NEXT_PUBLIC_` prefix only for values intentionally exposed to the client.
-- Supabase (planned): `src/lib/supabase/*` exists for future use. If you enable it, configure keys in `.env.local` and never expose secrets under `NEXT_PUBLIC_` unless they are safe for the client.
+- Supabase: implemented (`src/lib/supabase/*`). Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env.local`. These are safe for the client; do not expose any server-only keys.
 
 ## Directory Structure (normalized from requirements.md)
 We normalize the "Directory Example" from requirements.md under `src/` (including future expansions).
@@ -38,27 +40,36 @@ We normalize the "Directory Example" from requirements.md under `src/` (includin
 ```
 src/
   app/
-    (auth)/
-      login/
-      signup/
-      reset-password/
-    (dashboard)/
+    api/
+      ai/
+        outline/route.ts
+        lesson-cards/route.ts
+        lesson-cards/plan/route.ts
+      db/route.ts
+    auth/
+      callback/route.ts
+      confirm/route.ts
+      reset-password/page.tsx
+    dashboard/
       page.tsx
     courses/
       new/page.tsx
       plan/page.tsx
       [courseId]/page.tsx
       [courseId]/lessons/[lessonId]/page.tsx
+      [courseId]/edit/[cardId]/page.tsx
+      [courseId]/workspace/page.tsx
     learn/
       [courseId]/page.tsx
-    api/
-      ai/
-        outline/route.ts
-        lesson-cards/route.ts
+    login/
+      page.tsx
+    layout.tsx
+    globals.css
   lib/
     supabase/
       server.ts
-      browser.ts
+      client.ts
+      middleware.ts
     ai/
       schema.ts
       prompt.ts
@@ -76,14 +87,19 @@ src/
     ai.ts
     progress.ts
   components/
-    cards/
-    forms/
+    ai/
+    dnd/
+    editor/
+    hooks/
+    markdown/
+    player/
     ui/
-public/
+    workspace/
+  public/
 ```
 
 Notes:
-- `src/app` uses the Next.js App Router. Follow the `page.tsx`/`layout.tsx` convention and use `[param]` for dynamic segments.
+- `src/app` uses the Next.js App Router. Follow the `page.tsx`/`layout.tsx` convention and use `[param]` for dynamic segments. Route groups like `(auth)`/`(dashboard)` are optional and not currently used.
 
 ## Next.js 15 + TypeScript Best Practices (for gpt-5, concise)
 
@@ -97,7 +113,7 @@ These rules apply to this repo (App Router, strict TypeScript) and should be fol
 - **Type-safe I/O:** Treat external input as `unknown` and validate with Zod (or similar). Derive types via `z.infer` for a single source of truth.
 - **Props design:** Do not use `React.FC`. Type the function signature. Declare `children?: React.ReactNode`. Pass only JSON-serializable values across the RSC↔Client boundary.
 - **API (Route Handlers):** `app/api/**/route.ts` runs on the server. Define input/output schemas. Return with `NextResponse.json()`. For errors, return `new Response(body, { status })`.
-- **Styling:** Keep global CSS minimal. Prefer CSS Modules or small utility classes. Co-locate styles with components.
+- **Styling:** Keep global CSS minimal. Prefer shadcn/ui components wherever possible (under `src/components/ui`). Use CSS Modules or small utility classes when needed. Co-locate styles with components. If a required shadcn/ui component or dependency is missing, proactively install it with `pnpm add`.
 - **Performance:** Use `next/image` and `next/font`. Use `Suspense` for streaming/skeletons. Consider `dynamic(() => import(...), { ssr: false })` for heavy client-only deps.
 - **Navigation:** Use `Link` for internal navigation. Respect `prefetch` defaults and tune when necessary.
 - **Accessibility/SEO:** Provide `export const metadata`. Use semantic HTML, alt text, and proper labels.
