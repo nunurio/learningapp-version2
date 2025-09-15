@@ -108,3 +108,20 @@ export type AiDraft = {
   payload: CoursePlan | LessonCards;
   createdAt: string; // ISO
 };
+
+// --- Chat ------------------------------------------------------------
+export type ChatThread = {
+  id: UUID;
+  title: string;
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+  lastMessageSnippet?: string;
+};
+
+export type ChatMessage = {
+  id: UUID;
+  threadId: UUID;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string; // ISO
+};

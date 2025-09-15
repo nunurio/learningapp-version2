@@ -2,8 +2,8 @@ import { z } from "zod";
 import { NextResponse } from "next/server";
 import { buildPageContextText, redactText, limitChars } from "@/lib/utils/redact";
 import { parseJsonWithQuery } from "@/lib/utils/request";
-import { initAgents } from "@/lib/ai/agents/index";
-import { Runner, Agent } from "@openai/agents";
+import { initAgents, runner } from "@/lib/ai/agents/index";
+import { Agent, user, assistant as assistantMsg, system } from "@openai/agents";
 import { CHAT_INSTRUCTIONS } from "@/lib/ai/agents/chat";
 import type { Readable } from "stream";
 
@@ -23,8 +23,7 @@ const RequestSchema = z.object({
     })
     .nullable()
     .optional(),
-  // Chat 履歴を受け取る（Agents SDK へそのまま渡す）。
-  // UI 側で user/assistant の順序を維持して送る想定。
+  // Chat 履歴を受け取る（UI 側で user/assistant の順序を維持して送る想定）。
   history: z
     .array(
       z.object({
@@ -67,7 +66,7 @@ export async function POST(req: Request) {
     const pageText = input.includePage ? buildPageContextText(input.page ?? undefined) : null;
     const userText = limitChars(redactText(input.message ?? ""), 800);
     // 直近の履歴を軽く整形（伏せ字 + 文字数制限 + 空要素除去）。
-    const history = Array.isArray(input.history)
+    const normalizedHistory = Array.isArray(input.history)
       ? input.history
           .filter((m) => m && typeof m.content === "string" && m.content.trim().length > 0)
           .slice(-12) // 直近のみ（トークン節約）
@@ -133,13 +132,15 @@ export async function POST(req: Request) {
               controller.enqueue(encoder.encode(chunk));
             }
             controller.close();
+            // 完了後に確実に保存（レースを避ける）
+            if (threadId && assistantText.trim()) {
+              await persistAssistantMessage(threadId!, assistantText);
+            }
           } catch (err) {
             try { controller.error(err); } catch {}
           }
         },
       });
-      // 後追いで保存
-      (async () => { if (threadId && assistantText) await persistAssistantMessage(threadId!, assistantText); })();
       return new NextResponse(stream as unknown as ReadableStream, {
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
@@ -150,91 +151,57 @@ export async function POST(req: Request) {
       });
     }
 
-    // Agents SDK のストリーミングを利用
+    // Agents SDK のストリーミングを利用（Items化 + teeで保存）
     initAgents();
-    const payload = {
-      task: "Answer the user question as helpful assistant.",
-      parameters: {
-        message: userText,
-        pageContext: pageText ?? null,
-        history,
-      },
-    } as const;
-
-    // stream: true でイベントストリームを受け取り、テキストに整形
-    // チャット専用 Runner（reasoning.effort=minimal を明示）。他エージェントには影響しない。
-    const chatModel = ((): string => {
-      const m = process.env.OPENAI_MODEL?.trim();
-      if (m && /^gpt-5(-|$)/.test(m)) return m; // GPT‑5 系のみ許可
-      return "gpt-5"; // 強制的に GPT‑5 に固定（minimal 対応）
-    })();
-
-    const chatRunner = new Runner({
-      model: chatModel,
-      // Runner 側は重複設定を持たせず、Agent 側をソースオブトゥルースにする
-      workflowName: "Chat assistant",
-      traceIncludeSensitiveData: false,
-    });
-    // Agent 側にも同一の modelSettings を明示して、確実に API へ伝搬させる
-    const agent = new Agent({
-      name: "Chat (minimal)",
-      instructions: CHAT_INSTRUCTIONS,
-      model: chatModel,
-      modelSettings: {
-        parallelToolCalls: false,
-        reasoning: { effort: "minimal" },
-        text: { verbosity: "low" },
-        toolChoice: "none",
-        // 念のため providerData 経由でも同値を伝搬（SDK経路での取りこぼし対策）
-        providerData: {
-          reasoning: { effort: "minimal" },
-          text: { verbosity: "low" },
-        },
-      } as unknown as {},
-    });
 
     // Ensure thread and persist the user message (best-effort)
     threadId = await ensureThreadId();
     if (threadId) await persistUserMessage(threadId);
 
-    const result = await chatRunner.run(agent, JSON.stringify(payload), { maxTurns: 1, stream: true });
-    // Web ReadableStream<string> を取得し、そのまま UTF-8 に変換して返す
-    const textWebStream = result.toTextStream() as unknown as ReadableStream<string>;
-    // pipeThrough が型で認識されない環境向けに、手動で変換ストリームを作成
-    let assistantText = "";
-    const webStream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const reader = textWebStream.getReader();
-        (async () => {
-          try {
-            while (true) {
-              const { value, done } = await reader.read();
-              if (done) break;
-              if (typeof value === "string" && value.length) {
-                assistantText += value;
-                controller.enqueue(encoder.encode(value));
-              }
-            }
-            controller.close();
-          } catch (err) {
-            try { controller.error(err as unknown); } catch {}
-          } finally {
-            try { reader.releaseLock(); } catch {}
-          }
-        })();
-      },
+    // Agentはシンプルに（モデルはrunner側既定）。ページ文脈はsystemで注入。
+    const agent = new Agent({
+      name: "Chat (site assistant)",
+      instructions: CHAT_INSTRUCTIONS,
     });
 
-    // Persist when finished
-    (async () => { if (threadId && assistantText) await persistAssistantMessage(threadId!, assistantText); })();
+    // 入力アイテム化：履歴→(system: page)→今回のuser
+    const items: Array<ReturnType<typeof user> | ReturnType<typeof assistantMsg> | ReturnType<typeof system>> = [];
+    if (Array.isArray(normalizedHistory)) {
+      for (const m of normalizedHistory) {
+        items.push(m.role === "user" ? user(m.content) : assistantMsg(m.content));
+      }
+    }
+    if (pageText) items.push(system(pageText));
+    items.push(user(userText));
 
-    return new NextResponse(webStream as unknown as ReadableStream, {
+    const streamed = await runner.run(agent, items, { stream: true, maxTurns: 1 });
+    const textStream = streamed.toTextStream() as unknown as ReadableStream<string>;
+    const [persistSide, clientSide] = (textStream as unknown as ReadableStream<string>).tee();
+
+    // 保存側：全文を合流し、streamed.completed を待ってから保存
+    (async () => {
+      let assistantText = "";
+      const reader = persistSide.getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (typeof value === "string") assistantText += value;
+        }
+      } finally {
+        try { reader.releaseLock(); } catch {}
+      }
+      try {
+        await streamed.completed; // 重要：ストリーム全完了
+        if (threadId && assistantText.trim()) await persistAssistantMessage(threadId!, assistantText);
+      } catch {}
+    })();
+
+    return new NextResponse(clientSide as unknown as ReadableStream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-store",
         "X-Accel-Buffering": "no",
-        "X-Agents-Model": chatModel,
-        "X-Reasoning-Effort-Requested": "minimal",
         ...(threadId ? { "X-Thread-Id": threadId } : {}),
       },
     });

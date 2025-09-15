@@ -1,4 +1,4 @@
-import { Agent } from "@openai/agents";
+import { Agent, user } from "@openai/agents";
 import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { lessonCardsGuardrail } from "@/lib/ai/agents/guardrails";
@@ -16,7 +16,7 @@ function createSingleCardAgent(kind?: CardKind) {
     instructions: buildSingleCardWriterInstructions(kind),
     outputType: SingleLessonCardsSchema,
     outputGuardrails: [lessonCardsGuardrail as unknown as OutputGuardrail<typeof SingleLessonCardsSchema>],
-    model: process.env.OPENAI_MODEL,
+    // モデルは runner 既定を使用
   });
 }
 
@@ -28,18 +28,25 @@ export async function runSingleCardAgent(input: {
   // prompt caching を狙う共通プレフィックス（全カードで同一）
   sharedPrefix?: string;
 }): Promise<LessonCards> {
-  const payload = {
-    task: "Write exactly 1 card as SingleLessonCards JSON.",
-    parameters: {
-      lessonTitle: input.lessonTitle,
-      course: input.course ?? null,
-      desiredCardType: input.desiredCardType ?? null,
-      userBrief: (input.userBrief ?? "").trim() || null,
-      sharedPrefix: input.sharedPrefix ?? null,
-    },
-  } as const;
   const agent = createSingleCardAgent(input.desiredCardType as unknown as CardKind);
-  const res = await runner.run(agent, JSON.stringify(payload), { maxTurns: 1 });
+  // 入力は Items 化（user）して渡す
+  const items = [
+    user(
+      [
+        "このレッスンに対して、指定があればそのタイプでカードを1件だけ作成してください。",
+        `レッスン: ${input.lessonTitle}`,
+        `カードタイプ: ${input.desiredCardType ?? "(未指定)"}`,
+        `ユーザーブリーフ: ${(input.userBrief ?? "").trim() || "(なし)"}`,
+        `共有プレフィックス: ${input.sharedPrefix ?? "(なし)"}`,
+        "コース情報:",
+        `  タイトル: ${input.course?.title ?? "(不明)"}`,
+        `  説明: ${input.course?.description ?? "(なし)"}`,
+        `  カテゴリ: ${input.course?.category ?? "(なし)"}`,
+        `  レベル: ${input.course?.level ?? "(未指定)"}`,
+      ].join("\n")
+    ),
+  ];
+  const res = await runner.run(agent, items, { maxTurns: 1 });
   // まず finalOutput を信頼（Zod 検証済み）
   let parsed = res.finalOutput;
   if (!parsed) {

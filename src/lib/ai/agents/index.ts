@@ -2,7 +2,7 @@ import { Runner, setDefaultOpenAIKey } from "@openai/agents";
 
 // Initialize a reusable Runner with project defaults
 export const runner = new Runner({
-  model: process.env.OPENAI_MODEL || "gpt-5",
+  model: process.env.OPENAI_DEFAULT_MODEL || process.env.OPENAI_MODEL || "gpt-5",
   modelSettings: {
     maxTokens: process.env.OPENAI_MAX_OUTPUT_TOKENS
       ? Number(process.env.OPENAI_MAX_OUTPUT_TOKENS)

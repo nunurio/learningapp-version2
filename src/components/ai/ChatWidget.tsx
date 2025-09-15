@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { toast } from "@/components/ui/toaster";
 import { MessageCircle, Send, X, Menu, Trash2, Plus } from "lucide-react";
 import { usePageContext } from "@/components/ai/use-page-context";
@@ -245,12 +245,7 @@ export function ChatWidget() {
     }
   }
 
-  function startNewChat() {
-    setActiveThreadId(null);
-    setMessages([]);
-    setSidebarOpen(false);
-    setOpen(true);
-  }
+  // in-panel sidebar用: 新規チャットは必要な箇所で inline 実装
 
   async function send() {
     if (sendingRef.current) return; // 直近の呼び出し中は無視
@@ -399,7 +394,7 @@ export function ChatWidget() {
                 size="icon"
                 aria-label="チャット履歴"
                 className="mr-1"
-                onClick={() => { setSidebarOpen(true); void loadThreads(); }}
+                onClick={() => setSidebarOpen((v) => { const next = !v; if (next) void loadThreads(); return next; })}
                 data-drag-ignore
               >
                 <Menu className="h-4 w-4" />
@@ -432,43 +427,119 @@ export function ChatWidget() {
             {loading && (
               <div className="absolute left-0 right-0 top-0 h-[2px] bg-gradient-to-r from-[hsl(var(--primary-400))] via-[hsl(var(--primary-500))] to-[hsl(var(--primary-400))] animate-pulse" />
             )}
-            <ScrollArea className="h-full p-3 pr-4">
-              <div ref={viewportRef} className="h-full overflow-y-auto pr-2">
-                {messages.length === 0 && (
-                  <div className="text-xs text-muted-foreground p-4 text-center animate-in fade-in-50 duration-500">
-                    <div className="mb-2">👋 こんにちは</div>
-                    <div>質問を入力すると、このページの文脈を踏まえてお手伝いします。</div>
+            {sidebarOpen ? (
+              <ResizablePanelGroup direction="horizontal" className="h-full">
+                <ResizablePanel defaultSize={28} minSize={18} maxSize={42} collapsible collapsedSize={0} className="border-r">
+                  <div className="h-full flex flex-col">
+                    <div className="p-2 flex items-center justify-between border-b bg-muted/30">
+                      <div className="text-xs font-medium">チャット履歴</div>
+                      <Button size="sm" variant="outline" onClick={() => { setActiveThreadId(null); setMessages([]); }}>
+                        <Plus className="h-3 w-3 mr-1" /> 新規
+                      </Button>
+                    </div>
+                    <div className="p-2 text-xs text-muted-foreground">
+                      {loadingThreads ? "読み込み中…" : threads.length === 0 ? "履歴はまだありません" : "最近のスレッド"}
+                    </div>
+                    <ScrollArea className="flex-1 px-2 pb-2">
+                      <div className="space-y-1">
+                        {threads.map((t) => (
+                          <div key={t.id}
+                               className={cn("group flex items-center gap-2 rounded-md border p-2 hover:bg-accent cursor-pointer", activeThreadId === t.id && "bg-accent")}
+                               onClick={() => { setActiveThreadId(t.id); void loadMessages(t.id); }}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="truncate text-xs font-medium">{t.title || "無題のチャット"}</div>
+                              <div className="truncate text-[10px] text-muted-foreground">{new Date((t as any).updatedAt ?? (t as any).createdAt).toLocaleString()}</div>
+                            </div>
+                            <Button variant="ghost" size="icon" aria-label="削除" className="opacity-0 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); void deleteThread(t.id); }}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
                   </div>
-                )}
-                {messages.map((m, i) => (
-                  <div 
-                    key={m.id} 
-                    className={cn(
-                      "mb-3 max-w-[88%] animate-in fade-in-0 slide-in-from-bottom-2 duration-300",
-                      m.role === "user" ? "ml-auto text-right" : "mr-auto text-left"
-                    )}
-                    style={{ animationDelay: `${i * 50}ms` }}
-                  >
-                    <div 
-                      className={cn(
-                        "rounded-2xl px-4 py-2.5 text-xs whitespace-pre-wrap transition-all duration-200 hover:shadow-md",
-                        m.role === "user" 
-                          ? "bg-gradient-to-br from-[hsl(var(--primary-500))] to-[hsl(var(--primary-600))] text-white shadow-sm" 
-                          : "bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--accent))] text-[hsl(var(--foreground))] shadow-sm border border-[hsl(var(--border))]"
-                      )}
-                    >
-                      {m.content || (
-                        <div className="flex items-center gap-1">
-                          <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "0ms" }} />
-                          <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "150ms" }} />
-                          <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "300ms" }} />
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel>
+                  <ScrollArea className="h-full p-3 pr-4">
+                    <div ref={viewportRef} className="h-full overflow-y-auto pr-2">
+                      {messages.length === 0 && (
+                        <div className="text-xs text-muted-foreground p-4 text-center animate-in fade-in-50 duration-500">
+                          <div className="mb-2">👋 こんにちは</div>
+                          <div>質問を入力すると、このページの文脈を踏まえてお手伝いします。</div>
                         </div>
                       )}
+                      {messages.map((m, i) => (
+                        <div 
+                          key={m.id} 
+                          className={cn(
+                            "mb-3 max-w-[88%] animate-in fade-in-0 slide-in-from-bottom-2 duration-300",
+                            m.role === "user" ? "ml-auto text-right" : "mr-auto text-left"
+                          )}
+                          style={{ animationDelay: `${i * 50}ms` }}
+                        >
+                          <div 
+                            className={cn(
+                              "rounded-2xl px-4 py-2.5 text-xs whitespace-pre-wrap transition-all duration-200 hover:shadow-md",
+                              m.role === "user" 
+                                ? "bg-gradient-to-br from-[hsl(var(--primary-500))] to-[hsl(var(--primary-600))] text-white shadow-sm" 
+                                : "bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--accent))] text-[hsl(var(--foreground))] shadow-sm border border-[hsl(var(--border))]"
+                            )}
+                          >
+                            {m.content || (
+                              <div className="flex items-center gap-1">
+                                <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "0ms" }} />
+                                <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "150ms" }} />
+                                <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "300ms" }} />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
+                  </ScrollArea>
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            ) : (
+              <ScrollArea className="h-full p-3 pr-4">
+                <div ref={viewportRef} className="h-full overflow-y-auto pr-2">
+                  {messages.length === 0 && (
+                    <div className="text-xs text-muted-foreground p-4 text-center animate-in fade-in-50 duration-500">
+                      <div className="mb-2">👋 こんにちは</div>
+                      <div>質問を入力すると、このページの文脈を踏まえてお手伝いします。</div>
+                    </div>
+                  )}
+                  {messages.map((m, i) => (
+                    <div 
+                      key={m.id} 
+                      className={cn(
+                        "mb-3 max-w-[88%] animate-in fade-in-0 slide-in-from-bottom-2 duration-300",
+                        m.role === "user" ? "ml-auto text-right" : "mr-auto text-left"
+                      )}
+                      style={{ animationDelay: `${i * 50}ms` }}
+                    >
+                      <div 
+                        className={cn(
+                          "rounded-2xl px-4 py-2.5 text-xs whitespace-pre-wrap transition-all duration-200 hover:shadow-md",
+                          m.role === "user" 
+                            ? "bg-gradient-to-br from-[hsl(var(--primary-500))] to-[hsl(var(--primary-600))] text-white shadow-sm" 
+                            : "bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--accent))] text-[hsl(var(--foreground))] shadow-sm border border-[hsl(var(--border))]"
+                        )}
+                      >
+                        {m.content || (
+                          <div className="flex items-center gap-1">
+                            <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "0ms" }} />
+                            <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "150ms" }} />
+                            <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "300ms" }} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
           </CardContent>
           <Separator />
           <CardFooter className="p-3 gap-2 bg-gradient-to-t from-[hsl(var(--background))] to-transparent">
@@ -529,39 +600,6 @@ export function ChatWidget() {
           </div>
             </Card>
           )}
-          {/* Sidebar (Sheet) */}
-          <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-            <SheetContent side="left" aria-label="チャット履歴">
-              <SheetHeader>
-                <div className="text-sm font-medium">チャット履歴</div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={startNewChat}>
-                    <Plus className="h-3 w-3 mr-1" /> 新しいチャット
-                  </Button>
-                </div>
-              </SheetHeader>
-              <div className="text-xs text-muted-foreground mb-2">
-                {loadingThreads ? "読み込み中…" : threads.length === 0 ? "履歴はまだありません" : "最近のスレッド"}
-              </div>
-              <ScrollArea className="h-[calc(100vh-140px)] pr-2">
-                <div className="space-y-1">
-                  {threads.map((t) => (
-                    <div key={t.id} className={cn("group flex items-center gap-2 rounded-md border p-2 hover:bg-accent cursor-pointer", activeThreadId === t.id && "bg-accent")}
-                      onClick={() => { setActiveThreadId(t.id); void loadMessages(t.id); setSidebarOpen(false); setOpen(true); }}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="truncate text-sm font-medium">{t.title || "無題のチャット"}</div>
-                        <div className="truncate text-[10px] text-muted-foreground">{new Date((t as any).updatedAt ?? (t as any).createdAt).toLocaleString()}</div>
-                      </div>
-                      <Button variant="ghost" size="icon" aria-label="削除" className="opacity-0 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); void deleteThread(t.id); }}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </SheetContent>
-          </Sheet>
         </>,
         document.body
       )}

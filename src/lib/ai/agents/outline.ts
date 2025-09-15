@@ -1,4 +1,4 @@
-import { Agent } from "@openai/agents";
+import { Agent, user } from "@openai/agents";
 import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { CoursePlanSchema } from "@/lib/ai/schema";
@@ -12,12 +12,7 @@ export const OutlineAgent = new Agent<UnknownContext, typeof CoursePlanSchema>({
   instructions: OUTLINE_AGENT_INSTRUCTIONS,
   // 構造化出力: Zod スキーマで強制
   outputType: CoursePlanSchema,
-  model: process.env.OPENAI_MODEL,
-  modelSettings: {
-    maxTokens: process.env.OPENAI_MAX_OUTPUT_TOKENS
-      ? Number(process.env.OPENAI_MAX_OUTPUT_TOKENS)
-      : undefined,
-  },
+  // モデル/設定は runner 既定を使用（index.ts で一元化）
 });
 
 export async function runOutlineAgent(input: {
@@ -28,17 +23,20 @@ export async function runOutlineAgent(input: {
   userBrief?: string;
 }): Promise<CoursePlan> {
   const lc = Math.max(3, Math.min(typeof input.lessonCount === "number" ? input.lessonCount : 12, 30));
-  const payload = {
-    task: "Design course outline strictly as CoursePlan JSON.",
-    parameters: {
-      theme: input.theme,
-      level: input.level?.trim() || "初心者",
-      goal: (input.goal ?? "").trim() || "中級者",
-      lessonCount: lc,
-      userBrief: (input.userBrief ?? "").trim() || null,
-    },
-  } as const;
-  const res = await runner.run(OutlineAgent, JSON.stringify(payload), { maxTurns: 1 });
+  // 入力は Items 化して渡す（Agents SDK 推奨）
+  const items = [
+    user(
+      [
+        "コースのアウトラインを作成してください。",
+        `テーマ: ${input.theme}`,
+        `レベル: ${input.level?.trim() || "初心者"}`,
+        `目標: ${(input.goal ?? "").trim() || "中級者"}`,
+        `レッスン数: ${lc}`,
+        `ユーザーブリーフ: ${(input.userBrief ?? "").trim() || "(なし)"}`,
+      ].join("\n")
+    ),
+  ];
+  const res = await runner.run(OutlineAgent, items, { maxTurns: 1 });
   // まず finalOutput を信頼（Zod 検証済み）
   if (res.finalOutput) return res.finalOutput as CoursePlan;
   // フォールバック: 履歴からテキスト抽出→JSON→Zod

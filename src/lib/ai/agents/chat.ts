@@ -1,9 +1,9 @@
-import { Agent, extractAllTextOutput } from "@openai/agents";
+import { Agent, extractAllTextOutput, user, assistant as assistantMsg, system } from "@openai/agents";
 import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { JA_BASE_STYLE } from "@/lib/ai/prompts";
 
-const CHAT_INSTRUCTIONS = `
+export const CHAT_INSTRUCTIONS = `
 あなたは学習アプリに常駐するアシスタントです。
 ${JA_BASE_STYLE}
 
@@ -17,10 +17,13 @@ ${JA_BASE_STYLE}
 - 事実不明時はその旨を明示し推測で断定しない。
 `.trim();
 
+// 型定義未追従環境でも余剰キーのリテラルチェックを回避するため、
+// いったん緩いオブジェクトに格納してから渡す（anyは使わない）
+const chatModelSettings: {} = { reasoning: { effort: "minimal" } };
+
 export const ChatAgent = new Agent<UnknownContext>({
   name: "Site Assistant",
   instructions: CHAT_INSTRUCTIONS,
-  model: process.env.OPENAI_MODEL, // 既定は runner 側で gpt-5
 });
 
 export async function runChatAgent(input: {
@@ -28,16 +31,17 @@ export async function runChatAgent(input: {
   pageText?: string | null;
   history?: { role: "user" | "assistant"; content: string }[];
 }): Promise<string> {
-  const payload = {
-    task: "Answer the user question as helpful assistant.",
-    parameters: {
-      message: input.message,
-      pageContext: input.pageText ?? null,
-      history: Array.isArray(input.history) ? input.history.slice(-10) : null,
-    },
-  } as const;
+  // Items 化してRunnerへ（履歴→system(page)→user）
+  const items: Array<ReturnType<typeof user> | ReturnType<typeof assistantMsg> | ReturnType<typeof system>> = [];
+  if (Array.isArray(input.history)) {
+    for (const m of input.history.slice(-10)) {
+      items.push(m.role === "user" ? user(m.content) : assistantMsg(m.content));
+    }
+  }
+  if (input.pageText) items.push(system(input.pageText));
+  items.push(user(input.message));
 
-  const res = await runner.run(ChatAgent, JSON.stringify(payload), { maxTurns: 1 });
+  const res = await runner.run(ChatAgent, items, { maxTurns: 1 });
   // Agents SDK の履歴からテキスト出力を抽出
   const text = extractAllTextOutput((res.history ?? []) as never[]);
   if (typeof text === "string" && text.trim()) return text;

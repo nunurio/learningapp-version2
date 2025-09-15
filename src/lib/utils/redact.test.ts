@@ -2,28 +2,42 @@ import { describe, it, expect } from "vitest";
 import { redactText, limitChars, buildPageContextText } from "./redact";
 
 describe("redactText", () => {
-  it("masks emails and phones", () => {
-    const s = "mail test@example.com and phone +81-90-1234-5678 with token sk-abcdef0123456789ZZZ";
-    const r = redactText(s);
-    expect(r).not.toContain("test@example.com");
-    expect(r).toMatch(/\*\*\*@\*\*\*\.com/);
-    expect(r).not.toContain("1234-5678");
-    expect(r).not.toContain("sk-abcdef");
+  it("masks emails, phones and token-like strings", () => {
+    const input = "mail me at john.doe@example.com or +1-202-555-0199, key=sk-abcdef1234567890";
+    const out = redactText(input);
+    expect(out).not.toMatch(/john\.doe@example\.com/);
+    expect(out).toMatch(/j\*\*\*@\*\*\*\.com/);
+    // phone becomes coarse masked digits like 12***99 (country code may be stripped)
+    expect(out).not.toMatch(/202-555-0199/);
+    expect(out).toMatch(/\d{2}\*\*\*\d{2}/);
+    expect(out).not.toMatch(/sk-[A-Za-z0-9_-]{12,}/);
   });
 });
 
 describe("limitChars", () => {
-  it("limits to given size", () => {
-    const s = "x".repeat(10);
-    expect(limitChars(s, 5)).toBe("x".repeat(5));
+  it("truncates long strings but keeps short as-is", () => {
+    expect(limitChars("abc", 5)).toBe("abc");
+    const long = "x".repeat(20);
+    expect(limitChars(long, 10)).toHaveLength(10);
   });
 });
 
 describe("buildPageContextText", () => {
-  it("builds joined context", () => {
-    const txt = buildPageContextText({ title: "T", url: "http://example.com", selection: "Hello" });
-    expect(txt).toContain("Title: T");
-    expect(txt).toContain("Hello");
+  it("joins available fields and applies redaction/limit", () => {
+    const ctx = {
+      title: "My Title",
+      url: "https://example.com/path",
+      selection: "secret is sk-1234567890abcdef",
+      headings: ["H1", "H2"],
+      contentSnippet: "body...",
+    };
+    const text = buildPageContextText(ctx)!;
+    expect(text).toMatch(/Title: My Title/);
+    expect(text).toMatch(/URL: https:\/\/example.com\/path/);
+    // token redacted
+    expect(text).toMatch(/secret is \*\*\*/);
+    // headings included
+    expect(text).toMatch(/Headings: H1 \| H2/);
   });
 });
 

@@ -21,8 +21,8 @@ importers:
         specifier: ^3.2.2
         version: 3.2.2(react@19.1.0)
       '@openai/agents':
-        specifier: ^0.1.1
-        version: 0.1.1(ws@8.18.3)(zod@3.25.76)
+        specifier: ^0.1.2
+        version: 0.1.2(ws@8.18.3)(zod@3.25.76)
       '@radix-ui/react-accordion':
         specifier: ^1.2.12
         version: 1.2.12(@types/react-dom@19.1.7(@types/react@19.1.11))(@types/react@19.1.11)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -314,6 +314,10 @@ packages:
 
   '@babel/runtime@7.28.3':
     resolution: {integrity: sha512-9uIQ10o0WGdpP6GDhXcdOJPJuDgFtIDtN/9+ArJQ2NAfAmiuhTQdzkaTGR33v43GYS2UrSA0eX2pPPHoFVvpxA==}
+    engines: {node: '>=6.9.0'}
+
+  '@babel/runtime@7.28.4':
+    resolution: {integrity: sha512-Q/N6JNWvIvPnLDvjlE1OUBLPQHH6l3CltCEsHIujp45zQUSSh8K+gHnaEX45yAT1nyngnINhvWtzN+Nb9D8RAQ==}
     engines: {node: '>=6.9.0'}
 
   '@babel/template@7.27.2':
@@ -807,8 +811,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.30':
     resolution: {integrity: sha512-GQ7Nw5G2lTu/BtHTKfXhKHok2WGetd4XYcVKGx00SjAk8GMwgJM3zr6zORiPGuOE+/vkc90KtTosSSvaCjKb2Q==}
 
-  '@modelcontextprotocol/sdk@1.17.5':
-    resolution: {integrity: sha512-QakrKIGniGuRVfWBdMsDea/dx1PNE739QJ7gCM41s9q+qaCYTHCdsIBXQVVXry3mfWAiaM9kT22Hyz53Uw8mfg==}
+  '@modelcontextprotocol/sdk@1.18.0':
+    resolution: {integrity: sha512-JvKyB6YwS3quM+88JPR0axeRgvdDu3Pv6mdZUy+w4qVkCzGgumb9bXG/TmtDRQv+671yaofVfXSQmFLlWU5qPQ==}
     engines: {node: '>=18'}
 
   '@mswjs/interceptors@0.39.6':
@@ -900,26 +904,26 @@ packages:
   '@open-draft/until@2.1.0':
     resolution: {integrity: sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg==}
 
-  '@openai/agents-core@0.1.1':
-    resolution: {integrity: sha512-u/PjlmCz2UGheJ3apbB5utdBdGGQD5PS4JSX+MsH/Inb291dEnNbf3hA1GcM2RKHCJrpaQNofcNcNuEW1uophQ==}
+  '@openai/agents-core@0.1.2':
+    resolution: {integrity: sha512-i/6w8MLq1fPeAumQkkqn/UT63MEpZLBTYuarHVYeB3ISmdz5L7pbMLsvEwBKZWfAgDjDOHry6YYrpYB5aYi97w==}
     peerDependencies:
       zod: ^3.25.40
     peerDependenciesMeta:
       zod:
         optional: true
 
-  '@openai/agents-openai@0.1.1':
-    resolution: {integrity: sha512-l7xj/9P3cEbA30qwSsSyO0hlxXdKJo63BtRlsmnF7HIUQpAz5sWsVeBB3rbmOXJNAz8hK6yMsjoaL+qsy0HCZg==}
+  '@openai/agents-openai@0.1.2':
+    resolution: {integrity: sha512-G1sasOYBdTvODDNdd9NW9939npp+StqjrS0QOQdmfb9DQRIA7LLN/9zUe73a60APziNPl1lqJrfClDcW8g+ODw==}
     peerDependencies:
       zod: ^3.25.40
 
-  '@openai/agents-realtime@0.1.1':
-    resolution: {integrity: sha512-VjepFe80A3z37HWHjc5PI9q0vPSq3s+zTlxKZ0mrFrvdH1hd2wK3XYSgvhZe/ROQ85iBMmyP9h1+DB69qob7Dw==}
+  '@openai/agents-realtime@0.1.2':
+    resolution: {integrity: sha512-jXC0AfaJJnfCR8zDp26eBEkGB2xkmgKQb2w+WiK+rsw0pPmIbrY97yqWJPLQC/C0s2DAy8oeL21msrETr/amdg==}
     peerDependencies:
       zod: ^3.25.40
 
-  '@openai/agents@0.1.1':
-    resolution: {integrity: sha512-2nAjIltQ691Nzlh/+XxbQxuGDtIouk7bvb3EmrObIHiK+5F2nG0PU6xEx34D6DtpiocJtuDWpGkYdixK/FvPnw==}
+  '@openai/agents@0.1.2':
+    resolution: {integrity: sha512-ozqikDIxYgMDh3CFbVaaFRBWK7rIr+JXyULtFLi9HhVPej8H0+ofkKa/VOJpf2oRL09scc4aJXpRNY/7uIQ+DQ==}
     peerDependencies:
       zod: ^3.25.40
 
@@ -2330,6 +2334,15 @@ packages:
       supports-color:
         optional: true
 
+  debug@4.4.3:
+    resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
+    engines: {node: '>=6.0'}
+    peerDependencies:
+      supports-color: '*'
+    peerDependenciesMeta:
+      supports-color:
+        optional: true
+
   decimal.js@10.6.0:
     resolution: {integrity: sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==}
 
@@ -3581,8 +3594,8 @@ packages:
       zod:
         optional: true
 
-  openai@5.20.0:
-    resolution: {integrity: sha512-Bmc2zLM/YWgFrDpXr9hwXqGGDdMmMpE9+qoZPsaHpn0Y/Qk1Vu26hNqXo7+nHdli+sLsXINvS1f8kR3NKhGKmA==}
+  openai@5.20.2:
+    resolution: {integrity: sha512-ZeBIEazj6W/XOulMw92L8iU5FblQeM5IxjPRCZNVArNXsoF+bLPnS7B2X4O0JSmpCM+F5Gdajr6bn4nAUj4LFQ==}
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
@@ -4629,6 +4642,8 @@ snapshots:
 
   '@babel/runtime@7.28.3': {}
 
+  '@babel/runtime@7.28.4': {}
+
   '@babel/template@7.27.2':
     dependencies:
       '@babel/code-frame': 7.27.1
@@ -5021,7 +5036,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@modelcontextprotocol/sdk@1.17.5':
+  '@modelcontextprotocol/sdk@1.18.0':
     dependencies:
       ajv: 6.12.6
       content-type: 1.0.5
@@ -5112,32 +5127,32 @@ snapshots:
 
   '@open-draft/until@2.1.0': {}
 
-  '@openai/agents-core@0.1.1(ws@8.18.3)(zod@3.25.76)':
+  '@openai/agents-core@0.1.2(ws@8.18.3)(zod@3.25.76)':
     dependencies:
-      debug: 4.4.1
-      openai: 5.20.0(ws@8.18.3)(zod@3.25.76)
+      debug: 4.4.3
+      openai: 5.20.2(ws@8.18.3)(zod@3.25.76)
     optionalDependencies:
-      '@modelcontextprotocol/sdk': 1.17.5
+      '@modelcontextprotocol/sdk': 1.18.0
       zod: 3.25.76
     transitivePeerDependencies:
       - supports-color
       - ws
 
-  '@openai/agents-openai@0.1.1(ws@8.18.3)(zod@3.25.76)':
+  '@openai/agents-openai@0.1.2(ws@8.18.3)(zod@3.25.76)':
     dependencies:
-      '@openai/agents-core': 0.1.1(ws@8.18.3)(zod@3.25.76)
-      debug: 4.4.1
-      openai: 5.20.0(ws@8.18.3)(zod@3.25.76)
+      '@openai/agents-core': 0.1.2(ws@8.18.3)(zod@3.25.76)
+      debug: 4.4.3
+      openai: 5.20.2(ws@8.18.3)(zod@3.25.76)
       zod: 3.25.76
     transitivePeerDependencies:
       - supports-color
       - ws
 
-  '@openai/agents-realtime@0.1.1(zod@3.25.76)':
+  '@openai/agents-realtime@0.1.2(zod@3.25.76)':
     dependencies:
-      '@openai/agents-core': 0.1.1(ws@8.18.3)(zod@3.25.76)
+      '@openai/agents-core': 0.1.2(ws@8.18.3)(zod@3.25.76)
       '@types/ws': 8.18.1
-      debug: 4.4.1
+      debug: 4.4.3
       ws: 8.18.3
       zod: 3.25.76
     transitivePeerDependencies:
@@ -5145,13 +5160,13 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@openai/agents@0.1.1(ws@8.18.3)(zod@3.25.76)':
+  '@openai/agents@0.1.2(ws@8.18.3)(zod@3.25.76)':
     dependencies:
-      '@openai/agents-core': 0.1.1(ws@8.18.3)(zod@3.25.76)
-      '@openai/agents-openai': 0.1.1(ws@8.18.3)(zod@3.25.76)
-      '@openai/agents-realtime': 0.1.1(zod@3.25.76)
-      debug: 4.4.1
-      openai: 5.20.0(ws@8.18.3)(zod@3.25.76)
+      '@openai/agents-core': 0.1.2(ws@8.18.3)(zod@3.25.76)
+      '@openai/agents-openai': 0.1.2(ws@8.18.3)(zod@3.25.76)
+      '@openai/agents-realtime': 0.1.2(zod@3.25.76)
+      debug: 4.4.3
+      openai: 5.20.2(ws@8.18.3)(zod@3.25.76)
       zod: 3.25.76
     transitivePeerDependencies:
       - bufferutil
@@ -5918,7 +5933,7 @@ snapshots:
   '@testing-library/dom@10.4.1':
     dependencies:
       '@babel/code-frame': 7.27.1
-      '@babel/runtime': 7.28.3
+      '@babel/runtime': 7.28.4
       '@types/aria-query': 5.0.4
       aria-query: 5.3.0
       dom-accessibility-api: 0.5.16
@@ -6424,7 +6439,7 @@ snapshots:
     dependencies:
       bytes: 3.1.2
       content-type: 1.0.5
-      debug: 4.4.1
+      debug: 4.4.3
       http-errors: 2.0.0
       iconv-lite: 0.6.3
       on-finished: 2.4.1
@@ -6618,6 +6633,10 @@ snapshots:
       ms: 2.1.3
 
   debug@4.4.1:
+    dependencies:
+      ms: 2.1.3
+
+  debug@4.4.3:
     dependencies:
       ms: 2.1.3
 
@@ -7077,7 +7096,7 @@ snapshots:
       content-type: 1.0.5
       cookie: 0.7.2
       cookie-signature: 1.2.2
-      debug: 4.4.1
+      debug: 4.4.3
       encodeurl: 2.0.0
       escape-html: 1.0.3
       etag: 1.8.1
@@ -7146,7 +7165,7 @@ snapshots:
 
   finalhandler@2.1.0:
     dependencies:
-      debug: 4.4.1
+      debug: 4.4.3
       encodeurl: 2.0.0
       escape-html: 1.0.3
       on-finished: 2.4.1
@@ -8294,7 +8313,7 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  openai@5.20.0(ws@8.18.3)(zod@3.25.76):
+  openai@5.20.2(ws@8.18.3)(zod@3.25.76):
     optionalDependencies:
       ws: 8.18.3
       zod: 3.25.76
@@ -8632,7 +8651,7 @@ snapshots:
 
   router@2.2.0:
     dependencies:
-      debug: 4.4.1
+      debug: 4.4.3
       depd: 2.0.0
       is-promise: 4.0.0
       parseurl: 1.3.3
@@ -8683,7 +8702,7 @@ snapshots:
 
   send@1.2.0:
     dependencies:
-      debug: 4.4.1
+      debug: 4.4.3
       encodeurl: 2.0.0
       escape-html: 1.0.3
       etag: 1.8.1
