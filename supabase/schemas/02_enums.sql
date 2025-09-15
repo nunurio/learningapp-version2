@@ -7,6 +7,12 @@ do $$ begin
 end $$;
 
 do $$ begin
+  if not exists (select 1 from pg_type t where t.typname = 'chat_role') then
+    create type public.chat_role as enum ('user','assistant');
+  end if;
+end $$;
+
+do $$ begin
   if not exists (select 1 from pg_type t where t.typname = 'card_type') then
     create type public.card_type as enum ('text','quiz','fill-blank');
   end if;
@@ -23,4 +29,3 @@ do $$ begin
     create type public.ai_draft_kind as enum ('outline','lesson-cards');
   end if;
 end $$;
-

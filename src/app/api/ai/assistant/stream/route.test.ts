@@ -34,15 +34,23 @@ describe("POST /api/ai/assistant/stream (mock)", () => {
   it("returns 400 on invalid body", async () => {
     const res = await POST(makeReq({ message: "" }) as unknown as Request);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body: unknown = await (res as Response).json();
     expect(body).toHaveProperty("error");
   });
 
   it("sets X-Thread-Id header when persistence is available", async () => {
     const tid = "11111111-1111-4111-8111-111111111111";
     vi.doMock("@/lib/supabase/server", () => {
+      type FromReturn = {
+        insert: (_v: unknown) => { select: (_s: string) => { single: () => { data: unknown; error: null } } };
+        update: (_v: unknown) => { eq: () => { error: null } };
+        select: (_s: string) => { maybeSingle: () => { data: unknown; error: null } };
+        order: (_col?: string, _opts?: unknown) => { data: unknown[]; error: null };
+        eq: (_c?: string, _v?: unknown) => { order: (_col?: string, _opts?: unknown) => { data: unknown[]; error: null } };
+        delete: () => { eq: (_c?: string, _v?: unknown) => { error: null } };
+      };
       const stub = {
-        from(table: string) {
+        from(table: string): FromReturn {
           return {
             insert: (_v: unknown) => ({
               select: (_s: string) => ({ single: () => ({ data: table === "chat_threads" ? { id: tid } : { id: "m1" }, error: null }) }),
@@ -52,7 +60,7 @@ describe("POST /api/ai/assistant/stream (mock)", () => {
             order: () => ({ data: [], error: null }),
             eq: () => ({ order: () => ({ data: [], error: null }) }),
             delete: () => ({ eq: () => ({ error: null }) }),
-          } as any;
+          } as FromReturn;
         },
       };
       return {
@@ -71,4 +79,3 @@ describe("POST /api/ai/assistant/stream (mock)", () => {
     expect(text.length).toBeGreaterThan(0);
   });
 });
-

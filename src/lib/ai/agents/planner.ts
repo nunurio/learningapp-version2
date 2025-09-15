@@ -25,7 +25,7 @@ export async function runCardsPlanner(input: {
 }): Promise<LessonCardsPlan> {
   // 入力は Items 化（user）して渡す
   const ctx = input.context;
-  const items = [
+  const items: unknown[] = [
     user(
       [
         "レッスン用のカード計画を作成してください。",

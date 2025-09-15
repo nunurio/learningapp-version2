@@ -30,7 +30,7 @@ export async function runSingleCardAgent(input: {
 }): Promise<LessonCards> {
   const agent = createSingleCardAgent(input.desiredCardType as unknown as CardKind);
   // 入力は Items 化（user）して渡す
-  const items = [
+  const items: unknown[] = [
     user(
       [
         "このレッスンに対して、指定があればそのタイプでカードを1件だけ作成してください。",

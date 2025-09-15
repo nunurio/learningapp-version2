@@ -13,6 +13,8 @@ alter table public.srs      enable row level security;
 alter table public.flags    enable row level security;
 alter table public.notes    enable row level security;
 alter table public.ai_drafts enable row level security;
+alter table public.chat_threads enable row level security;
+alter table public.chat_messages enable row level security;
 
 -- Profiles: 1:1 with auth.users (self-only)
 drop policy if exists "Profiles are self-selectable" on public.profiles;
@@ -222,5 +224,38 @@ drop policy if exists "AI drafts deletable by self" on public.ai_drafts;
 create policy "AI drafts deletable by self" on public.ai_drafts
   for delete using (user_id = auth.uid());
 
-commit;
+-- Chat threads (per-user)
+drop policy if exists "Chat threads selectable by self" on public.chat_threads;
+create policy "Chat threads selectable by self" on public.chat_threads
+  for select using (user_id = auth.uid());
 
+drop policy if exists "Chat threads updatable by self" on public.chat_threads;
+create policy "Chat threads updatable by self" on public.chat_threads
+  for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+drop policy if exists "Chat threads insertable by self" on public.chat_threads;
+create policy "Chat threads insertable by self" on public.chat_threads
+  for insert with check (user_id = auth.uid());
+
+drop policy if exists "Chat threads deletable by self" on public.chat_threads;
+create policy "Chat threads deletable by self" on public.chat_threads
+  for delete using (user_id = auth.uid());
+
+-- Chat messages (per-user)
+drop policy if exists "Chat messages selectable by self" on public.chat_messages;
+create policy "Chat messages selectable by self" on public.chat_messages
+  for select using (user_id = auth.uid());
+
+drop policy if exists "Chat messages updatable by self" on public.chat_messages;
+create policy "Chat messages updatable by self" on public.chat_messages
+  for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+drop policy if exists "Chat messages insertable by self" on public.chat_messages;
+create policy "Chat messages insertable by self" on public.chat_messages
+  for insert with check (user_id = auth.uid());
+
+drop policy if exists "Chat messages deletable by self" on public.chat_messages;
+create policy "Chat messages deletable by self" on public.chat_messages
+  for delete using (user_id = auth.uid());
+
+commit;

@@ -31,13 +31,14 @@ describe("buildPageContextText", () => {
       headings: ["H1", "H2"],
       contentSnippet: "body...",
     };
-    const text = buildPageContextText(ctx)!;
-    expect(text).toMatch(/Title: My Title/);
-    expect(text).toMatch(/URL: https:\/\/example.com\/path/);
+    const text = buildPageContextText(ctx);
+    expect(text).toBeTruthy();
+    const value = String(text);
+    expect(value).toMatch(/Title: My Title/);
+    expect(value).toMatch(/URL: https:\/\/example.com\/path/);
     // token redacted
-    expect(text).toMatch(/secret is \*\*\*/);
+    expect(value).toMatch(/secret is \*\*\*/);
     // headings included
-    expect(text).toMatch(/Headings: H1 \| H2/);
+    expect(value).toMatch(/Headings: H1 \| H2/);
   });
 });
-

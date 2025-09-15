@@ -449,7 +449,7 @@ export function ChatWidget() {
                           >
                             <div className="flex-1 min-w-0">
                               <div className="truncate text-xs font-medium">{t.title || "無題のチャット"}</div>
-                              <div className="truncate text-[10px] text-muted-foreground">{new Date((t as any).updatedAt ?? (t as any).createdAt).toLocaleString()}</div>
+                              <div className="truncate text-[10px] text-muted-foreground">{new Date(t.updatedAt ?? t.createdAt).toLocaleString()}</div>
                             </div>
                             <Button variant="ghost" size="icon" aria-label="削除" className="opacity-0 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); void deleteThread(t.id); }}>
                               <Trash2 className="h-3.5 w-3.5" />

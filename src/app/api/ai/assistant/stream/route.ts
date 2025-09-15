@@ -6,6 +6,8 @@ import { initAgents, runner } from "@/lib/ai/agents/index";
 import { Agent, user, assistant as assistantMsg, system } from "@openai/agents";
 import { CHAT_INSTRUCTIONS } from "@/lib/ai/agents/chat";
 import type { Readable } from "stream";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database.types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,12 +79,12 @@ export async function POST(req: Request) {
     // Streaming response (Agents SDK のネイティブストリーミングに切替)
     const encoder = new TextEncoder();
     // --- Optional persistence via Supabase (if configured) ---
-    let supaClient: any | undefined;
+    let supaClient: SupabaseClient<Database> | undefined;
     let userId: string | undefined;
     try {
       const mod = await import("@/lib/supabase/server");
-      supaClient = await (mod as any).createClient();
-      userId = await (mod as any).getCurrentUserId();
+      supaClient = await mod.createClient();
+      userId = await mod.getCurrentUserId();
     } catch {
       supaClient = undefined;
       userId = undefined;
@@ -134,7 +136,8 @@ export async function POST(req: Request) {
             controller.close();
             // 完了後に確実に保存（レースを避ける）
             if (threadId && assistantText.trim()) {
-              await persistAssistantMessage(threadId!, assistantText);
+              const tid = threadId; // narrow within block
+              await persistAssistantMessage(tid, assistantText);
             }
           } catch (err) {
             try { controller.error(err); } catch {}
@@ -193,7 +196,10 @@ export async function POST(req: Request) {
       }
       try {
         await streamed.completed; // 重要：ストリーム全完了
-        if (threadId && assistantText.trim()) await persistAssistantMessage(threadId!, assistantText);
+        if (threadId && assistantText.trim()) {
+          const tid = threadId;
+          await persistAssistantMessage(tid, assistantText);
+        }
       } catch {}
     })();
 

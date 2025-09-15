@@ -24,7 +24,7 @@ export async function runOutlineAgent(input: {
 }): Promise<CoursePlan> {
   const lc = Math.max(3, Math.min(typeof input.lessonCount === "number" ? input.lessonCount : 12, 30));
   // 入力は Items 化して渡す（Agents SDK 推奨）
-  const items = [
+  const items: unknown[] = [
     user(
       [
         "コースのアウトラインを作成してください。",
