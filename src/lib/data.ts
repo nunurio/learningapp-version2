@@ -7,7 +7,18 @@ import { updateCard } from "@/lib/client-api";
 
 export type SaveCardDraftInput =
   | { cardId: UUID; cardType: "text"; title?: string | null; tags?: string[]; body: string }
-  | { cardId: UUID; cardType: "quiz"; title?: string | null; tags?: string[]; question: string; options: string[]; answerIndex: number; explanation?: string | null }
+  | {
+      cardId: UUID;
+      cardType: "quiz";
+      title?: string | null;
+      tags?: string[];
+      question: string;
+      options: string[];
+      answerIndex: number;
+      explanation?: string | null;
+      optionExplanations?: (string | null)[];
+      hint?: string | null;
+    }
   | { cardId: UUID; cardType: "fill-blank"; title?: string | null; tags?: string[]; text: string; answers: Record<string, string>; caseSensitive?: boolean };
 
 export async function saveCardDraft(input: SaveCardDraftInput): Promise<{ updatedAt: string }> {
@@ -49,6 +60,8 @@ export async function publishCard(cardId: UUID): Promise<void> {
         options: d.options,
         answerIndex: d.answerIndex,
         explanation: d.explanation ?? undefined,
+        optionExplanations: d.optionExplanations?.length ? d.optionExplanations : undefined,
+        hint: d.hint ?? undefined,
       },
     });
   } else if (d.cardType === "fill-blank") {

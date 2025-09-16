@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { QuizOption } from "@/components/player/QuizOption";
+import { QuizHintCard, QuizSolutionPanel } from "@/components/player/QuizSolutionPanel";
 import { Card, CardContent } from "@/components/ui/card";
 import MarkdownView from "@/components/markdown/MarkdownView";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -531,7 +532,10 @@ function QuizContent({ cardId, content, selected, onSelect, result, onCheck }: {
   result: "idle" | "correct" | "wrong";
   onCheck: (res: "correct" | "wrong") => void;
 }) {
-  const [hint, setHint] = React.useState(false);
+  const [showHint, setShowHint] = React.useState(false);
+  React.useEffect(() => { setShowHint(false); }, [cardId]);
+  const hasHint = typeof content.hint === "string";
+  const showResult = result !== "idle";
   return (
     <div>
       <div className="font-medium text-gray-900">{content.question}</div>
@@ -542,14 +546,20 @@ function QuizContent({ cardId, content, selected, onSelect, result, onCheck }: {
       </div>
       <div className="mt-3 flex items-center gap-3">
         <Button onClick={() => onCheck((selected ?? -1) === content.answerIndex ? "correct" : "wrong")} variant="default" aria-label="採点する">Check</Button>
-        <Button onClick={() => setHint((v) => !v)} variant="outline" aria-label="ヒントを表示">Hint</Button>
+        <Button
+          onClick={() => setShowHint((v) => !v)}
+          variant="outline"
+          aria-label="ヒントを表示"
+          aria-pressed={showHint && hasHint}
+        >
+          {showHint && hasHint ? "ヒントを隠す" : "Hint"}
+        </Button>
         <span aria-live="polite" role="status" className={result === "correct" ? "text-green-600" : result === "wrong" ? "text-red-600" : "sr-only"}>
           {result === "correct" ? "正解！" : result === "wrong" ? "不正解" : ""}
         </span>
       </div>
-      {(hint || result !== "idle") && content.explanation && (
-        <p className="mt-2 text-sm text-gray-700">{content.explanation}</p>
-      )}
+      <QuizHintCard hint={content.hint ?? undefined} visible={showHint} />
+      <QuizSolutionPanel content={content} selected={selected} visible={showResult} />
     </div>
   );
 }

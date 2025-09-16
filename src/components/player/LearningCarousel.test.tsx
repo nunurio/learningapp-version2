@@ -43,7 +43,7 @@ describe("LearningCarousel", () => {
       lessons: [l1, l2],
       cards: [
         { id: "card-t1", lessonId: l1.id, cardType: "text", title: "T1", content: { body: "本文A" }, orderIndex: 1, createdAt: makeIso(2) },
-        { id: "card-q1", lessonId: l1.id, cardType: "quiz", title: "Q1", content: { question: "Q?", options: ["a","b"], answerIndex: 1, explanation: "exp" }, orderIndex: 2, createdAt: makeIso(3) },
+        { id: "card-q1", lessonId: l1.id, cardType: "quiz", title: "Q1", content: { question: "Q?", options: ["a","b"], answerIndex: 1, explanation: "exp", optionExplanations: ["a は不正解", "b が正解"], hint: "B の特徴を思い出して" }, orderIndex: 2, createdAt: makeIso(3) },
         { id: "card-f1", lessonId: l2.id, cardType: "fill-blank", title: "F1", content: { text: "I [[1]] JS", answers: { "1": "love" } }, orderIndex: 3, createdAt: makeIso(4) },
         // 別コースは無視される
         { id: "x", lessonId: "other-lesson" as UUID, cardType: "text", title: "X", content: { body: "x" }, orderIndex: 1, createdAt: makeIso(1) },
@@ -86,7 +86,7 @@ describe("LearningCarousel", () => {
       courses: [baseCourse],
       lessons: [l1],
       cards: [
-        { id: "card-q1", lessonId: l1.id, cardType: "quiz", title: "Q1", content: { question: "2+2?", options: ["3","4","5"], answerIndex: 1, explanation: "4 が正解" }, orderIndex: 1, createdAt: makeIso(2) },
+        { id: "card-q1", lessonId: l1.id, cardType: "quiz", title: "Q1", content: { question: "2+2?", options: ["3","4","5"], answerIndex: 1, explanation: "4 が正解", optionExplanations: ["3 は 1 小さい", "4 が正解", "5 は 1 大きい"], hint: "偶数同士の加算を考える" }, orderIndex: 1, createdAt: makeIso(2) },
       ],
       progress: [],
       flags: [],
@@ -101,6 +101,11 @@ describe("LearningCarousel", () => {
     // 初期は理解度バーは非表示（quiz は採点前は表示しない）
     expect(screen.queryByRole("slider")).not.toBeInTheDocument();
 
+    // Hint ボタンでヒントが表示される
+    const hintButton = screen.getByRole("button", { name: "ヒントを表示" });
+    await userEvent.click(hintButton);
+    expect(await screen.findByText("偶数同士の加算を考える")).toBeInTheDocument();
+
     // 選択肢を選んで Check（わざと不正解を選ぶ）
     const group = screen.getByRole("radiogroup", { name: "選択肢" });
     const radios = within(group).getAllByRole("radio");
@@ -109,7 +114,9 @@ describe("LearningCarousel", () => {
 
     // 結果と解説が表示され、saveProgress が result で呼ばれる
     expect(await screen.findByText("不正解")).toBeInTheDocument();
-    expect(screen.getByText("4 が正解")).toBeInTheDocument();
+    expect(screen.getAllByText("4 が正解")).toHaveLength(2);
+    expect(screen.getByText("あなたの回答")).toBeInTheDocument();
+    expect(screen.getByText("3 は 1 小さい")).toBeInTheDocument();
     const sp1: MockedFunction<typeof clientApi.saveProgress> = vi.mocked(clientApi.saveProgress);
     const firstCall = sp1.mock.calls[0]?.[0];
     expect(firstCall).toBeTruthy();

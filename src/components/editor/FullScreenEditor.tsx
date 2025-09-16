@@ -5,10 +5,35 @@ import { EditorToolbar } from "@/components/editor/EditorToolbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
+import { Check, Plus, Trash2 } from "lucide-react";
 import MarkdownView from "@/components/markdown/MarkdownView";
 import type { UUID } from "@/lib/types";
 import { workspaceStore } from "@/lib/state/workspace-store";
 import { saveCardDraft, publishCard, loadCardDraft, type SaveCardDraftInput } from "@/lib/data";
+
+function normalizeQuizDraft(input: SaveCardDraftInput): SaveCardDraftInput {
+  if (input.cardType !== "quiz") return input;
+  const options = input.options ?? [];
+  const optionExplanations = [...(input.optionExplanations ?? [])];
+  if (optionExplanations.length > options.length) {
+    optionExplanations.length = options.length;
+  } else {
+    for (let i = optionExplanations.length; i < options.length; i++) {
+      optionExplanations[i] = "";
+    }
+  }
+  let answerIndex = input.answerIndex ?? 0;
+  if (options.length === 0) {
+    answerIndex = 0;
+  } else if (answerIndex < 0) {
+    answerIndex = 0;
+  } else if (answerIndex >= options.length) {
+    answerIndex = options.length - 1;
+  }
+  return { ...input, optionExplanations, answerIndex };
+}
 
 type Props = {
   courseId: UUID;
@@ -23,11 +48,15 @@ type Props = {
   options?: string[];
   answerIndex?: number;
   explanation?: string | null;
+  optionExplanations?: (string | null)[];
+  hint?: string | null;
   // fill-blank
   text?: string;
   answers?: Record<string, string>;
   caseSensitive?: boolean;
 };
+
+type QuizDraftInput = Extract<SaveCardDraftInput, { cardType: "quiz" }>;
 
 export function FullScreenEditor(props: Props) {
   const router = useRouter();
@@ -44,16 +73,20 @@ export function FullScreenEditor(props: Props) {
       return { cardId: props.cardId, cardType: "text", title: props.title ?? null, tags: props.tags ?? [], body: props.body ?? "" };
     }
     if (props.cardType === "quiz") {
-      return {
+      const baseOptions = props.options && props.options.length ? [...props.options] : ["", ""];
+      const base: SaveCardDraftInput = {
         cardId: props.cardId,
         cardType: "quiz",
         title: props.title ?? null,
         tags: props.tags ?? [],
         question: props.question ?? "",
-        options: props.options ?? [""],
+        options: baseOptions,
         answerIndex: props.answerIndex ?? 0,
         explanation: props.explanation ?? null,
+        optionExplanations: props.optionExplanations ?? [],
+        hint: props.hint ?? null,
       };
+      return normalizeQuizDraft(base);
     }
     return {
       cardId: props.cardId,
@@ -81,7 +114,7 @@ export function FullScreenEditor(props: Props) {
       const draft = await loadCardDraft(currentId);
       if (cancelled || currentId !== props.cardId) return;
       if (draft && !userEditedRef.current) {
-        setForm(draft);
+        setForm(normalizeQuizDraft(draft));
         // 復元済み本文を履歴初期値として反映できるようにマーク
         if (draft.cardType === "text") {
           pendingHistoryInitRef.current = draft.body ?? "";
@@ -119,6 +152,67 @@ export function FullScreenEditor(props: Props) {
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const previewRef = React.useRef<HTMLDivElement | null>(null);
   const [preview, setPreview] = React.useState(true);
+  const quizFieldIdBase = React.useId();
+
+  const mutateQuiz = React.useCallback((mutator: (draft: QuizDraftInput) => QuizDraftInput) => {
+    userEditedRef.current = true;
+    setAutosaveReady(true);
+    setForm((prev) => {
+      if (prev.cardType !== "quiz") return prev;
+      const next = mutator(prev);
+      return normalizeQuizDraft(next);
+    });
+  }, [setAutosaveReady, setForm]);
+
+  const handleOptionChange = React.useCallback((index: number, value: string) => {
+    mutateQuiz((draft) => {
+      const options = [...draft.options];
+      options[index] = value;
+      return { ...draft, options };
+    });
+  }, [mutateQuiz]);
+
+  const handleOptionExplanationChange = React.useCallback((index: number, value: string) => {
+    mutateQuiz((draft) => {
+      const optionExplanations = [...(draft.optionExplanations ?? [])];
+      optionExplanations[index] = value;
+      return { ...draft, optionExplanations };
+    });
+  }, [mutateQuiz]);
+
+  const handleAddOption = React.useCallback(() => {
+    mutateQuiz((draft) => ({
+      ...draft,
+      options: [...draft.options, ""],
+      optionExplanations: [...(draft.optionExplanations ?? []), ""],
+    }));
+  }, [mutateQuiz]);
+
+  const handleRemoveOption = React.useCallback((index: number) => {
+    mutateQuiz((draft) => {
+      if (draft.options.length <= 2) return draft;
+      const options = draft.options.filter((_, idx) => idx !== index);
+      const optionExplanations = (draft.optionExplanations ?? []).filter((_, idx) => idx !== index);
+      let answerIndex = draft.answerIndex;
+      if (options.length === 0) {
+        answerIndex = 0;
+      } else if (answerIndex === index) {
+        answerIndex = Math.max(0, Math.min(index - 1, options.length - 1));
+      } else if (answerIndex > index) {
+        answerIndex -= 1;
+      }
+      return {
+        ...draft,
+        options,
+        optionExplanations,
+        answerIndex,
+      };
+    });
+  }, [mutateQuiz]);
+
+  const handleSetCorrectOption = React.useCallback((index: number) => {
+    mutateQuiz((draft) => ({ ...draft, answerIndex: index }));
+  }, [mutateQuiz]);
 
   // 進行中のデバウンスをフラッシュして即時保存するヘルパー
   const flushDraft = React.useCallback(async () => {
@@ -336,28 +430,105 @@ export function FullScreenEditor(props: Props) {
               placeholder="タグ, を, カンマ区切りで"
             />
             {form.cardType === "quiz" && (
-              <div className="grid grid-cols-1 gap-3">
-                <Input
-                  value={form.question ?? ""}
-                  onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => f.cardType === "quiz" ? ({ ...f, question: e.target.value }) : f); }}
-                  placeholder="設問"
-                />
-                <Textarea
-                  value={(form.options ?? []).join("\n")}
-                  onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => f.cardType === "quiz" ? ({ ...f, options: e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean) }) : f); }}
-                  placeholder={"選択肢を改行で入力"}
-                />
-                <Input
-                  type="number"
-                  value={form.answerIndex ?? 0}
-                  onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => f.cardType === "quiz" ? ({ ...f, answerIndex: Number(e.target.value) }) : f); }}
-                  placeholder="正解インデックス（0開始）"
-                />
-                <Input
-                  value={form.explanation ?? ""}
-                  onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => f.cardType === "quiz" ? ({ ...f, explanation: e.target.value }) : f); }}
-                  placeholder="解説（任意）"
-                />
+              <div className="grid grid-cols-1 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="quiz-question" className="text-sm font-medium">
+                    設問
+                  </Label>
+                  <Input
+                    id="quiz-question"
+                    value={form.question ?? ""}
+                    onChange={(e) => mutateQuiz((draft) => ({ ...draft, question: e.target.value }))}
+                    placeholder="設問"
+                  />
+                </div>
+                <div className="space-y-3">
+                  {(form.options ?? []).map((opt, idx) => {
+                    const optionId = `${quizFieldIdBase}-option-${idx}`;
+                    const explanationId = `${quizFieldIdBase}-explanation-${idx}`;
+                    const isCorrect = form.answerIndex === idx;
+                    return (
+                      <Card key={optionId} className="p-4 space-y-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <Label htmlFor={optionId} className="text-sm font-medium">
+                            {`選択肢 ${idx + 1}`}
+                          </Label>
+                          <div className="flex items-center gap-2 self-end sm:self-auto">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={isCorrect ? "default" : "outline"}
+                              onClick={() => handleSetCorrectOption(idx)}
+                              aria-pressed={isCorrect}
+                            >
+                              {isCorrect ? (
+                                <>
+                                  <Check className="size-4" />
+                                  正解
+                                </>
+                              ) : (
+                                "正解にする"
+                              )}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveOption(idx)}
+                              disabled={(form.options ?? []).length <= 2}
+                            >
+                              <Trash2 className="size-4" />
+                              <span className="sr-only">{`選択肢${idx + 1}を削除`}</span>
+                            </Button>
+                          </div>
+                        </div>
+                        <Input
+                          id={optionId}
+                          value={opt}
+                          onChange={(e) => handleOptionChange(idx, e.target.value)}
+                          placeholder="選択肢を入力"
+                        />
+                        <div className="space-y-2">
+                          <Label htmlFor={explanationId} className="text-xs font-medium text-muted-foreground">
+                            {`選択肢${idx + 1}の解説`}
+                          </Label>
+                          <Textarea
+                            id={explanationId}
+                            value={form.optionExplanations?.[idx] ?? ""}
+                            onChange={(e) => handleOptionExplanationChange(idx, e.target.value)}
+                            placeholder="この選択肢を選んだ学習者への解説"
+                          />
+                        </div>
+                      </Card>
+                    );
+                  })}
+                  <Button type="button" variant="outline" onClick={handleAddOption} className="w-full sm:w-auto">
+                    <Plus className="size-4" />
+                    選択肢を追加
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="quiz-explanation" className="text-sm font-medium">
+                    全体の解説
+                  </Label>
+                  <Textarea
+                    id="quiz-explanation"
+                    value={form.explanation ?? ""}
+                    onChange={(e) => mutateQuiz((draft) => ({ ...draft, explanation: e.target.value }))}
+                    placeholder="全体の解説"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="quiz-hint" className="text-sm font-medium">
+                    ヒント
+                  </Label>
+                  <Textarea
+                    id="quiz-hint"
+                    value={form.hint ?? ""}
+                    onChange={(e) => mutateQuiz((draft) => ({ ...draft, hint: e.target.value }))}
+                    placeholder="ヒント（正解を直接示さず導く）"
+                  />
+                </div>
               </div>
             )}
             {form.cardType === "fill-blank" && (

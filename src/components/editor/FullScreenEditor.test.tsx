@@ -166,7 +166,7 @@ describe("FullScreenEditor (text card)", () => {
 
     // Open Menubar > File, click Back to Workspace
     await user.click(screen.getByRole("menuitem", { name: "File" }));
-    await user.click(screen.getByRole("menuitem", { name: "Back to Workspace" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Back to Workspace" }));
 
     expect(saveCardDraft).toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
@@ -213,5 +213,82 @@ describe("FullScreenEditor (text card)", () => {
     expect(ta.value).toBe("Hello Worl");
     await user.click(screen.getByRole("button", { name: /Redo/i }));
     expect(ta.value).toBe("Hello World");
+  });
+});
+
+describe("FullScreenEditor (quiz card)", () => {
+  it("adds and removes options with dedicated fields", async () => {
+    const user = userEvent.setup();
+    render(
+      <FullScreenEditor
+        courseId={"COURSE" as unknown as UUID}
+        cardId={"QUIZ1" as unknown as UUID}
+        cardType="quiz"
+        title={"Quiz"}
+        question={"What's new?"}
+        options={["A", "B"]}
+        answerIndex={0}
+        optionExplanations={["", ""]}
+      />
+    );
+
+    const optionInputsBefore = screen.getAllByLabelText(/選択肢 \d/);
+    expect(optionInputsBefore).toHaveLength(2);
+    const removeButtonsInitial = screen.getAllByRole("button", { name: /選択肢\dを削除/ });
+    removeButtonsInitial.forEach((btn) => expect(btn).toBeDisabled());
+
+    await user.click(screen.getByRole("button", { name: "選択肢を追加" }));
+    expect(screen.getAllByLabelText(/選択肢 \d/)).toHaveLength(3);
+    expect(screen.getAllByLabelText(/選択肢\dの解説/)).toHaveLength(3);
+
+    const removeLast = screen.getByRole("button", { name: "選択肢3を削除" });
+    expect(removeLast).not.toBeDisabled();
+    await user.click(removeLast);
+    expect(screen.getAllByLabelText(/選択肢 \d/)).toHaveLength(2);
+  });
+
+  it("marks the correct option and keeps explanations aligned after removal", async () => {
+    const user = userEvent.setup();
+    render(
+      <FullScreenEditor
+        courseId={"COURSE" as unknown as UUID}
+        cardId={"QUIZ2" as unknown as UUID}
+        cardType="quiz"
+        title={"Quiz"}
+        question={"Pick one"}
+        options={["Opt1", "Opt2"]}
+        answerIndex={0}
+        optionExplanations={["Exp1", "Exp2"]}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "選択肢を追加" }));
+
+    const optionInputs = screen.getAllByLabelText(/選択肢 \d/);
+    await user.clear(optionInputs[2]);
+    await user.type(optionInputs[2], "Opt3");
+
+    const explanationInput = screen.getByLabelText("選択肢3の解説");
+    await user.clear(explanationInput);
+    await user.type(explanationInput, "Exp3");
+
+    const correctButtons = screen.getAllByRole("button", { name: "正解にする" });
+    await user.click(correctButtons.at(-1)!);
+
+    await user.click(screen.getByRole("button", { name: "選択肢2を削除" }));
+
+    const { saveCardDraft } = await import("@/lib/data");
+    await waitFor(() => {
+      const last = vi.mocked(saveCardDraft).mock.calls.at(-1);
+      expect(last).toBeTruthy();
+      if (!last) throw new Error("No saveCardDraft call");
+      const [args] = last as [SaveCardDraftInput];
+      expect(args.cardType).toBe("quiz");
+      if (args.cardType === "quiz") {
+        expect(args.options).toEqual(["Opt1", "Opt3"]);
+        expect(args.optionExplanations).toEqual(["Exp1", "Exp3"]);
+        expect(args.answerIndex).toBe(1);
+      }
+    }, { timeout: 2000 });
   });
 });

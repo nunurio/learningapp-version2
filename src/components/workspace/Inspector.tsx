@@ -114,7 +114,22 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
         setAnswersText("");
       } else if (card.cardType === "quiz") {
         const c = card.content as QuizCardContent;
-        setForm({ cardId: card.id, cardType: "quiz", title: card.title ?? null, tags: card.tags ?? [], question: c.question, options: c.options, answerIndex: c.answerIndex, explanation: c.explanation ?? null });
+        const optionExplanations = [...(c.optionExplanations ?? [])];
+        for (let i = optionExplanations.length; i < c.options.length; i++) {
+          optionExplanations[i] = "";
+        }
+        setForm({
+          cardId: card.id,
+          cardType: "quiz",
+          title: card.title ?? null,
+          tags: card.tags ?? [],
+          question: c.question,
+          options: c.options,
+          answerIndex: c.answerIndex,
+          explanation: c.explanation ?? null,
+          optionExplanations,
+          hint: c.hint ?? null,
+        });
         setAnswersText("");
       } else {
         const c = card.content as FillBlankCardContent;
@@ -301,8 +316,14 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
                 <label className="block text-sm mb-1">選択肢（改行区切り）</label>
                 <Textarea value={form.cardType === "quiz" ? (form.options ?? []).join("\n") : ""} onChange={(e) => setForm((f) => {
                   if (!f || f.cardType !== "quiz") return f;
-                  const options = e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean);
-                  const next = { ...f, options } as SaveCardDraftInput;
+                  const options = e.target.value.split("\n").map((s) => s.trim()).filter(Boolean);
+                  const optionExplanations = [...(f.optionExplanations ?? [])];
+                  if (optionExplanations.length > options.length) {
+                    optionExplanations.length = options.length;
+                  } else {
+                    for (let i = optionExplanations.length; i < options.length; i++) optionExplanations[i] = "";
+                  }
+                  const next = { ...f, options, optionExplanations } as SaveCardDraftInput;
                   workspaceStore.setDraft(next);
                   return next;
                 })} />
@@ -317,13 +338,51 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
                 })} />
               </div>
               <div>
-                <label className="block text-sm mb-1">解説（任意）</label>
-                <Input value={form.cardType === "quiz" ? (form.explanation ?? "") : ""} onChange={(e) => setForm((f) => {
+                <label className="block text-sm mb-1">全体の解説</label>
+                <Textarea value={form.cardType === "quiz" ? (form.explanation ?? "") : ""} onChange={(e) => setForm((f) => {
                   if (!f || f.cardType !== "quiz") return f;
                   const next = { ...f, explanation: e.target.value } as SaveCardDraftInput;
                   workspaceStore.setDraft(next);
                   return next;
                 })} />
+              </div>
+              {form.cardType === "quiz" && form.options?.length ? (
+                <div>
+                  <label className="block text-sm mb-1">選択肢ごとの解説</label>
+                  <div className="space-y-2">
+                    {form.options.map((opt, idx) => (
+                      <div key={idx} className="rounded-md border border-[hsl(var(--border))] px-3 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-gray-900">#{idx + 1} {opt}</span>
+                          {idx === form.answerIndex && <span className="text-xs text-green-600">正解</span>}
+                        </div>
+                        <Textarea
+                          className="mt-2"
+                          placeholder="この選択肢の理由を記述"
+                          value={form.optionExplanations?.[idx] ?? ""}
+                          onChange={(e) => setForm((f) => {
+                            if (!f || f.cardType !== "quiz") return f;
+                            const optionExplanations = [...(f.optionExplanations ?? [])];
+                            for (let i = optionExplanations.length; i < f.options.length; i++) optionExplanations[i] = "";
+                            optionExplanations[idx] = e.target.value;
+                            const next = { ...f, optionExplanations } as SaveCardDraftInput;
+                            workspaceStore.setDraft(next);
+                            return next;
+                          })}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div>
+                <label className="block text-sm mb-1">ヒント（学習者が正解を見る前に表示）</label>
+                <Textarea value={form.cardType === "quiz" ? (form.hint ?? "") : ""} onChange={(e) => setForm((f) => {
+                  if (!f || f.cardType !== "quiz") return f;
+                  const next = { ...f, hint: e.target.value } as SaveCardDraftInput;
+                  workspaceStore.setDraft(next);
+                  return next;
+                })} placeholder="答えを直接示さずに導くヒントを記述" />
               </div>
             </div>
           )}

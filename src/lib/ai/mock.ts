@@ -54,13 +54,16 @@ export function createLessonCardsMock(input: {
       });
     } else if (t === "quiz") {
       const options = ["A", "B", "C", "D"].map((o) => `${o}の選択肢`);
+      const answerIndex = i % options.length;
       cards.push({
         type: "quiz",
         title: pick(titles, i),
         question: `${input.lessonTitle} に関するクイズ ${i + 1}。正しいものを選んでください。`,
         options,
-        answerIndex: i % options.length,
+        answerIndex,
         explanation: "正解の理由を簡潔に説明します。",
+        optionExplanations: options.map((_, idx) => (idx === answerIndex ? "この選択肢が正解である理由を説明します。" : "この選択肢が誤りである理由を説明します。")),
+        hint: "主要なキーワードを思い出してから選択肢を見比べましょう。",
       });
     } else {
       const n = (i % 2) + 1; // [[1]] or [[2]]
