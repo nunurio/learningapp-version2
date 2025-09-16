@@ -11,7 +11,17 @@ import {
   commitLessonCards as commitLessonCardsApi,
   commitLessonCardsPartial as commitLessonCardsPartialApi,
 } from "@/lib/client-api";
-import type { UUID, Card, Lesson, Course, QuizCardContent, FillBlankCardContent, LessonCards, CardType, TextCardContent } from "@/lib/types";
+import type {
+  UUID,
+  Card as WorkspaceCard,
+  Lesson,
+  Course,
+  QuizCardContent,
+  FillBlankCardContent,
+  LessonCards,
+  CardType,
+  TextCardContent,
+} from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -87,13 +97,13 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   useWorkspace();
   const [course, setCourse] = React.useState<Course | null>(null);
   const [lesson, setLesson] = React.useState<Lesson | null>(null);
-  const [card, setCard] = React.useState<Card | null>(null);
+  const [card, setCard] = React.useState<WorkspaceCard | null>(null);
   const [form, setForm] = React.useState<SaveCardDraftInput | null>(null);
   const [saving, setSaving] = React.useState<"idle" | "saving" | "saved">("idle");
   const [savedAt, setSavedAt] = React.useState<string | null>(null);
   const [dirty, setDirty] = React.useState(false);
   const [lessons, setLessons] = React.useState<Lesson[]>([]);
-  const [cards, setCards] = React.useState<Card[]>([]);
+  const [cards, setCards] = React.useState<WorkspaceCard[]>([]);
   // Reserved UI states (unused currently)
 
   // AI lesson-cards generation state
@@ -593,7 +603,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
         </section>
       )}
     </aside>
-    <AlertDialog open={pendingAction != null} onOpenChange={(open) => { if (!open) setPendingAction(null); }}>
+    <AlertDialog open={pendingAction != null} onOpenChange={(open: boolean) => { if (!open) setPendingAction(null); }}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>保存されていない変更があります</AlertDialogTitle>
@@ -780,7 +790,7 @@ function CourseInspector({ course, lessons, onRefresh }: { course: Course; lesso
 function LessonInspector(props: {
   courseId: UUID;
   lesson: Lesson;
-  cards: Card[];
+  cards: WorkspaceCard[];
   runningLesson: Lesson | null;
   setRunningLesson: (l: Lesson | null) => void;
   logsByLesson: Record<string, { ts: number; text: string }[]>;
@@ -875,7 +885,7 @@ function LessonInspector(props: {
   );
 }
 
-function labelCard(card: Card): string {
+function labelCard(card: WorkspaceCard): string {
   if (card.cardType === "text") return (card.content as TextCardContent).body?.slice(0, 18) ?? "テキスト";
   if (card.cardType === "quiz") return (card.content as QuizCardContent).question ?? "クイズ";
   return (card.content as FillBlankCardContent).text?.replace(/\[\[(\d+)\]\]/g, "□") ?? "穴埋め";
