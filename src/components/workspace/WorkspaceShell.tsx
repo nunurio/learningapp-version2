@@ -304,7 +304,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
           </div>
         </div>
       </main>
-      <AlertDialog open={pendingAction != null} onOpenChange={(open) => { if (!open) setPendingAction(null); }}>
+      <AlertDialog open={pendingAction != null} onOpenChange={(open: boolean) => { if (!open) setPendingAction(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>保存されていない変更があります</AlertDialogTitle>
