@@ -126,7 +126,12 @@ describe("Inspector quiz editor", () => {
     await user.type(explanationInput, "Expl3");
 
     const markButtons = screen.getAllByRole("button", { name: "正解にする" });
-    await user.click(markButtons.at(-1)!);
+    const lastMarkButton = markButtons.at(-1);
+    expect(lastMarkButton).toBeDefined();
+    if (!lastMarkButton) {
+      throw new Error("正解にするボタンが見つかりません");
+    }
+    await user.click(lastMarkButton);
 
     await user.click(screen.getByRole("button", { name: "選択肢2を削除" }));
 
