@@ -15,7 +15,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ threadId: stri
     if (!userId) return NextResponse.json([], { headers: { "Cache-Control": "no-store" } });
     const { threadId: rawId } = await ctx.params;
     const threadId = Id.parse(rawId);
-    const { data, error } = client
+    const { data, error } = await client
       .from("chat_messages")
       .select("id, role, content, created_at")
       .eq("thread_id", threadId)
@@ -42,7 +42,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ threadId: stri
     const { role, content } = z
       .object({ role: z.enum(["user", "assistant"]), content: z.string().min(1) })
       .parse(body ? JSON.parse(body) : {});
-    const { data, error } = client
+    const { data, error } = await client
       .from("chat_messages")
       .insert({ thread_id: threadId, user_id: userId, role, content })
       .select("id")

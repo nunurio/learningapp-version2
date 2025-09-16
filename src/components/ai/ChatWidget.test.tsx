@@ -22,7 +22,7 @@ describe("ChatWidget", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     // @ts-ignore override for test
-    global.fetch = vi.fn(async () => ({ ok: true, status: 200, body: mockStreamBody("ok") })) as unknown as typeof fetch;
+    global.fetch = vi.fn(async () => new Response(mockStreamBody("ok"), { status: 200 })) as unknown as typeof fetch;
   });
   it("opens and closes the chat panel", () => {
     render(<ChatWidget />);
@@ -55,7 +55,7 @@ describe("ChatWidget", () => {
     // @ts-ignore override for test
     global.fetch = vi.fn(async () => {
       await new Promise((r) => setTimeout(r, 10));
-      return { ok: true, status: 200, body: mockStreamBody("ok") } as const;
+      return new Response(mockStreamBody("ok"), { status: 200 });
     }) as unknown as typeof fetch;
 
     render(<ChatWidget />);

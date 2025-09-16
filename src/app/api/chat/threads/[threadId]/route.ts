@@ -16,7 +16,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ threadId: stri
     const { threadId: rawId } = await ctx.params;
     const threadId = Id.parse(rawId);
     // Verify the thread belongs to the user
-    const { data: thr, error: e0 } = client
+    const { data: thr, error: e0 } = await client
       .from("chat_threads")
       .select("id")
       .eq("id", threadId)
@@ -24,7 +24,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ threadId: stri
       .maybeSingle();
     if (e0) throw e0;
     if (!thr) return NextResponse.json([], { headers: { "Cache-Control": "no-store" } });
-    const { data, error } = client
+    const { data, error } = await client
       .from("chat_messages")
       .select("id, role, content, created_at")
       .eq("thread_id", threadId)
@@ -49,7 +49,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ threadId: str
     const threadId = Id.parse(rawId);
     const body = await req.text();
     const { title } = z.object({ title: z.string().trim().min(1).max(120) }).parse(body ? JSON.parse(body) : {});
-    const { error } = client
+    const { error } = await client
       .from("chat_threads")
       .update({ title })
       .eq("id", threadId)
@@ -70,12 +70,12 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ threadId: s
     const { threadId: rawId } = await ctx.params;
     const threadId = Id.parse(rawId);
     // Delete messages first, then thread
-    const { error: e1 } = client
+    const { error: e1 } = await client
       .from("chat_messages")
       .delete()
       .eq("thread_id", threadId);
     if (e1) throw e1;
-    const { error: e2 } = client
+    const { error: e2 } = await client
       .from("chat_threads")
       .delete()
       .eq("id", threadId)

@@ -9,19 +9,27 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import { useAutoScroll } from "@/components/hooks/useAutoScroll";
 import { toast } from "@/components/ui/toaster";
-import { MessageCircle, Send, X, Menu, Trash2, Plus } from "lucide-react";
+import { MessageCircle, Send, X, Menu, Trash2, Plus, Maximize2, Minimize2 } from "lucide-react";
 import { usePageContext } from "@/components/ai/use-page-context";
+import { getActiveRef, useActiveRef } from "@/components/ai/active-ref";
 import { uid } from "@/lib/utils/uid";
 import { cn } from "@/lib/utils/cn";
 import type { ChatThread } from "@/lib/types";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; timestamp?: Date };
+const MOBILE_QUERY = "(max-width: 768px)";
 
 export function ChatWidget() {
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
   const [open, setOpen] = React.useState(false);
+  const [maximized, setMaximized] = React.useState(false);
+  const [isMobile, setIsMobile] = React.useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    return window.matchMedia(MOBILE_QUERY).matches;
+  });
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [includePage, setIncludePage] = React.useState(true);
   const [messages, setMessages] = React.useState<Msg[]>([]);
@@ -31,8 +39,39 @@ export function ChatWidget() {
   const [threads, setThreads] = React.useState<ChatThread[]>([]);
   const [activeThreadId, setActiveThreadId] = React.useState<string | null>(null);
   const { context, refresh } = usePageContext();
+  const liveActiveRef = useActiveRef();
   const viewportRef = React.useRef<HTMLDivElement>(null);
   const cardRef = React.useRef<HTMLDivElement>(null);
+  const { endRef, atBottom, scrollToBottom } = useAutoScroll(viewportRef, { nearBottomMargin: 64 });
+  // ストリーミング状態と、一時停止フラグ（そのストリームに限り）
+  const streamingRef = React.useRef(false);
+  const [streaming, setStreaming] = React.useState(false);
+  const pauseAutoScrollThisStreamRef = React.useRef(false);
+
+  // ユーザー操作によるスクロールで、そのストリーム中だけ追従を一時停止
+  React.useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const markPause = () => {
+      if (streamingRef.current) pauseAutoScrollThisStreamRef.current = true;
+    };
+    el.addEventListener("wheel", markPause, { passive: true });
+    el.addEventListener("touchstart", markPause, { passive: true });
+    el.addEventListener("pointerdown", markPause, { passive: true });
+    // スクロール位置が十分に離れたら（64px超）一時停止
+    const onScroll = () => {
+      if (!streamingRef.current) return;
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distance > 64) pauseAutoScrollThisStreamRef.current = true;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("wheel", markPause as EventListener);
+      el.removeEventListener("touchstart", markPause as EventListener);
+      el.removeEventListener("pointerdown", markPause as EventListener);
+      el.removeEventListener("scroll", onScroll as EventListener);
+    };
+  }, []);
 
   // refs for rAF-driven dragging/resizing (avoid per-move re-render)
   const posRef = React.useRef<{ right: number; bottom: number }>({ right: 16, bottom: 16 });
@@ -44,6 +83,35 @@ export function ChatWidget() {
   // position & size state (draggable + resizable)
   const [pos, setPos] = React.useState<{ right: number; bottom: number }>({ right: 16, bottom: 16 });
   const [size, setSize] = React.useState<{ w: number; h: number }>({ w: 360, h: 480 });
+
+  React.useEffect(() => {
+    if (!open && maximized) setMaximized(false);
+  }, [open, maximized]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia(MOBILE_QUERY);
+    const update = (event?: MediaQueryListEvent) => {
+      setIsMobile(event?.matches ?? media.matches);
+    };
+    update();
+    if (typeof media.addEventListener === "function") {
+      const handler = (event: MediaQueryListEvent) => update(event);
+      media.addEventListener("change", handler);
+      return () => media.removeEventListener("change", handler);
+    }
+    if (typeof media.addListener === "function") {
+      const legacyHandler = (event: MediaQueryListEvent) => update(event);
+      media.addListener(legacyHandler);
+      return () => media.removeListener(legacyHandler);
+    }
+    return undefined;
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    if (isMobile && !maximized) setMaximized(true);
+  }, [isMobile, maximized, open]);
 
   const MARGIN = 8;
   function clampPos(w: number, h: number, right: number, bottom: number) {
@@ -61,16 +129,83 @@ export function ChatWidget() {
     }
   }
 
-  React.useEffect(() => {
+  // メッセージの追加/更新時：
+  // - ユーザー送信時は必ず下端へ（smooth）
+  // - アシスタントのストリーミング中は、
+  //   ・通常は追従（auto）
+  //   ・ただし、ユーザーが手動スクロールしたらそのストリーム中は一時停止
+  // - それ以外（通常更新）は、下端にいる時のみ追従
+  React.useLayoutEffect(() => {
     if (!open) return;
-    const el = viewportRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages, open]);
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    const isUser = last.role === "user";
+    const isAssistantStreaming = last.role === "assistant" && streamingRef.current;
+
+    if (isUser) {
+      requestAnimationFrame(() => scrollToBottom("smooth"));
+      return;
+    }
+    if (isAssistantStreaming) {
+      if (pauseAutoScrollThisStreamRef.current) return;
+      if (atBottom) requestAnimationFrame(() => scrollToBottom("auto"));
+      return;
+    }
+    // 非ストリーミングの通常更新は atBottom の時のみ追従
+    if (atBottom) requestAnimationFrame(() => scrollToBottom("auto"));
+  }, [messages, open, atBottom, scrollToBottom]);
 
   // keep refs in sync with state
   React.useEffect(() => { posRef.current = pos; }, [pos]);
   React.useEffect(() => { sizeRef.current = size; }, [size]);
+
+  React.useEffect(() => {
+    if (!maximized) return;
+    if (typeof document === "undefined" || typeof window === "undefined") return;
+    const docEl = document.documentElement;
+    const body = document.body;
+    const prevDocOverflow = docEl.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    body.dataset.aiChatMaximized = "true";
+    docEl.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      docEl.style.overflow = prevDocOverflow;
+      body.style.overflow = prevBodyOverflow;
+      delete body.dataset.aiChatMaximized;
+      window.scrollTo(scrollX, scrollY);
+    };
+  }, [maximized]);
+
+  const cardStyle = React.useMemo<React.CSSProperties>(() => {
+    const base: React.CSSProperties = {
+      transform: "translateZ(0)",
+      willChange: "transform",
+      contain: "paint",
+    };
+    if (maximized) {
+      return {
+        ...base,
+        top: "max(0px, env(safe-area-inset-top, 0px))",
+        right: "max(0px, env(safe-area-inset-right, 0px))",
+        bottom: "max(0px, env(safe-area-inset-bottom, 0px))",
+        left: "max(0px, env(safe-area-inset-left, 0px))",
+        width: "auto",
+        height: "auto",
+      } satisfies React.CSSProperties;
+    }
+    return {
+      ...base,
+      top: "",
+      left: "",
+      right: pos.right,
+      bottom: pos.bottom,
+      width: size.w,
+      height: size.h,
+    } satisfies React.CSSProperties;
+  }, [maximized, pos, size]);
 
   // helpers for direct style apply (avoid React re-render during drag)
   const applyPosStyle = React.useCallback((right: number, bottom: number) => {
@@ -87,6 +222,7 @@ export function ChatWidget() {
   }, []);
 
   const onDragMouseDown = (e: React.PointerEvent) => {
+    if (maximized) return;
     const target = e.currentTarget as HTMLElement | null;
     const pointerId = e.pointerId;
     // Prevent scroll/selection during drag for touch/mouse
@@ -135,6 +271,7 @@ export function ChatWidget() {
   };
 
   const onResizeMouseDown = (e: React.PointerEvent) => {
+    if (maximized) return;
     const target = e.currentTarget as HTMLElement | null;
     const pointerId = e.pointerId;
     try { target?.setPointerCapture(pointerId); } catch {}
@@ -251,7 +388,24 @@ export function ChatWidget() {
     if (sendingRef.current) return; // 直近の呼び出し中は無視
     sendingRef.current = true;
     const text = input.trim();
-    if (!text) return;
+    if (!text) {
+      sendingRef.current = false;
+      return;
+    }
+    const activeRefPayload = context?.activeRef ?? liveActiveRef ?? getActiveRef();
+    const basePagePayload = context
+      ? { ...context, activeRef: activeRefPayload ?? context.activeRef ?? undefined }
+      : activeRefPayload
+        ? { activeRef: activeRefPayload }
+        : undefined;
+    const canIncludePage = includePage && Boolean(basePagePayload);
+    if (includePage && !canIncludePage) {
+      toast({
+        title: "カード情報を準備しています",
+        description: "文脈がまだ揃っていないため、このメッセージはページ文脈なしで送信します。",
+      });
+      if (!context) refresh();
+    }
     // 送信前に現在までの履歴を確定しておく（この turn の user 発話は別フィールドで送る）
     const historyForServer = messages
       .filter((m) => m.content.trim().length > 0)
@@ -263,7 +417,14 @@ export function ChatWidget() {
       const res = await fetch("/api/ai/assistant/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, includePage, page: context, history: historyForServer, threadId: activeThreadId ?? undefined }),
+        body: JSON.stringify({
+          message: text,
+          includePage: canIncludePage,
+          page: canIncludePage ? basePagePayload : undefined,
+          history: historyForServer,
+          threadId: activeThreadId ?? undefined,
+          activeRef: activeRefPayload ?? undefined,
+        }),
       });
       if (!res.ok || !res.body) {
         try {
@@ -283,6 +444,10 @@ export function ChatWidget() {
         void loadThreads();
       }
       const reader = res.body.getReader();
+      // 新しいストリーム開始: 自動スクロールの一時停止フラグをリセット
+      pauseAutoScrollThisStreamRef.current = false;
+      streamingRef.current = true;
+      setStreaming(true);
       const decoder = new TextDecoder();
       let done = false;
       while (!done) {
@@ -316,6 +481,10 @@ export function ChatWidget() {
     } finally {
       setLoading(false);
       sendingRef.current = false;
+      // ストリーム終了: 一時停止フラグ解除
+      streamingRef.current = false;
+      setStreaming(false);
+      pauseAutoScrollThisStreamRef.current = false;
     }
   }
 
@@ -348,7 +517,15 @@ export function ChatWidget() {
             }}
             className="rounded-full shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
             aria-label="AIチャットを開く"
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => setOpen((v) => {
+              const next = !v;
+              if (!next) {
+                setMaximized(false);
+              } else if (isMobile) {
+                setMaximized(true);
+              }
+              return next;
+            })}
           >
             <MessageCircle className="h-5 w-5" />
           </Button>
@@ -362,64 +539,86 @@ export function ChatWidget() {
                 "flex flex-col left-auto top-auto",
                 "shadow-2xl data-[dragging=true]:shadow-md",
                 "border-0",
-                "bg-background/90",
+                // 背景の透過をやめ、完全不透明に
+                "bg-background",
                 // transform のアニメーションは外し、opacity のみ（初期の引っかかりを回避）
-                "animate-in fade-in-0 duration-200"
+                "animate-in fade-in-0 duration-200",
+                maximized ? "rounded-none shadow-none" : "rounded-2xl"
               )}
+              data-maximized={maximized ? "true" : "false"}
               ref={cardRef}
-              style={{ 
-                right: pos.right, 
-                bottom: pos.bottom, 
-                width: size.w, 
-                height: size.h,
-                // 背景は半透明色で代替（backdrop-filter は描画コストが高いため削除）
-                // 初期から合成レイヤを確保
-                transform: "translateZ(0)",
-                willChange: "transform",
-                contain: "paint",
-              }}
+              style={cardStyle}
             >
-          <CardHeader 
-            className="py-3 select-none bg-gradient-to-r from-[hsl(var(--primary-50))] to-[hsl(var(--primary-100))] border-b cursor-grab data-[dragging=true]:cursor-grabbing"
+          <CardHeader
+            className={cn(
+              "chat-header select-none border-b bg-gradient-to-r from-[hsl(var(--primary-50))] to-[hsl(var(--primary-100))] py-3 px-4 sm:px-5",
+              maximized ? "cursor-default" : "cursor-grab data-[dragging=true]:cursor-grabbing"
+            )}
             data-drag-region
+            data-maximized={maximized ? "true" : "false"}
             onPointerDown={(e) => {
+              if (maximized) return;
               const target = e.target as HTMLElement | null;
               if (target && target.closest("[data-drag-ignore]")) return; // ignore interactive controls
               onDragMouseDown(e);
             }}
           >
-            <div className="flex items-center gap-2">
+            <div className="chat-header__top">
               <Button
                 variant="ghost"
                 size="icon"
                 aria-label="チャット履歴"
-                className="mr-1"
+                className="chat-header__menu"
                 onClick={() => setSidebarOpen((v) => { const next = !v; if (next) void loadThreads(); return next; })}
                 data-drag-ignore
               >
                 <Menu className="h-4 w-4" />
               </Button>
               <div
-                className="font-semibold flex-1 cursor-move flex items-center gap-2"
+                className={cn(
+                  "chat-header__title flex min-w-0 flex-1 items-center gap-2 font-semibold",
+                  maximized ? "cursor-default" : "cursor-move"
+                )}
                 data-drag-handle
                 aria-label="ドラッグで移動"
                 role="button"
               >
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                アシスタント
+                <div className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
+                <span className="truncate">アシスタント</span>
               </div>
-              <Label htmlFor="use-page" className="text-xs" data-drag-ignore>ページ文脈</Label>
-              <Switch id="use-page" data-drag-ignore checked={includePage} onCheckedChange={(v) => { setIncludePage(v); if (v) refresh(); }} />
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                aria-label="閉じる" 
-                onClick={() => setOpen(false)}
-                className="hover:bg-[hsl(var(--primary-200))] transition-colors"
-                data-drag-ignore
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="chat-header__context" data-drag-ignore>
+                <Label htmlFor="use-page" className="chat-header__contextLabel text-xs text-muted-foreground">
+                  ページ文脈
+                </Label>
+                <Switch
+                  id="use-page"
+                  checked={includePage}
+                  onCheckedChange={(v) => { setIncludePage(v); if (v) refresh(); }}
+                />
+              </div>
+              <div className="chat-header__actions" data-drag-ignore>
+                {!isMobile && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={maximized ? "最小化" : "最大化"}
+                    title={maximized ? "最小化" : "最大化"}
+                    onClick={() => setMaximized((prev) => !prev)}
+                    className="hover:bg-[hsl(var(--primary-200))] transition-colors"
+                  >
+                    {maximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="閉じる"
+                  onClick={() => { setOpen(false); setMaximized(false); }}
+                  className="hover:bg-[hsl(var(--primary-200))] transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <Separator />
@@ -463,7 +662,7 @@ export function ChatWidget() {
                 <ResizableHandle withHandle />
                 <ResizablePanel>
                   <ScrollArea className="h-full p-3 pr-4">
-                    <div ref={viewportRef} className="h-full overflow-y-auto pr-2">
+                    <div ref={viewportRef} className="h-full overflow-y-auto pr-2 chat-scroll-container">
                       {messages.length === 0 && (
                         <div className="text-xs text-muted-foreground p-4 text-center animate-in fade-in-50 duration-500">
                           <div className="mb-2">👋 こんにちは</div>
@@ -481,29 +680,32 @@ export function ChatWidget() {
                         >
                           <div 
                             className={cn(
-                              "rounded-2xl px-4 py-2.5 text-xs whitespace-pre-wrap transition-all duration-200 hover:shadow-md",
+                              // 内容に応じて幅が変わるようにする（デフォルトのblock幅100%を避ける）
+                              "inline-flex w-fit max-w-full rounded-2xl px-4 py-2.5 text-xs whitespace-pre-wrap break-words transition-all duration-200 hover:shadow-md",
                               m.role === "user" 
                                 ? "bg-gradient-to-br from-[hsl(var(--primary-500))] to-[hsl(var(--primary-600))] text-white shadow-sm" 
                                 : "bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--accent))] text-[hsl(var(--foreground))] shadow-sm border border-[hsl(var(--border))]"
-                            )}
-                          >
-                            {m.content || (
-                              <div className="flex items-center gap-1">
-                                <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "0ms" }} />
-                                <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "150ms" }} />
-                                <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "300ms" }} />
-                              </div>
-                            )}
-                          </div>
+                          )}
+                        >
+                          {m.content || (
+                            <div className="flex items-center gap-1">
+                              <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "0ms" }} />
+                              <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "150ms" }} />
+                              <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "300ms" }} />
+                            </div>
+                          )}
                         </div>
+                      </div>
                       ))}
+                      {/* スクロール張り付き用センチネル */}
+                      <div ref={endRef as React.RefObject<HTMLDivElement>} data-sentinel="chat-end" />
                     </div>
                   </ScrollArea>
                 </ResizablePanel>
               </ResizablePanelGroup>
             ) : (
               <ScrollArea className="h-full p-3 pr-4">
-                <div ref={viewportRef} className="h-full overflow-y-auto pr-2">
+                <div ref={viewportRef} className="h-full overflow-y-auto pr-2 chat-scroll-container">
                   {messages.length === 0 && (
                     <div className="text-xs text-muted-foreground p-4 text-center animate-in fade-in-50 duration-500">
                       <div className="mb-2">👋 こんにちは</div>
@@ -521,7 +723,8 @@ export function ChatWidget() {
                     >
                       <div 
                         className={cn(
-                          "rounded-2xl px-4 py-2.5 text-xs whitespace-pre-wrap transition-all duration-200 hover:shadow-md",
+                          // 内容に応じて幅が変わるようにする（デフォルトのblock幅100%を避ける）
+                          "inline-flex w-fit max-w-full rounded-2xl px-4 py-2.5 text-xs whitespace-pre-wrap break-words transition-all duration-200 hover:shadow-md",
                           m.role === "user" 
                             ? "bg-gradient-to-br from-[hsl(var(--primary-500))] to-[hsl(var(--primary-600))] text-white shadow-sm" 
                             : "bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--accent))] text-[hsl(var(--foreground))] shadow-sm border border-[hsl(var(--border))]"
@@ -537,16 +740,24 @@ export function ChatWidget() {
                       </div>
                     </div>
                   ))}
+                  {/* スクロール張り付き用センチネル */}
+                  <div ref={endRef as React.RefObject<HTMLDivElement>} data-sentinel="chat-end" />
                 </div>
               </ScrollArea>
             )}
           </CardContent>
           <Separator />
-          <CardFooter className="p-3 gap-2 bg-gradient-to-t from-[hsl(var(--background))] to-transparent">
+          {/* 透過を避けるためフッターも不透明に */}
+          <CardFooter className="p-3 gap-2 bg-[hsl(var(--background))]">
             <Textarea
               placeholder="このページについて質問…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onFocus={() => {
+                // ストリーミングの一時停止中は強制スクロールしない
+                if (streamingRef.current && pauseAutoScrollThisStreamRef.current) return;
+                scrollToBottom("auto");
+              }}
               onKeyDown={onKeyDown}
               rows={2}
               className="resize-none transition-all duration-200 focus:shadow-lg focus:border-[hsl(var(--primary-400))]"
@@ -563,41 +774,43 @@ export function ChatWidget() {
             </Button>
           </CardFooter>
           {/* アクセシビリティ: ヒットターゲットを拡大しキーボード操作もサポート */}
-          <div
-            role="separator"
-            aria-label="サイズ変更"
-            aria-keyshortcuts="ArrowUp, ArrowDown, ArrowLeft, ArrowRight"
-            tabIndex={0}
-            onPointerDown={onResizeMouseDown}
-            onKeyDown={(e) => {
-              const step = e.shiftKey ? 32 : 16;
-              let dw = 0, dh = 0;
-              if (e.key === "ArrowRight") dw = step;
-              else if (e.key === "ArrowLeft") dw = -step;
-              else if (e.key === "ArrowDown") dh = step;
-              else if (e.key === "ArrowUp") dh = -step;
-              else return;
-              e.preventDefault();
-              const startW = sizeRef.current.w;
-              const startH = sizeRef.current.h;
-              const nextW = Math.min(560, Math.max(320, startW + dw));
-              const nextH = Math.min(640, Math.max(280, startH + dh));
-              const dW = nextW - startW;
-              const dH = nextH - startH;
-              const nextPos = clampPos(nextW, nextH, posRef.current.right - dW, posRef.current.bottom - dH);
-              setSize({ w: nextW, h: nextH });
-              setPos(nextPos);
-            }}
-            className="absolute right-0 bottom-0 p-3 cursor-se-resize opacity-60 hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-          >
+          {!maximized && (
             <div
-              aria-hidden
-              className="pointer-events-none h-3 w-3"
-              style={{
-                background: "linear-gradient(135deg, transparent 50%, hsl(var(--border)) 50%)",
+              role="separator"
+              aria-label="サイズ変更"
+              aria-keyshortcuts="ArrowUp, ArrowDown, ArrowLeft, ArrowRight"
+              tabIndex={0}
+              onPointerDown={onResizeMouseDown}
+              onKeyDown={(e) => {
+                const step = e.shiftKey ? 32 : 16;
+                let dw = 0, dh = 0;
+                if (e.key === "ArrowRight") dw = step;
+                else if (e.key === "ArrowLeft") dw = -step;
+                else if (e.key === "ArrowDown") dh = step;
+                else if (e.key === "ArrowUp") dh = -step;
+                else return;
+                e.preventDefault();
+                const startW = sizeRef.current.w;
+                const startH = sizeRef.current.h;
+                const nextW = Math.min(560, Math.max(320, startW + dw));
+                const nextH = Math.min(640, Math.max(280, startH + dh));
+                const dW = nextW - startW;
+                const dH = nextH - startH;
+                const nextPos = clampPos(nextW, nextH, posRef.current.right - dW, posRef.current.bottom - dH);
+                setSize({ w: nextW, h: nextH });
+                setPos(nextPos);
               }}
-            />
-          </div>
+              className="absolute right-0 bottom-0 p-3 cursor-se-resize opacity-60 hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+            >
+              <div
+                aria-hidden
+                className="pointer-events-none h-3 w-3"
+                style={{
+                  background: "linear-gradient(135deg, transparent 50%, hsl(var(--border)) 50%)",
+                }}
+              />
+            </div>
+          )}
             </Card>
           )}
         </>,

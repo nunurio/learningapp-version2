@@ -1,4 +1,4 @@
-import { Agent, user } from "@openai/agents";
+import { Agent, user, type AgentInputItem } from "@openai/agents";
 import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { lessonCardsGuardrail } from "@/lib/ai/agents/guardrails";
@@ -30,7 +30,7 @@ export async function runSingleCardAgent(input: {
 }): Promise<LessonCards> {
   const agent = createSingleCardAgent(input.desiredCardType as unknown as CardKind);
   // 入力は Items 化（user）して渡す
-  const items: unknown[] = [
+  const items: AgentInputItem[] = [
     user(
       [
         "このレッスンに対して、指定があればそのタイプでカードを1件だけ作成してください。",

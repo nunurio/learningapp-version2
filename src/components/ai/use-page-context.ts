@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { getActiveRef, useActiveRef, type ActiveRef } from "@/components/ai/active-ref";
 
 export type PageContext = {
   url?: string;
@@ -7,6 +8,7 @@ export type PageContext = {
   selection?: string | null;
   headings?: string[] | null;
   contentSnippet?: string | null;
+  activeRef?: ActiveRef;
 };
 
 function getSelectionText(max = 800): string | null {
@@ -33,6 +35,7 @@ function getHeadings(): string[] | null {
 
 export function usePageContext() {
   const [context, setContext] = React.useState<PageContext | null>(null);
+  const liveActiveRef = useActiveRef();
 
   const refresh = React.useCallback(() => {
     try {
@@ -42,6 +45,7 @@ export function usePageContext() {
         selection: getSelectionText(),
         headings: getHeadings(),
         contentSnippet: null,
+        activeRef: getActiveRef(),
       });
     } catch {
       setContext(null);
@@ -52,6 +56,16 @@ export function usePageContext() {
     refresh();
   }, [refresh]);
 
+  React.useEffect(() => {
+    setContext((prev) => {
+      if (!prev) {
+        if (!liveActiveRef) return prev;
+        return { activeRef: liveActiveRef };
+      }
+      if (prev.activeRef === liveActiveRef) return prev;
+      return { ...prev, activeRef: liveActiveRef };
+    });
+  }, [liveActiveRef]);
+
   return { context, refresh } as const;
 }
-

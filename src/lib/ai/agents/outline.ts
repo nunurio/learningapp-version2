@@ -1,4 +1,4 @@
-import { Agent, user } from "@openai/agents";
+import { Agent, user, type AgentInputItem } from "@openai/agents";
 import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { CoursePlanSchema } from "@/lib/ai/schema";
@@ -24,7 +24,7 @@ export async function runOutlineAgent(input: {
 }): Promise<CoursePlan> {
   const lc = Math.max(3, Math.min(typeof input.lessonCount === "number" ? input.lessonCount : 12, 30));
   // 入力は Items 化して渡す（Agents SDK 推奨）
-  const items: unknown[] = [
+  const items: AgentInputItem[] = [
     user(
       [
         "コースのアウトラインを作成してください。",

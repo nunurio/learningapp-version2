@@ -1,7 +1,8 @@
 import { Agent, extractAllTextOutput, user, assistant as assistantMsg, system } from "@openai/agents";
-import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { JA_BASE_STYLE } from "@/lib/ai/prompts";
+
+export type ChatAgentContext = Record<string, never>;
 
 export const CHAT_INSTRUCTIONS = `
 あなたは学習アプリに常駐するアシスタントです。
@@ -11,20 +12,28 @@ ${JA_BASE_STYLE}
 - ユーザーの質問に対し、箇条書き中心で手短に具体的に答える。
 - 不足情報がある場合は仮定を明示し、確認事項を列挙する。
 - ページ文脈が与えられた場合は参考にするが、丸写しは避け要約して統合する。
+- ページ文脈・カード内容を踏まえて学習支援になる洞察（要点整理・次の行動提案など）を添える。
+- 出力は最上段に結論や要約 → 補足やアクション候補の順で並べる。
 
 # 出力
 - 通常は **プレーンテキスト**（Markdown可）。
 - 事実不明時はその旨を明示し推測で断定しない。
 `.trim();
 
-// 型定義未追従環境でも余剰キーのリテラルチェックを回避するため、
-// いったん緩いオブジェクトに格納してから渡す（anyは使わない）
-const chatModelSettings: {} = { reasoning: { effort: "minimal" } };
+export function createChatAgent() {
+  return new Agent<ChatAgentContext>({
+    name: "Site Assistant",
+    instructions: CHAT_INSTRUCTIONS,
+    modelSettings: {
+      providerData: {
+        reasoning: { effort: "low" },
+        text: { verbosity: "low" },
+      },
+    },
+  });
+}
 
-export const ChatAgent = new Agent<UnknownContext>({
-  name: "Site Assistant",
-  instructions: CHAT_INSTRUCTIONS,
-});
+export const ChatAgent = createChatAgent();
 
 export async function runChatAgent(input: {
   message: string;

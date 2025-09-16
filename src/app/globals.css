@@ -608,6 +608,71 @@ body {
   }
 }
 
+/* Chat: ブラウザの自動スクロールアンカーを無効化して制御を一元化 */
+.chat-scroll-container {
+  overflow-anchor: none;
+}
+
+/* Chat widget header responsive layout */
+.chat-header {
+  container-type: inline-size;
+  container-name: chat-header;
+}
+
+.chat-header__top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.chat-header__menu {
+  flex-shrink: 0;
+}
+
+.chat-header__title {
+  min-width: 0;
+}
+
+.chat-header__context {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: hsl(var(--muted-foreground));
+  flex-shrink: 0;
+}
+
+.chat-header__contextLabel {
+  white-space: nowrap;
+}
+
+.chat-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.25rem;
+  flex-shrink: 0;
+}
+
+@container chat-header (max-width: 420px) {
+  .chat-header__context {
+    order: 4;
+    width: 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+    padding-top: 0.25rem;
+  }
+
+  .chat-header__actions {
+    order: 3;
+    margin-left: 0;
+  }
+}
+
 /* Modern card styles */
 .card-modern {
   background: hsl(var(--card));

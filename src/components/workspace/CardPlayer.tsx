@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import MarkdownView from "@/components/markdown/MarkdownView";
 import { useWorkspaceSelector, workspaceStore } from "@/lib/state/workspace-store";
 import { Star, StickyNote, HelpCircle } from "lucide-react";
+import { publishActiveRef } from "@/components/ai/active-ref";
 
 type Props = {
   courseId: UUID;
@@ -212,6 +213,19 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
     }
     return base;
   }, [card, draft]);
+
+  React.useEffect(() => {
+    if (!view) {
+      publishActiveRef({ courseId, mode: "workspace" });
+      return;
+    }
+    publishActiveRef({
+      courseId,
+      lessonId: view.lessonId,
+      cardId: view.id,
+      mode: "workspace",
+    });
+  }, [courseId, view]);
 
   if (!selectedId || !view) {
     return <p className="text-sm text-gray-700">カードを選択すると、ここで学習できます。</p>;

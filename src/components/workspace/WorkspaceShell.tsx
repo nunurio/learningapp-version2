@@ -15,6 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTrigger } from "@/components/ui/
 import { listCards as listCardsApi, snapshot as fetchSnapshot } from "@/lib/client-api";
 import { workspaceStore } from "@/lib/state/workspace-store";
 import { useHydrateDraftsOnce } from "@/lib/state/useHydrateDrafts";
+import { publishActiveRef } from "@/components/ai/active-ref";
 
 type Props = { courseId: UUID; defaultLayout?: number[]; cookieKey?: string; initialCardId?: string };
 
@@ -79,6 +80,19 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
       setSelKind("card");
     }
   }, [initialCardId]);
+
+  React.useEffect(() => {
+    if (!selId) {
+      publishActiveRef({ courseId, mode: "workspace" });
+      return;
+    }
+    if (selKind === "card") return; // CardPlayer がより詳細な情報を publish
+    if (selKind === "lesson") {
+      publishActiveRef({ courseId, lessonId: selId, mode: "workspace" });
+      return;
+    }
+    publishActiveRef({ courseId, mode: "workspace" });
+  }, [courseId, selId, selKind]);
 
   // カード選択時は所属レッスンに自動スコープ（初期遷移/戻る遷移の双方をカバー）
   React.useEffect(() => {

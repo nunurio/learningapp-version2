@@ -1,4 +1,4 @@
-import { Agent, user } from "@openai/agents";
+import { Agent, user, type AgentInputItem } from "@openai/agents";
 import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { LessonCardsPlanSchema, type LessonCardsPlan } from "@/lib/ai/schema";
@@ -25,7 +25,7 @@ export async function runCardsPlanner(input: {
 }): Promise<LessonCardsPlan> {
   // 入力は Items 化（user）して渡す
   const ctx = input.context;
-  const items: unknown[] = [
+  const items: AgentInputItem[] = [
     user(
       [
         "レッスン用のカード計画を作成してください。",

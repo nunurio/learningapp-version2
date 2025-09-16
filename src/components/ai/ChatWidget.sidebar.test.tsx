@@ -100,4 +100,35 @@ describe("ChatWidget sidebar & threads", () => {
       expect(calls.length).toBeGreaterThan(0);
     });
   });
+
+  it("forces maximized layout on mobile viewports", async () => {
+    const originalMatchMedia = window.matchMedia;
+    const scrollToSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => true,
+      } as MediaQueryList)),
+    });
+
+    try {
+      const { unmount } = render(<ChatWidget />);
+      fireEvent.click(screen.getByRole("button", { name: "AIチャットを開く" }));
+
+      const dialog = await screen.findByRole("dialog", { name: "AI チャット" });
+      await waitFor(() => expect(dialog).toHaveAttribute("data-maximized", "true"));
+      expect(screen.queryByRole("button", { name: /最小化|最大化/ })).toBeNull();
+      unmount();
+    } finally {
+      scrollToSpy.mockRestore();
+      Object.defineProperty(window, "matchMedia", { writable: true, value: originalMatchMedia ?? undefined });
+    }
+  });
 });

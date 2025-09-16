@@ -3,11 +3,16 @@ import { NextResponse } from "next/server";
 import { buildPageContextText, redactText, limitChars } from "@/lib/utils/redact";
 import { parseJsonWithQuery } from "@/lib/utils/request";
 import { initAgents, runner } from "@/lib/ai/agents/index";
-import { Agent, user, assistant as assistantMsg, system } from "@openai/agents";
-import { CHAT_INSTRUCTIONS } from "@/lib/ai/agents/chat";
+import { user, assistant as assistantMsg, system } from "@openai/agents";
+import { createChatAgent } from "@/lib/ai/agents/chat";
 import type { Readable } from "stream";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
+import {
+  ActiveRefSchema,
+  type ContextBundle,
+  getContextBundle,
+} from "@/lib/ai/tools/context-tools";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +27,7 @@ const RequestSchema = z.object({
       selection: z.string().nullable().optional(),
       headings: z.array(z.string()).nullable().optional(),
       contentSnippet: z.string().nullable().optional(),
+      activeRef: ActiveRefSchema.optional(),
     })
     .nullable()
     .optional(),
@@ -36,7 +42,126 @@ const RequestSchema = z.object({
     .max(50)
     .optional(),
   threadId: z.string().uuid().optional(),
+  activeRef: ActiveRefSchema.optional(),
 });
+
+function sanitizeText(value: unknown, max = 400): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return limitChars(redactText(trimmed), max);
+}
+
+function indentBlock(value: string): string {
+  return value
+    .split(/\r?\n/)
+    .map((line) => (line.length > 0 ? `  ${line}` : ""))
+    .join("\n");
+}
+
+function formatCardContentForPrompt(card: ContextBundle["card"] | undefined): string | null {
+  if (!card?.content) return null;
+  const content = card.content as Record<string, unknown>;
+
+  switch (card.cardType) {
+    case "text": {
+      return sanitizeText(content.body, 1200);
+    }
+    case "quiz": {
+      const parts: string[] = [];
+      const question = sanitizeText(content.question, 600);
+      if (question) parts.push(`問題: ${question}`);
+
+      if (Array.isArray(content.options)) {
+        const options = (content.options as unknown[]).reduce<string[]>((acc, opt, idx) => {
+          if (typeof opt !== "string") return acc;
+          const sanitized = sanitizeText(opt, 200);
+          if (!sanitized) return acc;
+          acc.push(`${idx + 1}. ${sanitized}`);
+          return acc;
+        }, []);
+        if (options.length > 0) {
+          parts.push(`選択肢:\n${options.map((opt) => `  ${opt}`).join("\n")}`);
+        }
+      }
+
+      const answerIndexRaw = content.answerIndex;
+      if (typeof answerIndexRaw === "number") {
+        parts.push(`正解: 選択肢 ${answerIndexRaw + 1}`);
+      }
+      const explanation = sanitizeText(content.explanation, 400);
+      if (explanation) parts.push(`解説: ${explanation}`);
+      return parts.length ? parts.join("\n") : null;
+    }
+    case "fill-blank": {
+      const parts: string[] = [];
+      const text = sanitizeText(content.text, 800);
+      if (text) parts.push(`本文: ${text}`);
+      const answersRaw = content.answers;
+      if (answersRaw && typeof answersRaw === "object" && !Array.isArray(answersRaw)) {
+        const entries = Object.entries(answersRaw as Record<string, unknown>).reduce<string[]>(
+          (acc, [key, value]) => {
+            if (typeof value !== "string") return acc;
+            const sanitized = sanitizeText(value, 200);
+            if (!sanitized) return acc;
+            acc.push(`${key}: ${sanitized}`);
+            return acc;
+          },
+          []
+        );
+        if (entries.length > 0) {
+          parts.push(`解答:\n${entries.map((entry) => `  ${entry}`).join("\n")}`);
+        }
+      }
+      if (content.caseSensitive === true) {
+        parts.push("※ 大文字小文字を区別します");
+      }
+      return parts.length ? parts.join("\n") : null;
+    }
+    default: {
+      try {
+        return limitChars(redactText(JSON.stringify(content)), 800);
+      } catch {
+        return null;
+      }
+    }
+  }
+}
+
+function buildActiveCardContextText(bundle: ContextBundle): string | null {
+  if (!bundle.card && !bundle.lesson && !bundle.course) return null;
+
+  const lines: string[] = ["【現在開いているカード情報】"];
+
+  if (bundle.course) {
+    const title = sanitizeText(bundle.course.title, 160) ?? "(タイトル未設定)";
+    lines.push(`- コース: ${title} (ID: ${bundle.course.id})`);
+  } else if (bundle.ref?.courseId) {
+    lines.push(`- コースID: ${bundle.ref.courseId}`);
+  }
+
+  if (bundle.lesson) {
+    const title = sanitizeText(bundle.lesson.title, 160) ?? "(タイトル未設定)";
+    lines.push(`- レッスン: ${title} (ID: ${bundle.lesson.id})`);
+  } else if (bundle.ref?.lessonId) {
+    lines.push(`- レッスンID: ${bundle.ref.lessonId}`);
+  }
+
+  if (bundle.card) {
+    const title = sanitizeText(bundle.card.title, 200) ?? "(タイトル未設定)";
+    lines.push(`- カードタイトル: ${title} (ID: ${bundle.card.id})`);
+    lines.push(`- カード種別: ${bundle.card.cardType}`);
+  } else if (bundle.ref?.cardId) {
+    lines.push(`- カードID: ${bundle.ref.cardId}`);
+  }
+
+  const body = formatCardContentForPrompt(bundle.card);
+  if (body) {
+    lines.push(`- カード本文:\n${indentBlock(body)}`);
+  }
+
+  return lines.join("\n");
+}
 
 function shouldUseMock() {
   return (
@@ -75,6 +200,7 @@ export async function POST(req: Request) {
           .map((m) => ({ role: m.role, content: limitChars(redactText(m.content), 800) }))
       : null;
     const requestedThreadId: string | undefined = input.threadId;
+    const rawActiveRef = input.activeRef ?? input.page?.activeRef ?? undefined;
 
     // Streaming response (Agents SDK のネイティブストリーミングに切替)
     const encoder = new TextEncoder();
@@ -121,6 +247,26 @@ export async function POST(req: Request) {
       } catch {}
     }
 
+    const historyLength = Array.isArray(normalizedHistory) ? normalizedHistory.length : 0;
+    let agentUserText = userText;
+    if (historyLength === 0 && supaClient && rawActiveRef) {
+      try {
+        const activeRef = ActiveRefSchema.parse(rawActiveRef);
+        const bundle = await getContextBundle({
+          supabase: supaClient,
+          ref: activeRef,
+          userId,
+          include: { neighbors: false, progress: false, flags: false, notes: false, maxBody: 1600 },
+        });
+        const contextText = buildActiveCardContextText(bundle);
+        if (contextText) {
+          agentUserText = `${contextText}\n\n${userText}`;
+        }
+      } catch (err) {
+        console.error("[assistant-stream] Failed to enrich user message with card context", err);
+      }
+    }
+
     // モック/キーなしは疑似ストリーム（可能なら Supabase に保存）
     if (shouldUseMock() || !process.env.OPENAI_API_KEY) {
       threadId = await ensureThreadId();
@@ -129,7 +275,7 @@ export async function POST(req: Request) {
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
           try {
-            for await (const chunk of mockStream(userText, pageText)) {
+            for await (const chunk of mockStream(agentUserText, pageText)) {
               assistantText += chunk;
               controller.enqueue(encoder.encode(chunk));
             }
@@ -162,10 +308,7 @@ export async function POST(req: Request) {
     if (threadId) await persistUserMessage(threadId);
 
     // Agentはシンプルに（モデルはrunner側既定）。ページ文脈はsystemで注入。
-    const agent = new Agent({
-      name: "Chat (site assistant)",
-      instructions: CHAT_INSTRUCTIONS,
-    });
+    const agent = createChatAgent();
 
     // 入力アイテム化：履歴→(system: page)→今回のuser
     const items: Array<ReturnType<typeof user> | ReturnType<typeof assistantMsg> | ReturnType<typeof system>> = [];
@@ -175,11 +318,38 @@ export async function POST(req: Request) {
       }
     }
     if (pageText) items.push(system(pageText));
-    items.push(user(userText));
+    items.push(user(agentUserText));
 
-    const streamed = await runner.run(agent, items, { stream: true, maxTurns: 1 });
+    const streamed = await runner.run(agent, items, {
+      stream: true,
+      maxTurns: 2,
+    });
     const textStream = streamed.toTextStream() as unknown as ReadableStream<string>;
     const [persistSide, clientSide] = (textStream as unknown as ReadableStream<string>).tee();
+    const encodedClientStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const reader = clientSide.getReader();
+        (async () => {
+          try {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (typeof value === "string") {
+                if (value.length > 0) controller.enqueue(encoder.encode(value));
+              } else if (value != null) {
+                const text = String(value);
+                if (text.length > 0) controller.enqueue(encoder.encode(text));
+              }
+            }
+            controller.close();
+          } catch (err) {
+            try { controller.error(err); } catch {}
+          } finally {
+            try { reader.releaseLock(); } catch {}
+          }
+        })();
+      },
+    });
 
     // 保存側：全文を合流し、streamed.completed を待ってから保存
     (async () => {
@@ -203,7 +373,7 @@ export async function POST(req: Request) {
       } catch {}
     })();
 
-    return new NextResponse(clientSide as unknown as ReadableStream, {
+    return new NextResponse(encodedClientStream as unknown as ReadableStream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-store",

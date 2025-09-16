@@ -11,7 +11,7 @@ export async function GET() {
     const client = await supa.createClient();
     const userId = await supa.getCurrentUserId();
     if (!userId) return NextResponse.json([], { headers: { "Cache-Control": "no-store" } });
-    const { data, error } = client
+    const { data, error } = await client
       .from("chat_threads")
       .select("id, title, created_at, updated_at")
       .eq("user_id", userId)
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       .object({ title: z.string().trim().min(1).max(120).optional() })
       .safeParse(body ? JSON.parse(body) : {});
     const title = parsed.success && parsed.data.title ? parsed.data.title : "新しいチャット";
-    const { data, error } = client
+    const { data, error } = await client
       .from("chat_threads")
       .insert({ user_id: userId, title })
       .select("id")
