@@ -33,6 +33,8 @@ export type QuizCardContent = {
   options: string[];
   answerIndex: number;
   explanation?: string | null;
+  optionExplanations?: (string | null)[] | null;
+  hint?: string | null;
 };
 
 export type FillBlankCardContent = {
@@ -91,6 +93,8 @@ export type LessonCards = {
         options: string[];
         answerIndex: number;
         explanation?: string | null;
+        optionExplanations?: (string | null)[] | null;
+        hint?: string | null;
       }
     | {
         type: 'fill-blank';

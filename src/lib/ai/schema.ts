@@ -39,6 +39,8 @@ export const LessonCardItemSchema = z
     options: z.array(z.string()).nullable(),
     answerIndex: z.number().int().min(0).nullable(),
     explanation: z.string().nullable(),
+    optionExplanations: z.array(z.string().nullable()).nullable(),
+    hint: z.string().nullable(),
 
     // fill-blank
     text: z.string().nullable(),
@@ -59,6 +61,23 @@ export const LessonCardItemSchema = z
       }
       if (v.answerIndex == null || v.answerIndex < 0) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["answerIndex"], message: "answerIndex is required for quiz" });
+      }
+      if (v.optionExplanations != null) {
+        if (!Array.isArray(v.optionExplanations)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["optionExplanations"], message: "optionExplanations must be an array" });
+        } else {
+          if (Array.isArray(v.options) && v.optionExplanations.length !== v.options.length) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["optionExplanations"], message: "optionExplanations length must match options" });
+          }
+          v.optionExplanations.forEach((text, idx) => {
+            if (typeof text !== "string" || text.trim().length === 0) {
+              ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["optionExplanations", idx], message: "option explanations must be non-empty strings" });
+            }
+          });
+        }
+      }
+      if (typeof v.hint !== "string" || v.hint.trim().length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["hint"], message: "hint is required and must be non-empty" });
       }
     } else if (v.type === "fill-blank") {
       if (v.text == null || v.text.trim().length === 0) {
@@ -186,6 +205,8 @@ export const LessonCardsJSONSchema = {
           options: { type: ["array", "null"], items: { type: "string" }, minItems: 2 },
           answerIndex: { type: ["integer", "null"], minimum: 0 },
           explanation: { type: ["string", "null"] },
+          optionExplanations: { type: ["array", "null"], items: { type: ["string", "null"] } },
+          hint: { type: ["string", "null"] },
 
           // fill-blank
           text: { type: ["string", "null"] },
@@ -205,6 +226,8 @@ export const LessonCardsJSONSchema = {
           "options",
           "answerIndex",
           "explanation",
+          "optionExplanations",
+          "hint",
           "text",
           "answers",
           "caseSensitive",

@@ -16,7 +16,7 @@ describe("api/ai/lesson-cards POST", () => {
   });
 
   it("単体生成で SingleCardAgent が呼ばれる", async () => {
-    const single = vi.fn(async () => ({ lessonTitle: "X", cards: [{ type: "text", title: null, body: "b", question: null, options: null, answerIndex: null, explanation: null, text: null, answers: null, caseSensitive: null }] }));
+    const single = vi.fn(async () => ({ lessonTitle: "X", cards: [{ type: "text", title: null, body: "b", question: null, options: null, answerIndex: null, explanation: null, optionExplanations: null, hint: "sample", text: null, answers: null, caseSensitive: null }] }));
     vi.doMock("@/lib/ai/agents/lesson-cards", () => ({ runSingleCardAgent: single }));
     const { POST } = await import("./route");
     const res = await POST(new Request("http://local/api/ai/lesson-cards", { method: "POST", body: JSON.stringify({ desiredCount: 1, lessonTitle: "L", desiredCardType: "text", userBrief: "概要" }), headers: { "Content-Type": "application/json" } }));

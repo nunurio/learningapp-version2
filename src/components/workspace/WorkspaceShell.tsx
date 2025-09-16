@@ -101,6 +101,18 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
     };
   }, [selId, selKind]);
 
+  const learnHref = React.useMemo(() => {
+    if (selId && selKind === "card") {
+      const params = new URLSearchParams({ cardId: selId });
+      if (lessonScopeId) params.set("lessonId", lessonScopeId);
+      return `/learn/${courseId}?${params.toString()}`;
+    }
+    if (selId && selKind === "lesson") {
+      return `/learn/${courseId}?lessonId=${selId}`;
+    }
+    return `/learn/${courseId}`;
+  }, [courseId, selId, selKind, lessonScopeId]);
+
   return (
     <div className="min-h-screen">
       <Header />
@@ -134,6 +146,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
                 selId={selId}
                 selKind={selKind}
                 lessonScopeId={lessonScopeId ?? undefined}
+                learnHref={learnHref}
                 onNavigate={(id) => { setSelId(id); setSelKind("card"); }}
               />
             </ResizablePanel>
@@ -171,6 +184,9 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
                   </div>
                 </SheetContent>
               </Sheet>
+              <Button asChild size="sm" variant="outline" aria-label="学習モード" className="whitespace-nowrap">
+                <Link href={learnHref}>学習モード</Link>
+              </Button>
               <Sheet open={openInspector} onOpenChange={setOpenInspector}>
                 <SheetTrigger asChild>
                   <Button aria-label="編集" size="sm">編集</Button>
@@ -206,26 +222,15 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
   );
 }
 
-function CenterPanel({ courseId, selId, selKind, lessonScopeId, onNavigate }: { courseId: UUID; selId?: string; selKind?: "lesson"|"card"; lessonScopeId?: UUID; onNavigate: (id: UUID) => void }) {
+function CenterPanel({ courseId, selId, selKind, lessonScopeId, learnHref, onNavigate }: { courseId: UUID; selId?: string; selKind?: "lesson"|"card"; lessonScopeId?: UUID; learnHref: string; onNavigate: (id: UUID) => void }) {
   return (
     <div className="h-full p-4 overflow-auto">
       <div className="flex items-center justify-between mb-3">
         <h1 className="text-lg font-semibold">学習ワークスペース</h1>
         <div>
           {/* 学習モードへ遷移（選択中のカードがあればそのカードから開始） */}
-          <Button asChild size="sm" variant="outline" aria-label="学習モード">
-            {(() => {
-              const href = (() => {
-                if (selId && selKind === "card") {
-                  const q = new URLSearchParams({ cardId: selId });
-                  if (lessonScopeId) q.set("lessonId", lessonScopeId);
-                  return `/learn/${courseId}?${q.toString()}`;
-                }
-                if (selId && selKind === "lesson") return `/learn/${courseId}?lessonId=${selId}`;
-                return `/learn/${courseId}`;
-              })();
-              return <Link href={href}>学習モード</Link>;
-            })()}
+          <Button asChild size="sm" variant="outline" aria-label="学習モード" className="whitespace-nowrap">
+            <Link href={learnHref}>学習モード</Link>
           </Button>
         </div>
       </div>

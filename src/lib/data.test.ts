@@ -43,9 +43,9 @@ describe("lib/data (draft + publish)", () => {
     expect(updateCard).toHaveBeenCalledWith("C1", { title: "T", tags: undefined, content: { body: "b" } });
 
     // quiz branch
-    vi.mocked(draftsGet).mockResolvedValueOnce({ data: { cardId: "C2", cardType: "quiz", title: null, question: "q", options: ["a","b"], answerIndex: 1, explanation: undefined } as SaveCardDraftInput } as unknown as DraftRow);
+    vi.mocked(draftsGet).mockResolvedValueOnce({ data: { cardId: "C2", cardType: "quiz", title: null, question: "q", options: ["a","b"], answerIndex: 1, explanation: undefined, optionExplanations: ["ok", "ng"], hint: "ヒント" } as SaveCardDraftInput } as unknown as DraftRow);
     await publishCard("C2");
-    expect(updateCard).toHaveBeenCalledWith("C2", { title: null, tags: undefined, content: { question: "q", options: ["a","b"], answerIndex: 1, explanation: undefined } });
+    expect(updateCard).toHaveBeenCalledWith("C2", { title: null, tags: undefined, content: { question: "q", options: ["a","b"], answerIndex: 1, explanation: undefined, optionExplanations: ["ok", "ng"], hint: "ヒント" } });
 
     // fill-blank branch
     vi.mocked(draftsGet).mockResolvedValueOnce({ data: { cardId: "C3", cardType: "fill-blank", title: undefined, text: "t", answers: { a: "1" }, caseSensitive: true } as SaveCardDraftInput } as unknown as DraftRow);

@@ -24,6 +24,20 @@ export const lessonCardsGuardrail: OutputGuardrail = {
         if (!(c.answerIndex >= 0 && c.answerIndex < c.options.length)) {
           return { tripwireTriggered: true, outputInfo: { reason: "quiz.answerIndex out of range" } };
         }
+        if (c.optionExplanations && c.optionExplanations.length !== c.options.length) {
+          return { tripwireTriggered: true, outputInfo: { reason: "quiz.optionExplanations length mismatch" } };
+        }
+        if (c.optionExplanations) {
+          for (let i = 0; i < c.optionExplanations.length; i++) {
+            const r = c.optionExplanations[i];
+            if (typeof r !== "string" || r.trim().length === 0) {
+              return { tripwireTriggered: true, outputInfo: { reason: `quiz.optionExplanations[${i}] invalid` } };
+            }
+          }
+        }
+        if (typeof c.hint !== "string" || c.hint.trim().length === 0) {
+          return { tripwireTriggered: true, outputInfo: { reason: "quiz.hint invalid" } };
+        }
       }
       if (c.type === "fill-blank") {
         if (typeof c.text !== "string" || !c.answers) {
