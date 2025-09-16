@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 
 type Props = {
-  onPublish?: () => Promise<void> | void;
+  onSave?: () => Promise<void> | void;
   onBack?: () => void;
   disabled?: boolean;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -157,7 +157,7 @@ function toggleHeading(src: string, selStart: number, selEnd: number, level: num
   return { text, nextStart, nextEnd };
 }
 
-export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value, onChange, onApply, previewEnabled = false, onPreviewToggle, onUndo, onRedo, canUndo, canRedo }: Props) {
+export function EditorToolbar({ onSave, onBack, disabled, textareaRef, value, onChange, onApply, previewEnabled = false, onPreviewToggle, onUndo, onRedo, canUndo, canRedo }: Props) {
   const uiDisabled = !!disabled;
   const [fmt, setFmt] = React.useState({ bold: false, italic: false, code: false, strike: false, quote: false, ul: false, ol: false, h1: false, h2: false });
   // 直前の選択範囲スナップショット（ボタンクリック時の選択ロスト対策）
@@ -328,12 +328,12 @@ export function EditorToolbar({ onPublish, onBack, disabled, textareaRef, value,
                 </MenubarItem>
               )}
               <MenubarSeparator />
-              {onPublish && (
+              {onSave && (
                 <MenubarItem
-                  onSelect={(e) => { e?.preventDefault?.(); if (!uiDisabled) void onPublish(); }}
+                  onSelect={(e) => { e?.preventDefault?.(); if (!uiDisabled) void onSave(); }}
                   disabled={uiDisabled}
                 >
-                  Publish
+                  保存
                 </MenubarItem>
               )}
             </MenubarContent>
