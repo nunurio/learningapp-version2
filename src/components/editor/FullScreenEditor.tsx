@@ -11,7 +11,7 @@ import { Check, Plus, Trash2 } from "lucide-react";
 import MarkdownView from "@/components/markdown/MarkdownView";
 import type { UUID } from "@/lib/types";
 import { workspaceStore } from "@/lib/state/workspace-store";
-import { saveCardDraft, publishCard, loadCardDraft, type SaveCardDraftInput } from "@/lib/data";
+import { saveCard, type SaveCardDraftInput } from "@/lib/data";
 
 function normalizeQuizDraft(input: SaveCardDraftInput): SaveCardDraftInput {
   if (input.cardType !== "quiz") return input;
@@ -60,12 +60,10 @@ type QuizDraftInput = Extract<SaveCardDraftInput, { cardType: "quiz" }>;
 
 export function FullScreenEditor(props: Props) {
   const router = useRouter();
-  const [saving, setSaving] = React.useState<"idle" | "saving" | "saved">("idle");
+  const [saving, setSaving] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
   const [savedAt, setSavedAt] = React.useState<string | null>(null);
-  const debounceRef = React.useRef<number | null>(null);
+  const [dirty, setDirty] = React.useState(false);
   const [navPending, startTransition] = React.useTransition();
-  // 初回ドラフト読み込みが完了するまで自動保存を抑制
-  const [autosaveReady, setAutosaveReady] = React.useState(false);
 
   // 統一フォーム（カード種別ごとに分岐）
   const [form, setForm] = React.useState<SaveCardDraftInput>(() => {
@@ -99,53 +97,49 @@ export function FullScreenEditor(props: Props) {
     };
   });
 
-  // ドラフト復元後に履歴をドラフト内容で初期化するためのフラグ
-  const pendingHistoryInitRef = React.useRef<string | null>(null);
-  // ユーザーが編集を開始したか（ドラフト適用レース防止用）
-  const userEditedRef = React.useRef(false);
-
-  // 既存のローカル下書きがあれば最初に復元
-  // ただし、読み込みが完了する前にユーザーが編集を始めていた場合は上書きしない
   React.useEffect(() => {
-    userEditedRef.current = false; // カード切替時に未編集へリセット
-    let cancelled = false;
-    const currentId = props.cardId;
-    (async () => {
-      const draft = await loadCardDraft(currentId);
-      if (cancelled || currentId !== props.cardId) return;
-      if (draft && !userEditedRef.current) {
-        setForm(normalizeQuizDraft(draft));
-        // 復元済み本文を履歴初期値として反映できるようにマーク
-        if (draft.cardType === "text") {
-          pendingHistoryInitRef.current = draft.body ?? "";
-        } else {
-          pendingHistoryInitRef.current = null;
-        }
-      } else {
-        // ドラフトなし、またはユーザー編集中の場合は履歴初期化をスキップ
-        pendingHistoryInitRef.current = null;
+    setForm((prev) => {
+      if (prev.cardId === props.cardId) return prev;
+      if (props.cardType === "text") {
+        return { cardId: props.cardId, cardType: "text", title: props.title ?? null, tags: props.tags ?? [], body: props.body ?? "" };
       }
-      // 既存ドラフト確認完了 → 自動保存を解放
-      setAutosaveReady(true);
-    })();
-    return () => { cancelled = true; };
-  }, [props.cardId]);
-
-  // 下書き自動保存（500ms）— 初回ロード完了までは抑制
-  React.useEffect(() => {
-    if (!autosaveReady) return;
-    setSaving("saving");
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(async () => {
-      const res = await saveCardDraft(form);
-      setSavedAt(res.updatedAt);
-      setSaving("saved");
-    }, 500);
-    return () => { if (debounceRef.current) window.clearTimeout(debounceRef.current); };
-  }, [form, autosaveReady]);
+      if (props.cardType === "quiz") {
+        const baseOptions = props.options && props.options.length ? [...props.options] : ["", ""];
+        const base: SaveCardDraftInput = {
+          cardId: props.cardId,
+          cardType: "quiz",
+          title: props.title ?? null,
+          tags: props.tags ?? [],
+          question: props.question ?? "",
+          options: baseOptions,
+          answerIndex: props.answerIndex ?? 0,
+          explanation: props.explanation ?? null,
+          optionExplanations: props.optionExplanations ?? [],
+          hint: props.hint ?? null,
+        };
+        return normalizeQuizDraft(base);
+      }
+      return {
+        cardId: props.cardId,
+        cardType: "fill-blank",
+        title: props.title ?? null,
+        tags: props.tags ?? [],
+        text: props.text ?? "",
+        answers: props.answers ?? {},
+        caseSensitive: !!props.caseSensitive,
+      };
+    });
+    setDirty(false);
+    setSaving("idle");
+    setSavedAt(null);
+    workspaceStore.clearDraft(props.cardId);
+  }, [props.cardId, props.cardType, props.title, props.tags, props.body, props.question, props.options, props.answerIndex, props.explanation, props.optionExplanations, props.hint, props.text, props.answers, props.caseSensitive]);
 
   // workspace のドラフトと同期（ワークスペースへ戻った際の即時反映）
-  React.useEffect(() => { workspaceStore.setDraft(form); }, [form]);
+  React.useEffect(() => {
+    if (!dirty) return;
+    workspaceStore.setDraft(form);
+  }, [form, dirty]);
 
   const title = form.title ?? "";
   const tagsCsv = (form.tags ?? []).join(", ");
@@ -155,14 +149,13 @@ export function FullScreenEditor(props: Props) {
   const quizFieldIdBase = React.useId();
 
   const mutateQuiz = React.useCallback((mutator: (draft: QuizDraftInput) => QuizDraftInput) => {
-    userEditedRef.current = true;
-    setAutosaveReady(true);
+    setDirty(true);
     setForm((prev) => {
       if (prev.cardType !== "quiz") return prev;
       const next = mutator(prev);
       return normalizeQuizDraft(next);
     });
-  }, [setAutosaveReady, setForm]);
+  }, []);
 
   const handleOptionChange = React.useCallback((index: number, value: string) => {
     mutateQuiz((draft) => {
@@ -214,25 +207,32 @@ export function FullScreenEditor(props: Props) {
     mutateQuiz((draft) => ({ ...draft, answerIndex: index }));
   }, [mutateQuiz]);
 
-  // 進行中のデバウンスをフラッシュして即時保存するヘルパー
-  const flushDraft = React.useCallback(async () => {
-    // 初期ロード未完了かつ未編集なら保存しない（既存ドラフトの上書きを防止）
-    if (!autosaveReady && !userEditedRef.current) return;
-    if (debounceRef.current) {
-      window.clearTimeout(debounceRef.current);
-      debounceRef.current = null;
-    }
+  const handleSave = React.useCallback(async () => {
     setSaving("saving");
-    const res = await saveCardDraft(form);
-    setSavedAt(res.updatedAt);
-    setSaving("saved");
-  }, [form, autosaveReady]);
+    try {
+      const res = await saveCard(form);
+      setSavedAt(res.updatedAt);
+      setSaving("saved");
+      setDirty(false);
+      workspaceStore.clearDraft(props.cardId);
+      workspaceStore.bumpVersion();
+    } catch (err) {
+      console.error(err);
+      setSaving("error");
+      throw err;
+    }
+  }, [form, props.cardId]);
 
-  // ナビゲーション前にフラッシュしてから遷移
   const handleBack = React.useCallback(async () => {
-    await flushDraft();
+    if (dirty) {
+      try {
+        await handleSave();
+      } catch {
+        return;
+      }
+    }
     startTransition(() => router.push(`/courses/${props.courseId}/workspace`));
-  }, [flushDraft, router, props.courseId]);
+  }, [dirty, handleSave, router, props.courseId]);
 
   // 履歴（Undo/Redo）管理
   type Snap = { text: string; start: number; end: number };
@@ -264,21 +264,8 @@ export function FullScreenEditor(props: Props) {
     setCanRedo(false);
   }, [props.cardId]);
 
-  // ローカル下書き復元後、Undo履歴をドラフト内容で再初期化
-  React.useEffect(() => {
-    if (pendingHistoryInitRef.current != null) {
-      const t = pendingHistoryInitRef.current;
-      historyRef.current = [{ text: t, start: 0, end: 0 }];
-      hIndexRef.current = 0;
-      setCanUndo(false);
-      setCanRedo(false);
-      pendingHistoryInitRef.current = null;
-    }
-  }, [form]);
-
   const applyText = React.useCallback((nextText: string, nextStart?: number, nextEnd?: number) => {
-    userEditedRef.current = true;
-    setAutosaveReady(true); // 編集開始をもって自動保存を有効化
+    setDirty(true);
     setForm((f) => ({ ...f, body: nextText }));
     const ta = textareaRef.current;
     const s = Math.max(0, nextStart ?? (ta?.selectionStart ?? 0));
@@ -290,7 +277,7 @@ export function FullScreenEditor(props: Props) {
   }, [pushHistory]);
 
   const undo = React.useCallback(() => {
-    userEditedRef.current = true;
+    setDirty(true);
     if (hIndexRef.current <= 0) return;
     hIndexRef.current -= 1;
     const snap = historyRef.current[hIndexRef.current];
@@ -301,7 +288,7 @@ export function FullScreenEditor(props: Props) {
   }, []);
 
   const redo = React.useCallback(() => {
-    userEditedRef.current = true;
+    setDirty(true);
     if (hIndexRef.current >= historyRef.current.length - 1) return;
     hIndexRef.current += 1;
     const snap = historyRef.current[hIndexRef.current];
@@ -338,16 +325,21 @@ export function FullScreenEditor(props: Props) {
           </Button>
           <div className="flex-1" />
           <div className="text-xs text-gray-500">
-            {saving === "saving" ? "保存中…" : saving === "saved" ? (savedAt ? `保存済み（${new Date(savedAt).toLocaleTimeString()}）` : "保存済み") : "-"}
+            {saving === "saving"
+              ? "保存中…"
+              : saving === "error"
+                ? "保存に失敗しました"
+                : dirty
+                  ? "未保存"
+                  : saving === "saved"
+                    ? (savedAt ? `保存済み（${new Date(savedAt).toLocaleTimeString()}）` : "保存済み")
+                    : "-"}
           </div>
-          <Button onClick={async () => {
-            // [P1] 公開直前にデバウンス中の自動保存をフラッシュ
-            await flushDraft();
-            await publishCard(props.cardId);
-            workspaceStore.clearDraft(props.cardId);
-            workspaceStore.bumpVersion();
-          }}>
-            公開
+          <Button
+            onClick={async () => { try { await handleSave(); } catch {} }}
+            disabled={!dirty || saving === "saving"}
+          >
+            保存
           </Button>
         </div>
       </div>
@@ -356,13 +348,7 @@ export function FullScreenEditor(props: Props) {
         <>
           <EditorToolbar
             onBack={() => void handleBack() }
-            onPublish={async () => {
-              // [P1] ツールバー経由の公開でも同様にフラッシュして保存→公開
-              await flushDraft();
-              await publishCard(props.cardId);
-              workspaceStore.clearDraft(props.cardId);
-              workspaceStore.bumpVersion();
-            }}
+            onSave={async () => { try { await handleSave(); } catch {} }}
             disabled={false}
             textareaRef={textareaRef}
             value={form.body ?? ""}
@@ -379,12 +365,12 @@ export function FullScreenEditor(props: Props) {
             <div className="mx-auto max-w-5xl px-3 py-4 space-y-3">
               <Input
                 value={title}
-                onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => ({ ...f, title: e.target.value })); }}
+                onChange={(e) => { setDirty(true); setForm((f) => ({ ...f, title: e.target.value })); }}
                 placeholder="タイトル（任意）"
               />
               <Input
                 value={tagsCsv}
-                onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) })); }}
+                onChange={(e) => { setDirty(true); setForm((f) => ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) })); }}
                 placeholder="タグ, を, カンマ区切りで"
               />
               {preview ? (
@@ -421,12 +407,12 @@ export function FullScreenEditor(props: Props) {
           <div className="mx-auto max-w-5xl px-3 py-4 space-y-3">
             <Input
               value={title}
-              onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => ({ ...f, title: e.target.value })); }}
+              onChange={(e) => { setDirty(true); setForm((f) => ({ ...f, title: e.target.value })); }}
               placeholder="タイトル（任意）"
             />
             <Input
               value={tagsCsv}
-              onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) })); }}
+              onChange={(e) => { setDirty(true); setForm((f) => ({ ...f, tags: e.target.value.split(",").map((s)=>s.trim()).filter(Boolean) })); }}
               placeholder="タグ, を, カンマ区切りで"
             />
             {form.cardType === "quiz" && (
@@ -535,12 +521,12 @@ export function FullScreenEditor(props: Props) {
               <div className="grid grid-cols-1 gap-3">
                 <Textarea
                   value={form.text ?? ""}
-                  onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => f.cardType === "fill-blank" ? ({ ...f, text: e.target.value }) : f); }}
+                  onChange={(e) => { setDirty(true); setForm((f) => f.cardType === "fill-blank" ? ({ ...f, text: e.target.value }) : f); }}
                   placeholder="本文（[[1]] 形式の空所を含む）"
                 />
                 <Textarea
                   value={Object.entries(form.answers ?? {}).map(([k,v]) => `${k}:${v}`).join("\n")}
-                  onChange={(e) => { userEditedRef.current = true; setAutosaveReady(true); setForm((f) => {
+                  onChange={(e) => { setDirty(true); setForm((f) => {
                     if (f.cardType !== "fill-blank") return f;
                     const obj: Record<string, string> = {};
                     e.target.value.split("\n").forEach((line) => {
