@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent, createEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, createEvent, waitFor, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ChatWidget from "./ChatWidget";
 
@@ -33,6 +33,64 @@ describe("ChatWidget", () => {
     const close = screen.getByRole("button", { name: "閉じる" });
     fireEvent.click(close);
     expect(screen.queryByRole("dialog", { name: "AI チャット" })).toBeNull();
+  });
+
+  it("keeps the chat open when clicking the header drag handle", () => {
+    render(<ChatWidget />);
+    fireEvent.click(screen.getByRole("button", { name: "AIチャットを開く" }));
+
+    const dialog = screen.getByRole("dialog", { name: "AI チャット" });
+    const dragHandle = screen.getByRole("button", { name: "ドラッグで移動" });
+
+    fireEvent.pointerDown(dragHandle);
+    fireEvent.pointerUp(dragHandle);
+    fireEvent.click(dragHandle);
+
+    expect(dialog).toBeInTheDocument();
+  });
+
+  it("does not accidentally close when finishing a drag over the launcher button", () => {
+    render(<ChatWidget />);
+    const launcher = screen.getByRole("button", { name: "AIチャットを開く" });
+    fireEvent.click(launcher);
+
+    const dialog = screen.getByRole("dialog", { name: "AI チャット" });
+    const dragHandle = screen.getByRole("button", { name: "ドラッグで移動" });
+
+    fireEvent.pointerDown(dragHandle);
+    // simulate pointer release after the widget moved away, over the launcher
+    fireEvent.pointerUp(launcher);
+    fireEvent.click(launcher);
+
+    expect(dialog).toBeInTheDocument();
+  });
+
+  it("ignores launcher toggle immediately after interacting with the header", () => {
+    vi.useFakeTimers();
+    try {
+      render(<ChatWidget />);
+      const launcher = screen.getByRole("button", { name: "AIチャットを開く" });
+      fireEvent.click(launcher);
+
+      const dialog = screen.getByRole("dialog", { name: "AI チャット" });
+      const dragHandle = screen.getByRole("button", { name: "ドラッグで移動" });
+
+      fireEvent.pointerDown(dragHandle);
+      fireEvent.pointerUp(dragHandle);
+      fireEvent.click(dragHandle);
+
+      fireEvent.click(launcher);
+      expect(dialog).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(410);
+      });
+
+      fireEvent.click(launcher);
+      expect(screen.queryByRole("dialog", { name: "AI チャット" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not send on IME composition Enter", async () => {

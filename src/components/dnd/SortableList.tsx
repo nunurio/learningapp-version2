@@ -104,7 +104,7 @@ function SortableRow({ id, index, children }: { id: string; index: number; child
     opacity: isDragging ? 0.8 : undefined,
   };
   return (
-    <li ref={setNodeRef} style={style} className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3">
+    <li ref={setNodeRef} style={style} className="rounded-md border border-[hsl(220_13%_85%_/_0.8)] bg-[hsl(var(--card))] p-3 shadow-sm hover:border-[hsl(220_13%_75%)] hover:shadow-md transition-all duration-200">
       <div className="flex items-center gap-1 sm:gap-2">
         <button
           aria-label={`ドラッグして並び替え（#${index + 1})`}

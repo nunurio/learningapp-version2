@@ -7,7 +7,7 @@
   --fg: 222 84% 5%;
   --muted: 214 32% 91%;
   --card: 0 0% 100%;
-  --border: 214 32% 91%;
+  --border: 220 13% 85%;  /* Softer, slightly blue-tinted border */
   --primary: 218 65% 46%;  /* Softer, more comfortable blue */
   --primary-fg: 0 0% 100%;
   --destructive: 0 84.2% 60.2%;
@@ -57,13 +57,23 @@
   --gradient-card: linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(249,250,251,1) 100%);
   --gradient-hero: linear-gradient(135deg, hsl(221 83% 53% / 10%) 0%, hsl(217 91% 60% / 10%) 100%);
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
-  --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
+  /* Modern Borders */
+  --border-subtle: 220 13% 90%;
+  --border-default: 220 13% 85%;
+  --border-strong: 220 13% 75%;
+  --border-interactive: var(--primary-300);
+  --border-glow: 0 0 0 1px hsl(var(--primary-400) / 0.5), 0 0 20px hsl(var(--primary-400) / 0.3);
+
+  /* Shadows - Enhanced for depth */
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px 0 rgb(0 0 0 / 0.02);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 10px 25px -3px rgb(0 0 0 / 0.08), 0 4px 10px -4px rgb(0 0 0 / 0.04);
+  --shadow-xl: 0 20px 40px -5px rgb(0 0 0 / 0.1), 0 8px 15px -6px rgb(0 0 0 / 0.05);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.2);
+  --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.06);
+  --shadow-glow: 0 0 20px hsl(var(--primary-400) / 0.3);
+  --shadow-elevated: 0 4px 12px hsl(var(--primary-600) / 0.08), 0 0 0 1px hsl(var(--border));
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
 
   /* Animation timing */
   --animation-fast: 150ms;
@@ -106,7 +116,7 @@
     --fg: 0 0% 95%;
     --muted: 217 33% 17%;
     --card: 222 84% 5%;
-    --border: 217 33% 17%;
+    --border: 217 33% 25%;  /* Lighter, more visible border in dark mode */
     --primary: 216 70% 52%;  /* Softer blue for dark mode */
     /* Foreground color used on primary backgrounds */
     --primary-fg: 0 0% 100%;
@@ -677,9 +687,17 @@ body {
 .card-modern {
   background: hsl(var(--card));
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
   position: relative;
+  border: 1px solid hsl(var(--border-subtle));
+  transition: all var(--animation-base) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-modern:hover {
+  box-shadow: var(--shadow-lg);
+  border-color: hsl(var(--border-default) / 0.8);
+  transform: translateY(-2px);
 }
 
 .card-modern::before {
@@ -696,6 +714,166 @@ body {
 
 .card-modern:hover::before {
   opacity: 1;
+}
+
+/* Border gradient effect */
+.border-gradient {
+  position: relative;
+  background: linear-gradient(hsl(var(--card)), hsl(var(--card))) padding-box,
+              linear-gradient(135deg, hsl(var(--primary-400) / 0.5), hsl(var(--secondary-400) / 0.5)) border-box;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+}
+
+/* Glow border effect */
+.border-glow {
+  position: relative;
+  border: 1px solid hsl(var(--border-default));
+  transition: all var(--animation-base) ease;
+}
+
+.border-glow:hover {
+  border-color: hsl(var(--primary-400) / 0.5);
+  box-shadow: var(--shadow-glow);
+}
+
+/* Glass border effect */
+.border-glass {
+  background: hsl(var(--bg) / 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid hsl(var(--border) / 0.3);
+  box-shadow: 0 8px 32px hsl(0 0% 0% / 0.08);
+}
+
+/* Elevated card */
+.card-elevated {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border-subtle));
+  box-shadow: var(--shadow-elevated);
+  border-radius: var(--radius-lg);
+  transition: all var(--animation-base) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-elevated:hover {
+  box-shadow: var(--shadow-xl);
+  transform: translateY(-4px);
+  border-color: hsl(var(--primary-300) / 0.3);
+}
+
+/* Soft neumorphic style */
+.neo-soft {
+  background: linear-gradient(145deg, hsl(var(--bg)), hsl(var(--muted) / 0.5));
+  box-shadow: 5px 5px 15px hsl(0 0% 0% / 0.08),
+              -5px -5px 15px hsl(0 0% 100% / 0.5);
+  border: 1px solid hsl(var(--border-subtle));
+}
+
+@media (prefers-color-scheme: dark) {
+  .neo-soft {
+    background: linear-gradient(145deg, hsl(var(--card) / 0.9), hsl(var(--card)));
+    box-shadow: 5px 5px 15px hsl(0 0% 0% / 0.3),
+                -5px -5px 15px hsl(0 0% 100% / 0.03);
+  }
+
+  .border-glass {
+    background: hsl(var(--bg) / 0.05);
+    border-color: hsl(var(--border) / 0.2);
+  }
+}
+
+/* Modern divider styles */
+.divider-soft {
+  position: relative;
+  background: linear-gradient(90deg,
+              transparent,
+              hsl(var(--border-default) / 0.5) 20%,
+              hsl(var(--border-default) / 0.5) 80%,
+              transparent);
+  height: 1px;
+  border: none;
+}
+
+.divider-glow {
+  position: relative;
+  background: hsl(var(--border-default));
+  height: 1px;
+  transition: all var(--animation-base) ease;
+}
+
+.divider-glow:hover {
+  background: hsl(var(--primary-400) / 0.5);
+  box-shadow: 0 0 10px hsl(var(--primary-400) / 0.3);
+}
+
+.divider-gradient {
+  position: relative;
+  background: linear-gradient(90deg,
+              hsl(var(--primary-400) / 0.3),
+              hsl(var(--secondary-400) / 0.3),
+              hsl(var(--primary-400) / 0.3));
+  background-size: 200% 100%;
+  animation: gradient-shift 8s ease infinite;
+  height: 1px;
+  border: none;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Vertical dividers */
+.divider-vertical-soft {
+  position: relative;
+  background: linear-gradient(180deg,
+              transparent,
+              hsl(var(--border-default) / 0.5) 20%,
+              hsl(var(--border-default) / 0.5) 80%,
+              transparent);
+  width: 1px;
+  height: 100%;
+  border: none;
+}
+
+/* Enhanced header divider */
+.divider-header {
+  position: relative;
+  height: 1px;
+  background: linear-gradient(90deg,
+              transparent,
+              hsl(var(--border-default) / 0.3) 5%,
+              hsl(var(--border-default) / 0.8) 50%,
+              hsl(var(--border-default) / 0.3) 95%,
+              transparent);
+}
+
+.divider-header::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+              transparent,
+              hsl(var(--primary-400) / 0.1) 50%,
+              transparent);
+  opacity: 0;
+  transition: opacity var(--animation-base);
+}
+
+.divider-header:hover::after {
+  opacity: 1;
+}
+
+/* Panel dividers for workspace */
+.divider-panel {
+  position: relative;
+  background: linear-gradient(180deg,
+              hsl(var(--border-default) / 0.2),
+              hsl(var(--border-default) / 0.6) 50%,
+              hsl(var(--border-default) / 0.2));
 }
 
 /* Premium button effects - refined */

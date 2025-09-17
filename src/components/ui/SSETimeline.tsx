@@ -166,7 +166,7 @@ type Group = { id: GroupId; label: string; Icon: Lucide; start?: number; end?: n
     <Card className={`${cardPad} ${cardText} text-gray-800 ${cardH} overflow-auto`} role="status" aria-live="polite">
       {lastError && <div role="alert" className="sr-only">{lastError.label}</div>}
       {lastError && (
-        <div className={`sticky top-0 z-10 mb-1.5 rounded border border-[hsl(var(--destructive))]/40 bg-[hsla(0,84%,60%,.08)] ${alertPad} text-[hsl(var(--destructive))]`}>
+        <div className={`sticky top-0 z-10 mb-1.5 rounded border border-[hsl(var(--destructive)_/_0.3)] bg-[hsla(0,84%,60%,.08)] shadow-sm ${alertPad} text-[hsl(var(--destructive))]`}>
           <AlertTriangle className="inline-block mr-1 align-[-2px] h-4 w-4" aria-hidden />
           <span className="sr-only">エラー: </span>
           エラーが発生しました: <span className="font-mono">{lastError.label}</span>

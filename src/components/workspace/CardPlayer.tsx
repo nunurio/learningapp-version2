@@ -301,7 +301,7 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
       </div>
 
       {showHelp && (
-        <div className="p-3 text-sm mb-4 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))]">
+        <div className="p-3 text-sm mb-4 rounded-md border border-[hsl(220_13%_85%_/_0.6)] bg-[hsl(var(--card))] shadow-sm">
           <p className="font-medium mb-1">キーボードショートカット</p>
           <ul className="list-disc list-inside text-gray-700">
             <li>クイズ: 1–9 で選択, Enter で回答</li>

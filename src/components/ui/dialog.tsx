@@ -15,7 +15,7 @@ export const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/30 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-black/40 backdrop-blur-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -55,8 +55,23 @@ export const DialogContent = React.forwardRef<
           "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
           // Sizing: responsive width + vertical limit with scroll
           "w-[95vw] sm:w-full max-w-lg max-h-[85vh] sm:max-h-[85dvh] overflow-y-auto overscroll-contain scrollbar-gutter-stable",
-          // Aesthetics
-          "rounded-md border border-border bg-popover text-popover-foreground p-6 shadow-lg outline-none",
+          // Aesthetics - Enhanced with modern effects
+          "rounded-xl bg-popover text-popover-foreground p-6 outline-none",
+          // Modern border with subtle gradient
+          "border border-[hsl(220_13%_85%_/_0.8)]",
+          // Enhanced shadow for depth
+          "shadow-[0_20px_50px_-10px_hsl(0_0%_0%_/_0.25),0_10px_20px_-5px_hsl(0_0%_0%_/_0.1)]",
+          // Subtle glow effect
+          "ring-1 ring-white/10",
+          // Animation and backdrop
+          "data-[state=open]:animate-in data-[state=closed]:animate-out",
+          "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+          "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+          "data-[state=closed]:slide-out-to-bottom-[2%]",
+          "data-[state=open]:slide-in-from-bottom-[2%]",
+          // Dark mode enhancements
+          "dark:border-[hsl(217_33%_25%_/_0.6)] dark:ring-white/5",
+          "dark:shadow-[0_20px_50px_-10px_hsl(0_0%_0%_/_0.5),0_10px_20px_-5px_hsl(0_0%_0%_/_0.3)]",
           className
         )}
         {...props}

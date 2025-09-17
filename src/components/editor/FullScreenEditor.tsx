@@ -237,7 +237,7 @@ export function FullScreenEditor(props: Props) {
   return (
     <div className="h-screen w-full flex flex-col">
       {/* ヘッダー */}
-      <div className="sticky top-0 z-10 border-b bg-[hsl(var(--background))]">
+      <div className="sticky top-0 z-10 bg-[hsl(var(--background))] relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-[hsl(var(--border-default)_/_0.5)] after:to-transparent">
         <div className="mx-auto max-w-5xl px-3 py-2 flex items-center gap-2">
           <Button variant="outline" onClick={() => void handleBack()} disabled={navPending}>
             ワークスペースに戻る

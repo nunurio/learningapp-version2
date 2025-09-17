@@ -20,6 +20,7 @@ import type { ChatThread } from "@/lib/types";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; timestamp?: Date };
 const MOBILE_QUERY = "(max-width: 768px)";
+const LAUNCHER_SUPPRESS_MS = 400;
 
 export function ChatWidget() {
   const [mounted, setMounted] = React.useState(false);
@@ -47,6 +48,40 @@ export function ChatWidget() {
   const streamingRef = React.useRef(false);
   const [streaming, setStreaming] = React.useState(false);
   const pauseAutoScrollThisStreamRef = React.useRef(false);
+  const suppressLauncherClickRef = React.useRef(false);
+  const pendingLauncherReleaseRef = React.useRef<number | null>(null);
+  const lastInternalPointerEventRef = React.useRef(0);
+
+  React.useEffect(() => {
+    return () => {
+      suppressLauncherClickRef.current = false;
+      if (pendingLauncherReleaseRef.current != null) {
+        clearTimeout(pendingLauncherReleaseRef.current);
+        pendingLauncherReleaseRef.current = null;
+      }
+    };
+  }, []);
+
+  const markLauncherSuppress = React.useCallback(() => {
+    suppressLauncherClickRef.current = true;
+    lastInternalPointerEventRef.current = Date.now();
+    if (pendingLauncherReleaseRef.current != null) {
+      clearTimeout(pendingLauncherReleaseRef.current);
+      pendingLauncherReleaseRef.current = null;
+    }
+  }, []);
+
+  const releaseLauncherSuppress = React.useCallback(() => {
+    lastInternalPointerEventRef.current = Date.now();
+    if (!suppressLauncherClickRef.current) return;
+    if (pendingLauncherReleaseRef.current != null) {
+      clearTimeout(pendingLauncherReleaseRef.current);
+    }
+    pendingLauncherReleaseRef.current = window.setTimeout(() => {
+      suppressLauncherClickRef.current = false;
+      pendingLauncherReleaseRef.current = null;
+    }, LAUNCHER_SUPPRESS_MS);
+  }, []);
 
   // ユーザー操作によるスクロールで、そのストリーム中だけ追従を一時停止
   React.useEffect(() => {
@@ -231,6 +266,7 @@ export function ChatWidget() {
     const startY = e.clientY;
     const startPos = { ...posRef.current };
     try { target?.setPointerCapture(pointerId); } catch {}
+    markLauncherSuppress();
     // 軽量化のため state を使わず、DOM にドラッグ中フラグを付与し、遷移を無効化
     if (cardRef.current) {
       cardRef.current.dataset.dragging = "true";
@@ -253,6 +289,7 @@ export function ChatWidget() {
       try { target?.releasePointerCapture(pointerId); } catch {}
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
       if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       // commit final position
       const next = clampPos(sizeRef.current.w, sizeRef.current.h, startPos.right - lastDx, startPos.bottom - lastDy);
@@ -264,10 +301,12 @@ export function ChatWidget() {
         cardRef.current.style.transition = "";
       }
       if (target) delete target.dataset.dragging;
+      releaseLauncherSuppress();
     };
 
     window.addEventListener("pointermove", onMove, { passive: true } as AddEventListenerOptions);
     window.addEventListener("pointerup", onUp, { passive: true } as AddEventListenerOptions);
+    window.addEventListener("pointercancel", onUp, { passive: true } as AddEventListenerOptions);
   };
 
   const onResizeMouseDown = (e: React.PointerEvent) => {
@@ -275,6 +314,7 @@ export function ChatWidget() {
     const target = e.currentTarget as HTMLElement | null;
     const pointerId = e.pointerId;
     try { target?.setPointerCapture(pointerId); } catch {}
+    markLauncherSuppress();
     const startX = e.clientX;
     const startY = e.clientY;
     const startSize = { ...sizeRef.current };
@@ -320,6 +360,7 @@ export function ChatWidget() {
       try { target?.releasePointerCapture(pointerId); } catch {}
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
       if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       // commit final size and position so it stays inside viewport
       const nextSize = { w: lastW, h: lastH };
@@ -336,10 +377,12 @@ export function ChatWidget() {
         delete el.dataset.resizing;
         el.style.transition = "";
       }
+      releaseLauncherSuppress();
     };
 
     window.addEventListener("pointermove", onMove, { passive: true } as AddEventListenerOptions);
     window.addEventListener("pointerup", onUp, { passive: true } as AddEventListenerOptions);
+    window.addEventListener("pointercancel", onUp, { passive: true } as AddEventListenerOptions);
   };
 
   // --- Chat history (threads) ----------------------------------------
@@ -517,15 +560,25 @@ export function ChatWidget() {
             }}
             className="rounded-full shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
             aria-label="AIチャットを開く"
-            onClick={() => setOpen((v) => {
-              const next = !v;
-              if (!next) {
-                setMaximized(false);
-              } else if (isMobile) {
-                setMaximized(true);
+            onClick={() => {
+              const now = Date.now();
+              if (open && (suppressLauncherClickRef.current || now - lastInternalPointerEventRef.current < LAUNCHER_SUPPRESS_MS)) {
+                suppressLauncherClickRef.current = false;
+                return;
               }
-              return next;
-            })}
+              if (suppressLauncherClickRef.current) {
+                suppressLauncherClickRef.current = false;
+              }
+              setOpen((v) => {
+                const next = !v;
+                if (!next) {
+                  setMaximized(false);
+                } else if (isMobile) {
+                  setMaximized(true);
+                }
+                return next;
+              });
+            }}
           >
             <MessageCircle className="h-5 w-5" />
           </Button>
@@ -548,10 +601,21 @@ export function ChatWidget() {
               data-maximized={maximized ? "true" : "false"}
               ref={cardRef}
               style={cardStyle}
+              onPointerDownCapture={(e) => {
+                if (e.pointerType === "mouse" && e.button !== 0) return;
+                markLauncherSuppress();
+              }}
+              onPointerUpCapture={(e) => {
+                if (e.pointerType === "mouse" && e.button !== 0) return;
+                releaseLauncherSuppress();
+              }}
+              onPointerCancelCapture={releaseLauncherSuppress}
             >
           <CardHeader
             className={cn(
-              "chat-header select-none border-b bg-gradient-to-r from-[hsl(var(--primary-50))] to-[hsl(var(--primary-100))] py-3 px-4 sm:px-5",
+              "chat-header select-none bg-gradient-to-r from-[hsl(var(--primary-50))] to-[hsl(var(--primary-100))] py-3 px-4 sm:px-5",
+              "relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px",
+              "after:bg-gradient-to-r after:from-transparent after:via-[hsl(var(--border-default)_/_0.5)] after:to-transparent",
               maximized ? "cursor-default" : "cursor-grab data-[dragging=true]:cursor-grabbing"
             )}
             data-drag-region
@@ -628,9 +692,9 @@ export function ChatWidget() {
             )}
             {sidebarOpen ? (
               <ResizablePanelGroup direction="horizontal" className="h-full">
-                <ResizablePanel defaultSize={28} minSize={18} maxSize={42} collapsible collapsedSize={0} className="border-r">
+                <ResizablePanel defaultSize={28} minSize={18} maxSize={42} collapsible collapsedSize={0} className="relative after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gradient-to-b after:from-transparent after:via-[hsl(var(--border-default)_/_0.4)] after:to-transparent">
                   <div className="h-full flex flex-col">
-                    <div className="p-2 flex items-center justify-between border-b bg-muted/30">
+                    <div className="p-2 flex items-center justify-between bg-muted/30 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-[hsl(var(--border-default)_/_0.4)] after:to-transparent">
                       <div className="text-xs font-medium">チャット履歴</div>
                       <Button size="sm" variant="outline" onClick={() => { setActiveThreadId(null); setMessages([]); }}>
                         <Plus className="h-3 w-3 mr-1" /> 新規
@@ -643,7 +707,7 @@ export function ChatWidget() {
                       <div className="space-y-1">
                         {threads.map((t) => (
                           <div key={t.id}
-                               className={cn("group flex items-center gap-2 rounded-md border p-2 hover:bg-accent cursor-pointer", activeThreadId === t.id && "bg-accent")}
+                               className={cn("group flex items-center gap-2 rounded-md border border-[hsl(220_13%_85%_/_0.6)] p-2 hover:bg-accent hover:border-[hsl(220_13%_75%_/_0.8)] cursor-pointer transition-all duration-200", activeThreadId === t.id && "bg-accent border-[hsl(var(--primary-400)_/_0.3)]")}
                                onClick={() => { setActiveThreadId(t.id); void loadMessages(t.id); }}
                           >
                             <div className="flex-1 min-w-0">
@@ -682,9 +746,9 @@ export function ChatWidget() {
                             className={cn(
                               // 内容に応じて幅が変わるようにする（デフォルトのblock幅100%を避ける）
                               "inline-flex w-fit max-w-full rounded-2xl px-4 py-2.5 text-xs whitespace-pre-wrap break-words transition-all duration-200 hover:shadow-md",
-                              m.role === "user" 
-                                ? "bg-gradient-to-br from-[hsl(var(--primary-500))] to-[hsl(var(--primary-600))] text-white shadow-sm" 
-                                : "bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--accent))] text-[hsl(var(--foreground))] shadow-sm border border-[hsl(var(--border))]"
+                              m.role === "user"
+                                ? "bg-gradient-to-br from-[hsl(var(--primary-500))] to-[hsl(var(--primary-600))] text-white shadow-sm"
+                                : "bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--accent))] text-[hsl(var(--foreground))] shadow-sm border border-[hsl(220_13%_85%_/_0.5)]"
                           )}
                         >
                           {m.content || (
@@ -726,8 +790,8 @@ export function ChatWidget() {
                           // 内容に応じて幅が変わるようにする（デフォルトのblock幅100%を避ける）
                           "inline-flex w-fit max-w-full rounded-2xl px-4 py-2.5 text-xs whitespace-pre-wrap break-words transition-all duration-200 hover:shadow-md",
                           m.role === "user" 
-                            ? "bg-gradient-to-br from-[hsl(var(--primary-500))] to-[hsl(var(--primary-600))] text-white shadow-sm" 
-                            : "bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--accent))] text-[hsl(var(--foreground))] shadow-sm border border-[hsl(var(--border))]"
+                            ? "bg-gradient-to-br from-[hsl(var(--primary-500))] to-[hsl(var(--primary-600))] text-white shadow-sm"
+                            : "bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--accent))] text-[hsl(var(--foreground))] shadow-sm border border-[hsl(220_13%_85%_/_0.5)]"
                         )}
                       >
                         {m.content || (
