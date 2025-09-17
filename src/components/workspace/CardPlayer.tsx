@@ -198,14 +198,19 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
     if (draft.cardType === "text" && base.cardType === "text") {
       base.content = { body: draft.body } as TextCardContent;
     } else if (draft.cardType === "quiz" && base.cardType === "quiz") {
+      const baseContent = base.content as QuizCardContent;
       base.content = {
-        question: draft.question,
-        options: draft.options,
-        answerIndex: draft.answerIndex,
-        explanation: draft.explanation ?? undefined,
-        optionExplanations: draft.optionExplanations ?? undefined,
-        hint: draft.hint ?? undefined,
-      } as QuizCardContent;
+        question: draft.question ?? baseContent.question,
+        options: draft.options ?? baseContent.options,
+        answerIndex: draft.answerIndex ?? baseContent.answerIndex,
+        explanation:
+          draft.explanation !== undefined ? draft.explanation : baseContent.explanation,
+        optionExplanations:
+          draft.optionExplanations !== undefined
+            ? draft.optionExplanations
+            : baseContent.optionExplanations,
+        hint: draft.hint !== undefined ? draft.hint : baseContent.hint,
+      } satisfies QuizCardContent;
     } else if (draft.cardType === "fill-blank" && base.cardType === "fill-blank") {
       base.content = {
         text: draft.text,

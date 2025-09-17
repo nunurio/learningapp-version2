@@ -102,6 +102,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   const [saving, setSaving] = React.useState<"idle" | "saving" | "saved">("idle");
   const [savedAt, setSavedAt] = React.useState<string | null>(null);
   const [dirty, setDirty] = React.useState(false);
+  const formRef = React.useRef<SaveCardDraftInput | null>(form);
   const [lessons, setLessons] = React.useState<Lesson[]>([]);
   const [cards, setCards] = React.useState<WorkspaceCard[]>([]);
   // Reserved UI states (unused currently)
@@ -149,22 +150,46 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
 
   React.useEffect(() => { void refreshLists(); }, [refreshLists]);
 
-  const handleSave = React.useCallback(async () => {
-    if (!form) return;
+  React.useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+
+  const handleSave = React.useCallback(async (): Promise<boolean> => {
+    const snapshot = formRef.current;
+    if (!snapshot) return false;
     setSaving("saving");
     try {
-      const res = await saveCard(form);
-      setSavedAt(res.updatedAt);
-      setSaving("saved");
-      setDirty(false);
-      workspaceStore.clearDraft(form.cardId);
+      const res = await saveCard(snapshot);
+      const drafts = workspaceStore.getSnapshot().drafts;
+      const draftInStore = drafts[snapshot.cardId];
+      const snapshotJson = JSON.stringify(snapshot);
+      const draftDiffers = !!draftInStore && JSON.stringify(draftInStore) !== snapshotJson;
+      const current = formRef.current;
+      const sameCard = current?.cardId === snapshot.cardId;
+      const hasChangesSinceSnapshot = sameCard && current !== snapshot;
+      const hasPendingDraft = draftDiffers || hasChangesSinceSnapshot;
+
+      if (sameCard) {
+        setSavedAt(res.updatedAt);
+        setSaving(hasPendingDraft ? "idle" : "saved");
+        if (!hasPendingDraft) {
+          setDirty(false);
+        }
+      } else {
+        setSaving("idle");
+      }
+
+      if (!hasPendingDraft) {
+        workspaceStore.clearDraft(snapshot.cardId);
+      }
       workspaceStore.bumpVersion();
+      return hasPendingDraft;
     } catch (err) {
       console.error(err);
       setSaving("idle");
       throw err;
     }
-  }, [form]);
+  }, []);
 
   React.useEffect(() => {
     if (!form || !dirty) return;
