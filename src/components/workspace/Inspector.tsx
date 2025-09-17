@@ -154,6 +154,20 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
     formRef.current = form;
   }, [form]);
 
+  const applyDraftUpdate = React.useCallback((
+    mutator: (current: SaveCardDraftInput) => SaveCardDraftInput | null | undefined,
+  ) => {
+    const current = formRef.current;
+    if (!current) return;
+    const next = mutator(current);
+    if (!next || next === current) return;
+    formRef.current = next;
+    setForm(next);
+    workspaceStore.setDraft(next);
+    setDirty(true);
+    setSaving("idle");
+  }, []);
+
   const handleSave = React.useCallback(async (): Promise<boolean> => {
     const snapshot = formRef.current;
     if (!snapshot) return false;
@@ -191,20 +205,12 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
     }
   }, []);
 
-  React.useEffect(() => {
-    if (!form || !dirty) return;
-    workspaceStore.setDraft(form);
-  }, [form, dirty]);
-
   const updateQuizForm = React.useCallback((updater: (draft: QuizDraft) => QuizDraft) => {
-    setDirty(true);
-    setSaving("idle");
-    setForm((prev) => {
-      if (!prev || prev.cardType !== "quiz") return prev;
-      const next = updater(prev);
-      return normalizeQuizForm(next);
+    applyDraftUpdate((current) => {
+      if (current.cardType !== "quiz") return current;
+      return normalizeQuizForm(updater(current));
     });
-  }, []);
+  }, [applyDraftUpdate]);
 
   const handleQuizOptionChange = React.useCallback((index: number, value: string) => {
     updateQuizForm((draft) => {
@@ -381,12 +387,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
             <Input
               value={form.title ?? ""}
               onChange={(e) => {
-                setDirty(true);
-                setSaving("idle");
-                setForm((f) => {
-                  if (!f) return f;
-                  return { ...f, title: e.target.value } as SaveCardDraftInput;
-                });
+                applyDraftUpdate((current) => ({ ...current, title: e.target.value }));
               }}
             />
           </div>
@@ -395,12 +396,9 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
             <Input
               value={(form.tags ?? []).join(", ")}
               onChange={(e) => {
-                setDirty(true);
-                setSaving("idle");
-                setForm((f) => {
-                  if (!f) return f;
-                  const tags = e.target.value.split(",").map((s)=>s.trim()).filter(Boolean);
-                  return { ...f, tags } as SaveCardDraftInput;
+                applyDraftUpdate((current) => {
+                  const tags = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                  return { ...current, tags };
                 });
               }}
               placeholder="例: 基礎, 重要, 用語"
@@ -447,11 +445,9 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
               <Textarea
                 value={form.body ?? ""}
                 onChange={(e) => {
-                  setDirty(true);
-                  setSaving("idle");
-                  setForm((f) => {
-                    if (!f || f.cardType !== "text") return f;
-                    return { ...f, body: e.target.value } as SaveCardDraftInput;
+                  applyDraftUpdate((current) => {
+                    if (current.cardType !== "text") return current;
+                    return { ...current, body: e.target.value };
                   });
                 }}
                 placeholder="Markdown を記述…"
@@ -460,11 +456,9 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
               <Textarea
                 value={form.body ?? ""}
                 onChange={(e) => {
-                  setDirty(true);
-                  setSaving("idle");
-                  setForm((f) => {
-                    if (!f || f.cardType !== "text") return f;
-                    return { ...f, body: e.target.value } as SaveCardDraftInput;
+                  applyDraftUpdate((current) => {
+                    if (current.cardType !== "text") return current;
+                    return { ...current, body: e.target.value };
                   });
                 }}
                 placeholder="Markdown を記述…"
@@ -580,11 +574,9 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
                 <Textarea
                   value={form.cardType === "fill-blank" ? form.text : ""}
                   onChange={(e) => {
-                    setDirty(true);
-                    setSaving("idle");
-                    setForm((f) => {
-                      if (!f || f.cardType !== "fill-blank") return f;
-                      return { ...f, text: e.target.value } as SaveCardDraftInput;
+                    applyDraftUpdate((current) => {
+                      if (current.cardType !== "fill-blank") return current;
+                      return { ...current, text: e.target.value };
                     });
                   }}
                 />
@@ -596,8 +588,6 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
                   onChange={(e) => {
                     const raw = e.target.value;
                     setAnswersText(raw);
-                    setDirty(true);
-                    setSaving("idle");
                     const obj: Record<string, string> = {};
                     raw.split("\n").forEach((line) => {
                       const s = line.trim();
@@ -607,9 +597,9 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
                       if (!k) return;
                       obj[k.trim()] = v ?? "";
                     });
-                    setForm((f)=> {
-                      if (!f || f.cardType !== "fill-blank") return f;
-                      return { ...f, answers: obj } as SaveCardDraftInput;
+                    applyDraftUpdate((current) => {
+                      if (current.cardType !== "fill-blank") return current;
+                      return { ...current, answers: obj };
                     });
                   }}
                 />
