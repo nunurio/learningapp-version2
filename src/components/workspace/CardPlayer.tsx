@@ -203,6 +203,8 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
         options: draft.options,
         answerIndex: draft.answerIndex,
         explanation: draft.explanation ?? undefined,
+        optionExplanations: draft.optionExplanations ?? undefined,
+        hint: draft.hint ?? undefined,
       } as QuizCardContent;
     } else if (draft.cardType === "fill-blank" && base.cardType === "fill-blank") {
       base.content = {

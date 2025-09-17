@@ -272,7 +272,27 @@ export function FullScreenEditor(props: Props) {
     const e = Math.max(0, nextEnd ?? (ta?.selectionEnd ?? 0));
     pushHistory({ text: nextText, start: s, end: e });
     requestAnimationFrame(() => {
-      try { textareaRef.current?.setSelectionRange(s, e); textareaRef.current?.focus(); } catch {}
+      const ta = textareaRef.current;
+      if (!ta) return;
+      try {
+        ta.setSelectionRange(s, e);
+      } catch {}
+      if (typeof document === "undefined") {
+        ta.focus();
+        return;
+      }
+      const active = document.activeElement as HTMLElement | null;
+      if (!active) {
+        ta.focus();
+        return;
+      }
+      // Avoid stealing focus from the menubar while users interact with menus.
+      if (active.closest("[data-slot='menubar']")) {
+        return;
+      }
+      try {
+        ta.focus();
+      } catch {}
     });
   }, [pushHistory]);
 
