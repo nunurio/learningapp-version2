@@ -3,6 +3,7 @@ import { runner } from "@/lib/ai/agents/index";
 import { JA_BASE_STYLE } from "@/lib/ai/prompts";
 
 export type ChatAgentContext = Record<string, never>;
+export type ChatHistoryEntry = { role: "user" | "assistant"; content: string };
 
 export const CHAT_INSTRUCTIONS = `
 あなたは学習アプリに常駐するアシスタントです。
@@ -35,20 +36,36 @@ export function createChatAgent() {
 
 export const ChatAgent = createChatAgent();
 
+export function buildChatItems(options: {
+  history?: ChatHistoryEntry[] | null;
+  message: string;
+  pageText?: string | null;
+  historyLimit?: number;
+}) {
+  const { history, message, pageText, historyLimit = 10 } = options;
+  const items: Array<ReturnType<typeof user> | ReturnType<typeof assistantMsg> | ReturnType<typeof system>> = [];
+  if (Array.isArray(history) && history.length > 0) {
+    const start = historyLimit ? -Math.abs(historyLimit) : undefined;
+    for (const entry of history.slice(start)) {
+      items.push(entry.role === "user" ? user(entry.content) : assistantMsg(entry.content));
+    }
+  }
+  if (pageText) items.push(system(pageText));
+  items.push(user(message));
+  return items;
+}
+
 export async function runChatAgent(input: {
   message: string;
   pageText?: string | null;
-  history?: { role: "user" | "assistant"; content: string }[];
+  history?: ChatHistoryEntry[];
 }): Promise<string> {
-  // Items 化してRunnerへ（履歴→system(page)→user）
-  const items: Array<ReturnType<typeof user> | ReturnType<typeof assistantMsg> | ReturnType<typeof system>> = [];
-  if (Array.isArray(input.history)) {
-    for (const m of input.history.slice(-10)) {
-      items.push(m.role === "user" ? user(m.content) : assistantMsg(m.content));
-    }
-  }
-  if (input.pageText) items.push(system(input.pageText));
-  items.push(user(input.message));
+  const items = buildChatItems({
+    history: input.history,
+    message: input.message,
+    pageText: input.pageText,
+    historyLimit: 10,
+  });
 
   const res = await runner.run(ChatAgent, items, { maxTurns: 1 });
   // Agents SDK の履歴からテキスト出力を抽出
