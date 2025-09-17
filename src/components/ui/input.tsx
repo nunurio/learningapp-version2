@@ -1,10 +1,16 @@
-import * as React from "react"
+"use client";
 
-import { cn } from "@/lib/utils/cn"
+import * as React from "react";
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+import { cn } from "@/lib/utils/cn";
+
+const Input = React.forwardRef<
+  React.ElementRef<"input">,
+  React.ComponentPropsWithoutRef<"input">
+>(({ className, type = "text", ...props }, ref) => {
   return (
     <input
+      ref={ref}
       type={type}
       data-slot="input"
       className={cn(
@@ -15,7 +21,9 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
       )}
       {...props}
     />
-  )
-}
+  );
+});
 
-export { Input }
+Input.displayName = "Input";
+
+export { Input };
