@@ -96,6 +96,12 @@ export function FullScreenEditor(props: Props) {
       caseSensitive: !!props.caseSensitive,
     };
   });
+  const formRef = React.useRef(form);
+
+  React.useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+
 
   React.useEffect(() => {
     setForm((prev) => {
@@ -207,26 +213,49 @@ export function FullScreenEditor(props: Props) {
     mutateQuiz((draft) => ({ ...draft, answerIndex: index }));
   }, [mutateQuiz]);
 
-  const handleSave = React.useCallback(async () => {
+  const handleSave = React.useCallback(async (): Promise<boolean> => {
+    const snapshot = formRef.current;
     setSaving("saving");
     try {
-      const res = await saveCard(form);
-      setSavedAt(res.updatedAt);
-      setSaving("saved");
-      setDirty(false);
-      workspaceStore.clearDraft(props.cardId);
+      const res = await saveCard(snapshot);
+      const drafts = workspaceStore.getSnapshot().drafts;
+      const draftInStore = drafts[snapshot.cardId];
+      const snapshotJson = JSON.stringify(snapshot);
+      const draftDiffers = !!draftInStore && JSON.stringify(draftInStore) !== snapshotJson;
+      const current = formRef.current;
+      const sameCard = current.cardId === snapshot.cardId;
+      const hasChangesSinceSnapshot = sameCard && current !== snapshot;
+      const hasPendingDraft = draftDiffers || hasChangesSinceSnapshot;
+
+      if (sameCard) {
+        setSavedAt(res.updatedAt);
+        setSaving(hasPendingDraft ? "idle" : "saved");
+        if (!hasPendingDraft) {
+          setDirty(false);
+        }
+      }
+
+      if (!hasPendingDraft) {
+        workspaceStore.clearDraft(snapshot.cardId);
+      }
       workspaceStore.bumpVersion();
+      return hasPendingDraft;
     } catch (err) {
       console.error(err);
-      setSaving("error");
+      if (formRef.current.cardId === snapshot.cardId) {
+        setSaving("error");
+      }
       throw err;
     }
-  }, [form, props.cardId]);
+  }, []);
 
   const handleBack = React.useCallback(async () => {
     if (dirty) {
       try {
-        await handleSave();
+        const hasPending = await handleSave();
+        if (hasPending) {
+          return;
+        }
       } catch {
         return;
       }
