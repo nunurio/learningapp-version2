@@ -101,3 +101,22 @@ test.describe("AIチャット", () => {
     await expect(dialog).toBeVisible();
   });
 });
+
+test.describe("AIチャット (タッチ操作)", () => {
+  test.use({ viewport: { width: 414, height: 896 }, hasTouch: true, isMobile: true });
+
+  test("ヘッダーをタップしてもウィジェットが閉じない", async ({ page }) => {
+    await page.goto("/courses/plan");
+
+    const launcher = page.getByRole("button", { name: "AIチャットを開く" });
+    await launcher.tap();
+
+    const dialog = page.getByRole("dialog", { name: "AI チャット" });
+    await expect(dialog).toBeVisible();
+
+    const header = dialog.locator(".chat-header");
+    await header.tap();
+
+    await expect(dialog).toBeVisible();
+  });
+});

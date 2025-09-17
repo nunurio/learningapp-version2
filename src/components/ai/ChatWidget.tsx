@@ -643,6 +643,13 @@ export function ChatWidget() {
                 releaseLauncherSuppress();
                 unlockLauncherSoon();
               }}
+              onClickCapture={() => {
+                markLauncherSuppress();
+                releaseLauncherSuppress();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
             >
           <CardHeader
             className={cn(
@@ -678,7 +685,9 @@ export function ChatWidget() {
                 )}
                 data-drag-handle
                 aria-label="ドラッグで移動"
+                aria-roledescription="ウィンドウのタイトルバー（ドラッグで移動）"
                 role="button"
+                tabIndex={-1}
               >
                 <div className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
                 <span className="truncate">アシスタント</span>
