@@ -1,66 +1,62 @@
 "use client";
-import type { UUID } from "@/lib/types";
-import { draftsPut, draftsGet, draftsDelete, type DraftRow } from "@/lib/idb";
+import type { UUID, Card } from "@/lib/types";
 import { updateCard } from "@/lib/client-api";
 
-// Inspector 用の下書き保存 + 公開
+// カード編集用の統一入力
 
-export type SaveCardDraftInput =
+export type CardSaveInput =
   | { cardId: UUID; cardType: "text"; title?: string | null; tags?: string[]; body: string }
-  | { cardId: UUID; cardType: "quiz"; title?: string | null; tags?: string[]; question: string; options: string[]; answerIndex: number; explanation?: string | null }
+  | {
+      cardId: UUID;
+      cardType: "quiz";
+      title?: string | null;
+      tags?: string[];
+      question: string;
+      options: string[];
+      answerIndex: number;
+      explanation?: string | null;
+      optionExplanations?: (string | null)[];
+      hint?: string | null;
+    }
   | { cardId: UUID; cardType: "fill-blank"; title?: string | null; tags?: string[]; text: string; answers: Record<string, string>; caseSensitive?: boolean };
 
-export async function saveCardDraft(input: SaveCardDraftInput): Promise<{ updatedAt: string }> {
-  const key = `card:${input.cardId}`;
-  const updatedAt = new Date().toISOString();
-  const row: DraftRow = {
-    key,
-    cardId: input.cardId,
-    cardType: input.cardType,
-    title: "title" in input ? (input.title ?? null) : null,
-    data: input,
-    updatedAt,
-  };
-  await draftsPut(row);
-  return { updatedAt };
-}
+export type SaveCardDraftInput = CardSaveInput;
 
-export async function loadCardDraft(cardId: UUID): Promise<SaveCardDraftInput | undefined> {
-  const row = await draftsGet(`card:${cardId}`);
-  return row?.data as SaveCardDraftInput | undefined;
-}
-
-export async function publishCard(cardId: UUID): Promise<void> {
-  const row = await draftsGet(`card:${cardId}`);
-  if (!row) return;
-  const d = row.data as SaveCardDraftInput;
-  if (d.cardType === "text") {
-    await updateCard(d.cardId, {
-      title: d.title ?? null,
-      tags: d.tags ?? undefined,
-      content: { body: d.body },
-    });
-  } else if (d.cardType === "quiz") {
-    await updateCard(d.cardId, {
-      title: d.title ?? null,
-      tags: d.tags ?? undefined,
-      content: {
-        question: d.question,
-        options: d.options,
-        answerIndex: d.answerIndex,
-        explanation: d.explanation ?? undefined,
-      },
-    });
-  } else if (d.cardType === "fill-blank") {
-    await updateCard(d.cardId, {
-      title: d.title ?? null,
-      tags: d.tags ?? undefined,
-      content: {
-        text: d.text,
-        answers: d.answers,
-        caseSensitive: d.caseSensitive ?? false,
-      },
-    });
+function buildUpdatePatch(input: CardSaveInput): Partial<Card> {
+  if (input.cardType === "text") {
+    return {
+      title: input.title ?? null,
+      tags: input.tags ?? undefined,
+      content: { body: input.body },
+    } satisfies Partial<Card>;
   }
-  await draftsDelete(`card:${cardId}`);
+  if (input.cardType === "quiz") {
+    return {
+      title: input.title ?? null,
+      tags: input.tags ?? undefined,
+      content: {
+        question: input.question,
+        options: input.options,
+        answerIndex: input.answerIndex,
+        explanation: input.explanation ?? undefined,
+        optionExplanations: input.optionExplanations?.length ? input.optionExplanations : undefined,
+        hint: input.hint ?? undefined,
+      },
+    } satisfies Partial<Card>;
+  }
+  return {
+    title: input.title ?? null,
+    tags: input.tags ?? undefined,
+    content: {
+      text: input.text,
+      answers: input.answers,
+      caseSensitive: input.caseSensitive ?? false,
+    },
+  } satisfies Partial<Card>;
+}
+
+export async function saveCard(input: CardSaveInput): Promise<{ updatedAt: string }> {
+  await updateCard(input.cardId, buildUpdatePatch(input));
+  const updatedAt = new Date().toISOString();
+  return { updatedAt };
 }

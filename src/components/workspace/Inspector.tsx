@@ -11,7 +11,17 @@ import {
   commitLessonCards as commitLessonCardsApi,
   commitLessonCardsPartial as commitLessonCardsPartialApi,
 } from "@/lib/client-api";
-import type { UUID, Card, Lesson, Course, QuizCardContent, FillBlankCardContent, LessonCards, CardType, TextCardContent } from "@/lib/types";
+import type {
+  UUID,
+  Card as WorkspaceCard,
+  Lesson,
+  Course,
+  QuizCardContent,
+  FillBlankCardContent,
+  LessonCards,
+  CardType,
+  TextCardContent,
+} from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -28,11 +38,24 @@ import {
   ShadSelectValue as SelectMenuValue,
 } from "@/components/ui/shadcn-select";
 import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
 import { SortableList } from "@/components/dnd/SortableList";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { saveCardDraft, loadCardDraft, publishCard, type SaveCardDraftInput } from "@/lib/data";
+import { saveCard, type SaveCardDraftInput } from "@/lib/data";
 import { workspaceStore, useWorkspace } from "@/lib/state/workspace-store";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Check, Plus, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 // Milkdown 削除に伴い自家製エディタへ移行（Inspectorでは素のTextareaを使用）
 
 type Props = {
@@ -41,18 +64,47 @@ type Props = {
   selectedKind?: "lesson" | "card";
 };
 
+type QuizDraft = Extract<SaveCardDraftInput, { cardType: "quiz" }>;
+
+function normalizeQuizForm(input: QuizDraft): QuizDraft {
+  const options = [...(input.options ?? [])];
+  if (options.length === 0) {
+    options.push("", "");
+  } else if (options.length === 1) {
+    options.push("");
+  }
+  const optionExplanations = [...(input.optionExplanations ?? [])];
+  if (optionExplanations.length > options.length) {
+    optionExplanations.length = options.length;
+  } else {
+    for (let i = optionExplanations.length; i < options.length; i++) {
+      optionExplanations[i] = "";
+    }
+  }
+  let answerIndex = input.answerIndex ?? 0;
+  if (options.length === 0) {
+    answerIndex = 0;
+  } else if (answerIndex < 0) {
+    answerIndex = 0;
+  } else if (answerIndex >= options.length) {
+    answerIndex = options.length - 1;
+  }
+  return { ...input, options, optionExplanations, answerIndex };
+}
+
 export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   // subscribe to workspace store (no direct read needed here, but keeps future-dependent UIs in sync)
   useWorkspace();
   const [course, setCourse] = React.useState<Course | null>(null);
   const [lesson, setLesson] = React.useState<Lesson | null>(null);
-  const [card, setCard] = React.useState<Card | null>(null);
+  const [card, setCard] = React.useState<WorkspaceCard | null>(null);
   const [form, setForm] = React.useState<SaveCardDraftInput | null>(null);
   const [saving, setSaving] = React.useState<"idle" | "saving" | "saved">("idle");
   const [savedAt, setSavedAt] = React.useState<string | null>(null);
-  const debounceRef = React.useRef<number | null>(null);
+  const [dirty, setDirty] = React.useState(false);
+  const formRef = React.useRef<SaveCardDraftInput | null>(form);
   const [lessons, setLessons] = React.useState<Lesson[]>([]);
-  const [cards, setCards] = React.useState<Card[]>([]);
+  const [cards, setCards] = React.useState<WorkspaceCard[]>([]);
   // Reserved UI states (unused currently)
 
   // AI lesson-cards generation state
@@ -63,6 +115,16 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   // fill-blank 回答の一時テキスト（未完成行の入力を保持）
   const [answersText, setAnswersText] = React.useState<string>("");
   const [richMode, setRichMode] = React.useState(false);
+  const quizFieldIdBase = React.useId();
+  const router = useRouter();
+  const [pendingAction, setPendingAction] = React.useState<(() => void) | null>(null);
+  const requestDiscard = React.useCallback((action: () => void) => {
+    if (!dirty) {
+      action();
+      return;
+    }
+    setPendingAction(() => action);
+  }, [dirty]);
 
   const refreshLists = React.useCallback(async function refreshLists() {
     const snap = await fetchSnapshot();
@@ -88,58 +150,159 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
 
   React.useEffect(() => { void refreshLists(); }, [refreshLists]);
 
+  React.useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+
+  const applyDraftUpdate = React.useCallback((
+    mutator: (current: SaveCardDraftInput) => SaveCardDraftInput | null | undefined,
+  ) => {
+    const current = formRef.current;
+    if (!current) return;
+    const next = mutator(current);
+    if (!next || next === current) return;
+    formRef.current = next;
+    setForm(next);
+    workspaceStore.setDraft(next);
+    setDirty(true);
+    setSaving("idle");
+  }, []);
+
+  const handleSave = React.useCallback(async (): Promise<boolean> => {
+    const snapshot = formRef.current;
+    if (!snapshot) return false;
+    setSaving("saving");
+    try {
+      const res = await saveCard(snapshot);
+      const drafts = workspaceStore.getSnapshot().drafts;
+      const draftInStore = drafts[snapshot.cardId];
+      const snapshotJson = JSON.stringify(snapshot);
+      const draftDiffers = !!draftInStore && JSON.stringify(draftInStore) !== snapshotJson;
+      const current = formRef.current;
+      const sameCard = current?.cardId === snapshot.cardId;
+      const hasChangesSinceSnapshot = sameCard && current !== snapshot;
+      const hasPendingDraft = draftDiffers || hasChangesSinceSnapshot;
+
+      if (sameCard) {
+        setSavedAt(res.updatedAt);
+        setSaving(hasPendingDraft ? "idle" : "saved");
+        if (!hasPendingDraft) {
+          setDirty(false);
+        }
+      } else {
+        setSaving("idle");
+      }
+
+      if (!hasPendingDraft) {
+        workspaceStore.clearDraft(snapshot.cardId);
+      }
+      workspaceStore.bumpVersion();
+      return hasPendingDraft;
+    } catch (err) {
+      console.error(err);
+      setSaving("idle");
+      throw err;
+    }
+  }, []);
+
+  const updateQuizForm = React.useCallback((updater: (draft: QuizDraft) => QuizDraft) => {
+    applyDraftUpdate((current) => {
+      if (current.cardType !== "quiz") return current;
+      return normalizeQuizForm(updater(current));
+    });
+  }, [applyDraftUpdate]);
+
+  const handleQuizOptionChange = React.useCallback((index: number, value: string) => {
+    updateQuizForm((draft) => {
+      const options = [...draft.options];
+      options[index] = value;
+      return { ...draft, options };
+    });
+  }, [updateQuizForm]);
+
+  const handleQuizExplanationChange = React.useCallback((index: number, value: string) => {
+    updateQuizForm((draft) => {
+      const optionExplanations = [...(draft.optionExplanations ?? [])];
+      optionExplanations[index] = value;
+      return { ...draft, optionExplanations };
+    });
+  }, [updateQuizForm]);
+
+  const handleQuizAddOption = React.useCallback(() => {
+    updateQuizForm((draft) => ({
+      ...draft,
+      options: [...draft.options, ""],
+      optionExplanations: [...(draft.optionExplanations ?? []), ""],
+    }));
+  }, [updateQuizForm]);
+
+  const handleQuizRemoveOption = React.useCallback((index: number) => {
+    updateQuizForm((draft) => {
+      if (draft.options.length <= 2) return draft;
+      const options = draft.options.filter((_, idx) => idx !== index);
+      const optionExplanations = (draft.optionExplanations ?? []).filter((_, idx) => idx !== index);
+      let answerIndex = draft.answerIndex;
+      if (options.length === 0) {
+        answerIndex = 0;
+      } else if (answerIndex === index) {
+        answerIndex = Math.max(0, Math.min(index - 1, options.length - 1));
+      } else if (answerIndex > index) {
+        answerIndex -= 1;
+      }
+      return { ...draft, options, optionExplanations, answerIndex };
+    });
+  }, [updateQuizForm]);
+
+  const handleQuizSetCorrect = React.useCallback((index: number) => {
+    updateQuizForm((draft) => ({ ...draft, answerIndex: index }));
+  }, [updateQuizForm]);
+
   // 下書き or 現行値でフォーム初期化
   React.useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!card) { setForm(null); return; }
-      const draft = await loadCardDraft(card.id);
-      if (!mounted) return;
-      // カード切替時は素のMarkdown編集に戻す
-      setRichMode(false);
-      if (draft) {
-        setForm(draft);
-        workspaceStore.setDraft(draft);
-        if (draft.cardType === "fill-blank") {
-          const s = Object.entries(draft.answers ?? {}).map(([k, v]) => `${k}:${v}`).join("\n");
-          setAnswersText(s);
-        } else {
-          setAnswersText("");
-        }
-        return;
+    if (!card) {
+      setForm(null);
+      setDirty(false);
+      setAnswersText("");
+      setSaving("idle");
+      setSavedAt(null);
+      return;
+    }
+    setRichMode(false);
+    if (card.cardType === "text") {
+      const c = card.content as TextCardContent;
+      setForm({ cardId: card.id, cardType: "text", title: card.title ?? null, tags: card.tags ?? [], body: c.body ?? "" });
+      setAnswersText("");
+    } else if (card.cardType === "quiz") {
+      const c = card.content as QuizCardContent;
+      const optionExplanations = [...(c.optionExplanations ?? [])];
+      for (let i = optionExplanations.length; i < c.options.length; i++) {
+        optionExplanations[i] = "";
       }
-      if (card.cardType === "text") {
-        const c = card.content as TextCardContent;
-        setForm({ cardId: card.id, cardType: "text", title: card.title ?? null, tags: card.tags ?? [], body: c.body ?? "" });
-        setAnswersText("");
-      } else if (card.cardType === "quiz") {
-        const c = card.content as QuizCardContent;
-        setForm({ cardId: card.id, cardType: "quiz", title: card.title ?? null, tags: card.tags ?? [], question: c.question, options: c.options, answerIndex: c.answerIndex, explanation: c.explanation ?? null });
-        setAnswersText("");
-      } else {
-        const c = card.content as FillBlankCardContent;
-        setForm({ cardId: card.id, cardType: "fill-blank", title: card.title ?? null, tags: card.tags ?? [], text: c.text, answers: c.answers, caseSensitive: !!c.caseSensitive });
-        const s = Object.entries(c.answers ?? {}).map(([k, v]) => `${k}:${v}`).join("\n");
-        setAnswersText(s);
-      }
-    })();
-    return () => { mounted = false; };
+      const quizForm: QuizDraft = {
+        cardId: card.id,
+        cardType: "quiz",
+        title: card.title ?? null,
+        tags: card.tags ?? [],
+        question: c.question,
+        options: c.options,
+        answerIndex: c.answerIndex,
+        explanation: c.explanation ?? null,
+        optionExplanations,
+        hint: c.hint ?? null,
+      };
+      setForm(normalizeQuizForm(quizForm));
+      setAnswersText("");
+    } else {
+      const c = card.content as FillBlankCardContent;
+      setForm({ cardId: card.id, cardType: "fill-blank", title: card.title ?? null, tags: card.tags ?? [], text: c.text, answers: c.answers, caseSensitive: !!c.caseSensitive });
+      const s = Object.entries(c.answers ?? {}).map(([k, v]) => `${k}:${v}`).join("\n");
+      setAnswersText(s);
+    }
+    setDirty(false);
+    setSaving("idle");
+    setSavedAt(null);
+    workspaceStore.clearDraft(card.id);
   }, [card]);
-
-  // 500ms デバウンスのオートセーブ
-  React.useEffect(() => {
-    if (!form) return;
-    setSaving("saving");
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(async () => {
-      const res = await saveCardDraft(form);
-      setSavedAt(res.updatedAt);
-      setSaving("saved");
-    }, 500);
-    return () => {
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    };
-  }, [form]);
 
   // 現在のレッスン（カード選択時も親レッスンを解決）
   const currentLesson: Lesson | null = (() => {
@@ -156,6 +319,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   // レッスン上部ツールはファイルスコープの安定コンポーネントに移動（下方で定義）
 
   return (
+    <>
     <aside className="h-full overflow-auto p-3">
       <div className="text-xs text-gray-500 mb-2">インスペクタ</div>
       {currentLesson && (
@@ -216,28 +380,27 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
         <section className="space-y-2">
           <h3 className="font-medium">カード編集</h3>
           <div className="text-xs text-gray-500" aria-live="polite">
-            タイプ: {form.cardType} / 保存: {saving === "saving" ? "保存中…" : saving === "saved" ? (savedAt ? `保存済み（${new Date(savedAt).toLocaleTimeString()}）` : "保存済み") : "-"}
+            タイプ: {form.cardType} / 保存: {saving === "saving" ? "保存中…" : dirty ? "未保存" : saving === "saved" ? (savedAt ? `保存済み（${new Date(savedAt).toLocaleTimeString()}）` : "保存済み") : "-"}
           </div>
           <div>
             <label className="block text-sm mb-1">タイトル（任意）</label>
-            <Input value={form.title ?? ""} onChange={(e) => setForm((f) => {
-              if (!f) return f;
-              const next = { ...f, title: e.target.value } as SaveCardDraftInput;
-              workspaceStore.setDraft(next);
-              return next;
-            })} />
+            <Input
+              value={form.title ?? ""}
+              onChange={(e) => {
+                applyDraftUpdate((current) => ({ ...current, title: e.target.value }));
+              }}
+            />
           </div>
           <div>
             <label className="block text-sm mb-1">タグ（カンマ区切り）</label>
             <Input
               value={(form.tags ?? []).join(", ")}
-              onChange={(e) => setForm((f) => {
-                if (!f) return f;
-                const tags = e.target.value.split(",").map((s)=>s.trim()).filter(Boolean);
-                const next = { ...f, tags } as SaveCardDraftInput;
-                workspaceStore.setDraft(next);
-                return next;
-              })}
+              onChange={(e) => {
+                applyDraftUpdate((current) => {
+                  const tags = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                  return { ...current, tags };
+                });
+              }}
               placeholder="例: 基礎, 重要, 用語"
             />
           </div>
@@ -248,7 +411,24 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
               <div className="flex items-center gap-2">
                 {card && (
                   <Button asChild size="sm" variant="default">
-                    <Link href={`/courses/${courseId}/edit/${card.id}`}>編集モードで開く</Link>
+                    <Link
+                      href={`/courses/${courseId}/edit/${card.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const navigate = () => {
+                          if (form) {
+                            workspaceStore.clearDraft(form.cardId);
+                            workspaceStore.bumpVersion();
+                            setDirty(false);
+                          }
+                          router.push(`/courses/${courseId}/edit/${card.id}`);
+                        };
+                        requestDiscard(navigate);
+                      }}
+                    >
+                      編集モードで開く
+                    </Link>
                   </Button>
                 )}
                 <Button
@@ -264,66 +444,126 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
             {richMode ? (
               <Textarea
                 value={form.body ?? ""}
-                onChange={(e) => setForm((f) => {
-                  if (!f || f.cardType !== "text") return f;
-                  const next = { ...f, body: e.target.value } as SaveCardDraftInput;
-                  workspaceStore.setDraft(next);
-                  return next;
-                })}
+                onChange={(e) => {
+                  applyDraftUpdate((current) => {
+                    if (current.cardType !== "text") return current;
+                    return { ...current, body: e.target.value };
+                  });
+                }}
                 placeholder="Markdown を記述…"
               />
             ) : (
               <Textarea
                 value={form.body ?? ""}
-                onChange={(e) => setForm((f) => {
-                  if (!f || f.cardType !== "text") return f;
-                  const next = { ...f, body: e.target.value } as SaveCardDraftInput;
-                  workspaceStore.setDraft(next);
-                  return next;
-                })}
+                onChange={(e) => {
+                  applyDraftUpdate((current) => {
+                    if (current.cardType !== "text") return current;
+                    return { ...current, body: e.target.value };
+                  });
+                }}
                 placeholder="Markdown を記述…"
               />
             )}
           </div>
           )}
           {form.cardType === "quiz" && (
-            <div className="grid grid-cols-1 gap-2">
-              <div>
-                <label className="block text-sm mb-1">設問</label>
-                <Input value={form.cardType === "quiz" ? form.question : ""} onChange={(e) => setForm((f) => {
-                  if (!f || f.cardType !== "quiz") return f;
-                  const next = { ...f, question: e.target.value } as SaveCardDraftInput;
-                  workspaceStore.setDraft(next);
-                  return next;
-                })} />
+            <div className="grid grid-cols-1 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="inspector-quiz-question" className="text-sm font-medium">
+                  設問
+                </Label>
+                <Input
+                  id="inspector-quiz-question"
+                  value={form.question ?? ""}
+                  onChange={(e) => updateQuizForm((draft) => ({ ...draft, question: e.target.value }))}
+                />
               </div>
-              <div>
-                <label className="block text-sm mb-1">選択肢（改行区切り）</label>
-                <Textarea value={form.cardType === "quiz" ? (form.options ?? []).join("\n") : ""} onChange={(e) => setForm((f) => {
-                  if (!f || f.cardType !== "quiz") return f;
-                  const options = e.target.value.split("\n").map((s)=>s.trim()).filter(Boolean);
-                  const next = { ...f, options } as SaveCardDraftInput;
-                  workspaceStore.setDraft(next);
-                  return next;
-                })} />
+              <div className="space-y-3">
+                {(form.options ?? []).map((opt, idx) => {
+                  const optionId = `${quizFieldIdBase}-option-${idx}`;
+                  const explanationId = `${quizFieldIdBase}-explanation-${idx}`;
+                  const isCorrect = form.answerIndex === idx;
+                  return (
+                    <Card key={optionId} className="p-3 space-y-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <Label htmlFor={optionId} className="text-sm font-medium">
+                          {`選択肢 ${idx + 1}`}
+                        </Label>
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isCorrect ? "default" : "outline"}
+                            onClick={() => handleQuizSetCorrect(idx)}
+                            aria-pressed={isCorrect}
+                          >
+                            {isCorrect ? (
+                              <>
+                                <Check className="size-4" />
+                                正解
+                              </>
+                            ) : (
+                              "正解にする"
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleQuizRemoveOption(idx)}
+                            disabled={(form.options ?? []).length <= 2}
+                          >
+                            <Trash2 className="size-4" />
+                            <span className="sr-only">{`選択肢${idx + 1}を削除`}</span>
+                          </Button>
+                        </div>
+                      </div>
+                      <Input
+                        id={optionId}
+                        value={opt}
+                        onChange={(e) => handleQuizOptionChange(idx, e.target.value)}
+                        placeholder="選択肢を入力"
+                      />
+                      <div className="space-y-2">
+                        <Label htmlFor={explanationId} className="text-xs font-medium text-muted-foreground">
+                          {`選択肢${idx + 1}の解説`}
+                        </Label>
+                        <Textarea
+                          id={explanationId}
+                          value={form.optionExplanations?.[idx] ?? ""}
+                          onChange={(e) => handleQuizExplanationChange(idx, e.target.value)}
+                          placeholder="この選択肢を選んだ学習者への解説"
+                        />
+                      </div>
+                    </Card>
+                  );
+                })}
+                <Button type="button" variant="outline" onClick={handleQuizAddOption} className="w-full sm:w-auto">
+                  <Plus className="size-4" />
+                  選択肢を追加
+                </Button>
               </div>
-              <div>
-                <label className="block text-sm mb-1">正解インデックス（0開始）</label>
-                <Input type="number" value={form.cardType === "quiz" ? (form.answerIndex ?? 0) : 0} onChange={(e) => setForm((f) => {
-                  if (!f || f.cardType !== "quiz") return f;
-                  const next = { ...f, answerIndex: Number(e.target.value) } as SaveCardDraftInput;
-                  workspaceStore.setDraft(next);
-                  return next;
-                })} />
+              <div className="space-y-2">
+                <Label htmlFor="inspector-quiz-explanation" className="text-sm font-medium">
+                  全体の解説
+                </Label>
+                <Textarea
+                  id="inspector-quiz-explanation"
+                  value={form.explanation ?? ""}
+                  onChange={(e) => updateQuizForm((draft) => ({ ...draft, explanation: e.target.value }))}
+                  placeholder="全体の解説"
+                />
               </div>
-              <div>
-                <label className="block text-sm mb-1">解説（任意）</label>
-                <Input value={form.cardType === "quiz" ? (form.explanation ?? "") : ""} onChange={(e) => setForm((f) => {
-                  if (!f || f.cardType !== "quiz") return f;
-                  const next = { ...f, explanation: e.target.value } as SaveCardDraftInput;
-                  workspaceStore.setDraft(next);
-                  return next;
-                })} />
+              <div className="space-y-2">
+                <Label htmlFor="inspector-quiz-hint" className="text-sm font-medium">
+                  ヒント（学習者が正解を見る前に表示）
+                </Label>
+                <Textarea
+                  id="inspector-quiz-hint"
+                  value={form.hint ?? ""}
+                  onChange={(e) => updateQuizForm((draft) => ({ ...draft, hint: e.target.value }))}
+                  placeholder="答えを直接示さずに導くヒントを記述"
+                />
               </div>
             </div>
           )}
@@ -331,12 +571,15 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
             <div className="grid grid-cols-1 gap-2">
               <div>
                 <label className="block text-sm mb-1">テキスト（[[1]] 形式）</label>
-                <Textarea value={form.cardType === "fill-blank" ? form.text : ""} onChange={(e) => setForm((f) => {
-                  if (!f || f.cardType !== "fill-blank") return f;
-                  const next = { ...f, text: e.target.value } as SaveCardDraftInput;
-                  workspaceStore.setDraft(next);
-                  return next;
-                })} />
+                <Textarea
+                  value={form.cardType === "fill-blank" ? form.text : ""}
+                  onChange={(e) => {
+                    applyDraftUpdate((current) => {
+                      if (current.cardType !== "fill-blank") return current;
+                      return { ...current, text: e.target.value };
+                    });
+                  }}
+                />
               </div>
               <div>
                 <label className="block text-sm mb-1">回答（k:value 改行区切り）</label>
@@ -354,11 +597,9 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
                       if (!k) return;
                       obj[k.trim()] = v ?? "";
                     });
-                    setForm((f)=> {
-                      if (!f || f.cardType !== "fill-blank") return f;
-                      const next = { ...f, answers: obj } as SaveCardDraftInput;
-                      workspaceStore.setDraft(next);
-                      return next;
+                    applyDraftUpdate((current) => {
+                      if (current.cardType !== "fill-blank") return current;
+                      return { ...current, answers: obj };
                     });
                   }}
                 />
@@ -366,8 +607,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
             </div>
           )}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setForm((f) => f ? ({ ...f }) : f)} disabled={saving === "saving"}>下書き保存済み</Button>
-            <Button onClick={async () => { if (card) { await publishCard(card.id); workspaceStore.clearDraft(card.id); workspaceStore.bumpVersion(); setSaving("idle"); } }}>公開（反映）</Button>
+            <Button onClick={async () => { try { await handleSave(); } catch {} }} disabled={!dirty || saving === "saving"}>保存</Button>
           </div>
         </section>
       )}
@@ -378,6 +618,29 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
         </section>
       )}
     </aside>
+    <AlertDialog open={pendingAction != null} onOpenChange={(open: boolean) => { if (!open) setPendingAction(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>保存されていない変更があります</AlertDialogTitle>
+          <AlertDialogDescription>
+            保存せずに移動すると変更が失われます。移動してもよろしいですか？
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setPendingAction(null)}>キャンセル</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              const action = pendingAction;
+              setPendingAction(null);
+              action?.();
+            }}
+          >
+            保存せずに移動
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
 
@@ -542,7 +805,7 @@ function CourseInspector({ course, lessons, onRefresh }: { course: Course; lesso
 function LessonInspector(props: {
   courseId: UUID;
   lesson: Lesson;
-  cards: Card[];
+  cards: WorkspaceCard[];
   runningLesson: Lesson | null;
   setRunningLesson: (l: Lesson | null) => void;
   logsByLesson: Record<string, { ts: number; text: string }[]>;
@@ -637,7 +900,7 @@ function LessonInspector(props: {
   );
 }
 
-function labelCard(card: Card): string {
+function labelCard(card: WorkspaceCard): string {
   if (card.cardType === "text") return (card.content as TextCardContent).body?.slice(0, 18) ?? "テキスト";
   if (card.cardType === "quiz") return (card.content as QuizCardContent).question ?? "クイズ";
   return (card.content as FillBlankCardContent).text?.replace(/\[\[(\d+)\]\]/g, "□") ?? "穴埋め";

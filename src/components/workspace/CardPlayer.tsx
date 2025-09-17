@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { QuizOption } from "@/components/player/QuizOption";
+import { QuizHintCard, QuizSolutionPanel } from "@/components/player/QuizSolutionPanel";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import MarkdownView from "@/components/markdown/MarkdownView";
@@ -197,12 +198,19 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
     if (draft.cardType === "text" && base.cardType === "text") {
       base.content = { body: draft.body } as TextCardContent;
     } else if (draft.cardType === "quiz" && base.cardType === "quiz") {
+      const baseContent = base.content as QuizCardContent;
       base.content = {
-        question: draft.question,
-        options: draft.options,
-        answerIndex: draft.answerIndex,
-        explanation: draft.explanation ?? undefined,
-      } as QuizCardContent;
+        question: draft.question ?? baseContent.question,
+        options: draft.options ?? baseContent.options,
+        answerIndex: draft.answerIndex ?? baseContent.answerIndex,
+        explanation:
+          draft.explanation !== undefined ? draft.explanation : baseContent.explanation,
+        optionExplanations:
+          draft.optionExplanations !== undefined
+            ? draft.optionExplanations
+            : baseContent.optionExplanations,
+        hint: draft.hint !== undefined ? draft.hint : baseContent.hint,
+      } satisfies QuizCardContent;
     } else if (draft.cardType === "fill-blank" && base.cardType === "fill-blank") {
       base.content = {
         text: draft.text,
@@ -559,7 +567,10 @@ function TextLearn({ content, cardId, initialLevel, onSave }: { content: TextCar
 function QuizLearn({ content, cardId, initialLevel, onResult, onSave, gotoNext }: { content: QuizCardContent; cardId: string; initialLevel?: number; onResult?: (r: "correct" | "wrong") => void; onSave: (p: Progress) => void; gotoNext?: () => void }) {
   const [selected, setSelected] = React.useState<number | null>(0);
   const [result, setResult] = React.useState<"idle" | "correct" | "wrong">("idle");
-  const [revealed, setRevealed] = React.useState(false);
+  const [showHint, setShowHint] = React.useState(false);
+
+  React.useEffect(() => { setShowHint(false); }, [cardId]);
+  const hasHint = typeof content.hint === "string";
 
   function submit() {
     if (selected == null) return;
@@ -581,7 +592,14 @@ function QuizLearn({ content, cardId, initialLevel, onResult, onSave, gotoNext }
       </div>
       <div className="mt-3 flex items-center gap-3">
         <Button onClick={submit} variant="default" aria-label="採点する">Check</Button>
-        <Button onClick={() => setRevealed((r) => !r)} variant="outline" aria-label="ヒントを表示">Hint</Button>
+        <Button
+          onClick={() => setShowHint((r) => !r)}
+          variant="outline"
+          aria-label="ヒントを表示"
+          aria-pressed={showHint && hasHint}
+        >
+          {showHint && hasHint ? "ヒントを隠す" : "Hint"}
+        </Button>
         <span
           aria-live="polite"
           role="status"
@@ -590,9 +608,8 @@ function QuizLearn({ content, cardId, initialLevel, onResult, onSave, gotoNext }
           {result === "correct" ? "正解！" : result === "wrong" ? "不正解" : ""}
         </span>
       </div>
-      {(revealed || result !== "idle") && content.explanation && (
-        <p className="mt-2 text-sm text-gray-700">{content.explanation}</p>
-      )}
+      <QuizHintCard hint={content.hint ?? undefined} visible={showHint} />
+      <QuizSolutionPanel content={content} selected={selected} visible={result !== "idle"} />
       {result !== "idle" && (
         <UnderstandingSlider
           cardId={cardId}

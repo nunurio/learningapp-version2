@@ -83,11 +83,19 @@ export const workspaceStore = {
 };
 
 export function useWorkspace(): WorkspaceSnapshot {
-  return useSyncExternalStore(workspaceStore.subscribe, workspaceStore.getSnapshot);
+  return useSyncExternalStore(
+    workspaceStore.subscribe,
+    workspaceStore.getSnapshot,
+    workspaceStore.getSnapshot
+  );
 }
 
 export function useWorkspaceSelector<T>(selector: (s: WorkspaceSnapshot) => T, isEqual?: (a: T, b: T) => boolean): T {
-  const snap = useSyncExternalStore(workspaceStore.subscribe, workspaceStore.getSnapshot);
+  const snap = useSyncExternalStore(
+    workspaceStore.subscribe,
+    workspaceStore.getSnapshot,
+    workspaceStore.getSnapshot
+  );
   const val = selector(snap);
   const ref = useRef(val);
   const eq = isEqual ?? Object.is;

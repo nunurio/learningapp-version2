@@ -85,7 +85,8 @@ const POLICY_MAP: Record<CardKind, string> = {
   ].join("\n"),
   quiz: [
     "選択肢は2–5。**一意に正解**が決まる設計。問題は表層知識だけでなく理解/適用を測る。解説は『なぜ他は誤りか』まで短く触れる。",
-    "{question, options(>=2), answerIndex は範囲内, explanation?} を厳守。",
+    "フィールド構成: question, options(>=2), answerIndex, explanation（全体像）, optionExplanations（optionsと同じ順で各選択肢の是非理由）, hint（正解を直接示さない導き）。空文字や null は禁止。",
+    "hint は学習者がまだ正解を見ていない前提で、根拠やキーワードを示して方向づけを行い、答えそのものは明かさない。必ず非 null の一文以上で書く。",
   ].join("\n"),
   "fill-blank": [
     "[[n]] と answers の整合を厳守。用語の再認や定義のキーワード確認に用いる。",

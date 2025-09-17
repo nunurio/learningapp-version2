@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import type { UUID, Card } from "@/lib/types";
+import type { UUID, Card, QuizCardContent } from "@/lib/types";
 import { snapshot as fetchSnapshot } from "@/lib/db/queries";
 import FullScreenEditor from "@/components/editor/FullScreenEditor";
 
@@ -32,7 +32,7 @@ export default async function Page({ params }: { params: Promise<Params> }) {
   }
 
   if (card.cardType === "quiz") {
-    const c = card.content as { question: string; options: string[]; answerIndex: number; explanation?: string };
+    const c = card.content as QuizCardContent;
     return (
       <FullScreenEditor
         courseId={courseId}
@@ -44,6 +44,8 @@ export default async function Page({ params }: { params: Promise<Params> }) {
         options={c.options}
         answerIndex={c.answerIndex}
         explanation={c.explanation ?? null}
+        optionExplanations={c.optionExplanations ?? []}
+        hint={c.hint ?? null}
       />
     );
   }
