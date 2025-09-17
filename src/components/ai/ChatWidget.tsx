@@ -27,6 +27,9 @@ export function ChatWidget() {
   React.useEffect(() => setMounted(true), []);
   const [open, setOpen] = React.useState(false);
   const [maximized, setMaximized] = React.useState(false);
+  // チャット内部操作中はランチャーを物理的に無効化して誤クリックを防ぐ
+  const [launcherLocked, setLauncherLocked] = React.useState(false);
+  const unlockLauncherTimerRef = React.useRef<number | null>(null);
   const [isMobile, setIsMobile] = React.useState(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
     return window.matchMedia(MOBILE_QUERY).matches;
@@ -59,7 +62,30 @@ export function ChatWidget() {
         clearTimeout(pendingLauncherReleaseRef.current);
         pendingLauncherReleaseRef.current = null;
       }
+      if (unlockLauncherTimerRef.current != null) {
+        clearTimeout(unlockLauncherTimerRef.current);
+        unlockLauncherTimerRef.current = null;
+      }
     };
+  }, []);
+
+  // ランチャーのポインタを物理的にロック/解除
+  const lockLauncher = React.useCallback(() => {
+    setLauncherLocked(true);
+    if (unlockLauncherTimerRef.current != null) {
+      clearTimeout(unlockLauncherTimerRef.current);
+      unlockLauncherTimerRef.current = null;
+    }
+  }, []);
+
+  const unlockLauncherSoon = React.useCallback(() => {
+    if (unlockLauncherTimerRef.current != null) {
+      clearTimeout(unlockLauncherTimerRef.current);
+    }
+    unlockLauncherTimerRef.current = window.setTimeout(() => {
+      setLauncherLocked(false);
+      unlockLauncherTimerRef.current = null;
+    }, LAUNCHER_SUPPRESS_MS);
   }, []);
 
   const markLauncherSuppress = React.useCallback(() => {
@@ -557,12 +583,14 @@ export function ChatWidget() {
               zIndex: 100,
               background: "linear-gradient(135deg, hsl(var(--primary-500)), hsl(var(--primary-600)))",
               transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+              pointerEvents: launcherLocked ? "none" : "auto",
             }}
             className="rounded-full shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
             aria-label="AIチャットを開く"
+            aria-disabled={launcherLocked || undefined}
             onClick={() => {
               const now = Date.now();
-              if (open && (suppressLauncherClickRef.current || now - lastInternalPointerEventRef.current < LAUNCHER_SUPPRESS_MS)) {
+              if (suppressLauncherClickRef.current || now - lastInternalPointerEventRef.current < LAUNCHER_SUPPRESS_MS) {
                 suppressLauncherClickRef.current = false;
                 return;
               }
@@ -604,12 +632,17 @@ export function ChatWidget() {
               onPointerDownCapture={(e) => {
                 if (e.pointerType === "mouse" && e.button !== 0) return;
                 markLauncherSuppress();
+                lockLauncher();
               }}
               onPointerUpCapture={(e) => {
                 if (e.pointerType === "mouse" && e.button !== 0) return;
                 releaseLauncherSuppress();
+                unlockLauncherSoon();
               }}
-              onPointerCancelCapture={releaseLauncherSuppress}
+              onPointerCancelCapture={() => {
+                releaseLauncherSuppress();
+                unlockLauncherSoon();
+              }}
             >
           <CardHeader
             className={cn(
