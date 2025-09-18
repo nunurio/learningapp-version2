@@ -15,9 +15,22 @@ export function ChatWidget() {
   const controller = useChatController();
   const floating = useFloatingPanel();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const launcherRef = React.useRef<HTMLButtonElement>(null);
 
   React.useEffect(() => {
     if (!floating.open) setSidebarOpen(false);
+  }, [floating.open]);
+
+  React.useEffect(() => {
+    const launcher = launcherRef.current;
+    if (!launcher) return;
+    if (floating.open) {
+      launcher.setAttribute("aria-hidden", "true");
+      launcher.setAttribute("inert", "");
+    } else {
+      launcher.removeAttribute("aria-hidden");
+      launcher.removeAttribute("inert");
+    }
   }, [floating.open]);
 
   if (!mounted) return null;
@@ -28,22 +41,37 @@ export function ChatWidget() {
         createPortal(
           <>
             <Button
+              ref={launcherRef}
               size="icon"
               style={floating.launcherStyle}
               className="rounded-full shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
               aria-label="AIチャットを開く"
-              aria-disabled={floating.launcherLocked || undefined}
+              aria-disabled={floating.launcherLocked || floating.open || undefined}
               onClick={floating.handleLauncherToggle}
             >
               <MessageCircle className="h-5 w-5" />
             </Button>
             {floating.open ? (
-              <ChatWindow
-                controller={controller}
-                floating={floating}
-                sidebarOpen={sidebarOpen}
-                setSidebarOpen={setSidebarOpen}
-              />
+              <>
+                <div
+                  className="fixed inset-0 z-[105] bg-transparent"
+                  aria-hidden
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    event.nativeEvent.stopImmediatePropagation?.();
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    event.nativeEvent.stopImmediatePropagation?.();
+                  }}
+                />
+                <ChatWindow
+                  controller={controller}
+                  floating={floating}
+                  sidebarOpen={sidebarOpen}
+                  setSidebarOpen={setSidebarOpen}
+                />
+              </>
             ) : null}
           </>,
           document.body,

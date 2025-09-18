@@ -64,6 +64,20 @@ export function ChatWindow(props: ChatWindowProps) {
     [controller],
   );
 
+  const handleHeaderPointerDown = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      if (floating.maximized) return;
+      const origin = event.target as Node | null;
+      const container = event.currentTarget as HTMLElement;
+      if (origin instanceof Element) {
+        const ignored = origin.closest("[data-drag-ignore]");
+        if (ignored && container.contains(ignored)) return;
+      }
+      floating.handleDragPointerDown(event);
+    },
+    [floating],
+  );
+
   return (
     <Card
       role="dialog"
@@ -88,16 +102,19 @@ export function ChatWindow(props: ChatWindowProps) {
           "chat-header select-none bg-gradient-to-r from-[hsl(var(--primary-50))] to-[hsl(var(--primary-100))] py-3 px-4 sm:px-5",
           "relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px",
           "after:bg-gradient-to-r after:from-transparent after:via-[hsl(var(--border-default)_/_0.5)] after:to-transparent",
-          floating.maximized ? "cursor-default" : "cursor-grab data-[dragging=true]:cursor-grabbing",
+          floating.maximized
+            ? "cursor-not-allowed"
+            : "cursor-grab data-[dragging=true]:cursor-grabbing",
         )}
         data-drag-region
         data-maximized={floating.maximized ? "true" : "false"}
-        onPointerDown={(event) => {
-          if (floating.maximized) return;
-          const target = event.target as HTMLElement | null;
-          if (target && target.closest("[data-drag-ignore]")) return;
-          floating.handleDragPointerDown(event);
+        onPointerDown={handleHeaderPointerDown}
+        onKeyDown={(event) => {
+          if (event.target === event.currentTarget) floating.handleDragHandleKeyDown(event);
         }}
+        tabIndex={floating.maximized ? -1 : 0}
+        aria-label="チャットウィンドウのタイトルバー"
+        aria-roledescription="ドラッグで移動"
       >
         <div className="chat-header__top">
           <Button
@@ -116,17 +133,7 @@ export function ChatWindow(props: ChatWindowProps) {
           >
             <Menu className="h-4 w-4" />
           </Button>
-          <div
-            className={cn(
-              "chat-header__title flex min-w-0 flex-1 items-center gap-2 font-semibold",
-              floating.maximized ? "cursor-default" : "cursor-move",
-            )}
-            data-drag-handle
-            aria-label="ドラッグで移動"
-            aria-roledescription="ウィンドウのタイトルバー（ドラッグで移動）"
-            role="button"
-            tabIndex={-1}
-          >
+          <div className="chat-header__title flex min-w-0 flex-1 items-center gap-2 font-semibold">
             <div className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
             <span className="truncate">アシスタント</span>
           </div>

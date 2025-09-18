@@ -40,7 +40,7 @@ describe("ChatWidget", () => {
     fireEvent.click(screen.getByRole("button", { name: "AIチャットを開く" }));
 
     const dialog = screen.getByRole("dialog", { name: "AI チャット" });
-    const dragHandle = screen.getByRole("button", { name: "ドラッグで移動" });
+    const dragHandle = screen.getByLabelText("チャットウィンドウのタイトルバー");
 
     fireEvent.pointerDown(dragHandle);
     fireEvent.pointerUp(dragHandle);
@@ -55,7 +55,7 @@ describe("ChatWidget", () => {
     fireEvent.click(launcher);
 
     const dialog = screen.getByRole("dialog", { name: "AI チャット" });
-    const dragHandle = screen.getByRole("button", { name: "ドラッグで移動" });
+    const dragHandle = screen.getByLabelText("チャットウィンドウのタイトルバー");
 
     fireEvent.pointerDown(dragHandle);
     // simulate pointer release after the widget moved away, over the launcher
@@ -73,7 +73,7 @@ describe("ChatWidget", () => {
       fireEvent.click(launcher);
 
       const dialog = screen.getByRole("dialog", { name: "AI チャット" });
-      const dragHandle = screen.getByRole("button", { name: "ドラッグで移動" });
+      const dragHandle = screen.getByLabelText("チャットウィンドウのタイトルバー");
 
       fireEvent.pointerDown(dragHandle);
       fireEvent.pointerUp(dragHandle);

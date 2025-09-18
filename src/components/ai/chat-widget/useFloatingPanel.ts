@@ -9,8 +9,8 @@ interface FloatingPanelOptions {
 interface PanelHandlers {
   onPointerDownCapture: (event: React.PointerEvent<HTMLElement>) => void;
   onPointerUpCapture: (event: React.PointerEvent<HTMLElement>) => void;
-  onPointerCancelCapture: () => void;
-  onClickCapture: () => void;
+  onPointerCancelCapture: (event: React.PointerEvent<HTMLElement>) => void;
+  onClickCapture: (event: React.MouseEvent<HTMLElement>) => void;
   onClick: (event: React.MouseEvent<HTMLElement>) => void;
 }
 
@@ -31,6 +31,7 @@ export interface FloatingPanelController {
   handleDragPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
   handleResizePointerDown: (event: React.PointerEvent<HTMLElement>) => void;
   handleResizeKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
+  handleDragHandleKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
 }
 
 const DEFAULT_OPTIONS: Required<FloatingPanelOptions> = {
@@ -41,6 +42,37 @@ const DEFAULT_OPTIONS: Required<FloatingPanelOptions> = {
 
 type Position = { right: number; bottom: number };
 type Size = { w: number; h: number };
+type DragState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  started: boolean;
+  target: HTMLElement | null;
+  startPos: Position;
+  lastDx: number;
+  lastDy: number;
+};
+
+const DRAG_START_THRESHOLD_PX = 8;
+const DRAG_IGNORE_SELECTOR = "[data-drag-ignore]";
+const INTERACTIVE_SELECTOR = [
+  "button",
+  "a[href]",
+  "input",
+  "select",
+  "textarea",
+  "summary",
+  "[role='button']",
+  "[role='link']",
+  "[role='menuitem']",
+  "[role='option']",
+  "[role='switch']",
+  "[role='checkbox']",
+  "[role='radio']",
+  "[role='tab']",
+  "[role='slider']",
+  "[contenteditable='true']",
+].join(",");
 
 export function useFloatingPanel(options?: FloatingPanelOptions): FloatingPanelController {
   const { mobileQuery, launcherSuppressMs, margin } = { ...DEFAULT_OPTIONS, ...options };
@@ -62,6 +94,7 @@ export function useFloatingPanel(options?: FloatingPanelOptions): FloatingPanelC
   const posRef = React.useRef<Position>({ right: 16, bottom: 16 });
   const sizeRef = React.useRef<Size>({ w: 360, h: 480 });
   const rafRef = React.useRef<number | null>(null);
+  const dragStateRef = React.useRef<DragState | null>(null);
 
   const [pos, setPos] = React.useState<Position>(posRef.current);
   const [size, setSize] = React.useState<Size>(sizeRef.current);
@@ -249,74 +282,129 @@ export function useFloatingPanel(options?: FloatingPanelOptions): FloatingPanelC
       zIndex: 100,
       background: "linear-gradient(135deg, hsl(var(--primary-500)), hsl(var(--primary-600)))",
       transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-      pointerEvents: launcherLocked ? "none" : "auto",
+      pointerEvents: launcherLocked || open ? "none" : "auto",
     }),
-    [launcherLocked],
+    [launcherLocked, open],
   );
 
   const handleDragPointerDown = React.useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
       if (maximized) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
       const target = event.currentTarget as HTMLElement | null;
-      const pointerId = event.pointerId;
-      if (target) target.style.touchAction = "none";
-      const startX = event.clientX;
-      const startY = event.clientY;
-      const startPos = { ...posRef.current };
-      try {
-        target?.setPointerCapture(pointerId);
-      } catch {
-        /* no-op */
+      if (!target) return;
+
+      const origin = event.target as Node | null;
+      if (origin instanceof Element) {
+        if (!target.contains(origin)) return;
+        const ignored = origin.closest(DRAG_IGNORE_SELECTOR);
+        if (ignored && target.contains(ignored)) return;
+        const interactive = origin.closest(INTERACTIVE_SELECTOR);
+        if (interactive && target.contains(interactive)) return;
       }
+      const pointerId = event.pointerId;
+
+      dragStateRef.current = {
+        pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        started: false,
+        target,
+        startPos: { ...posRef.current },
+        lastDx: 0,
+        lastDy: 0,
+      };
 
       markLauncherSuppress();
       lockLauncher();
 
-      if (cardRef.current) {
-        cardRef.current.dataset.dragging = "true";
-        cardRef.current.style.transition = "none";
-      }
-      if (target) target.dataset.dragging = "true";
-
-      let lastDx = 0;
-      let lastDy = 0;
-
-      const onMove = (ev: PointerEvent) => {
-        lastDx = ev.clientX - startX;
-        lastDy = ev.clientY - startY;
-        const next = clampPos(sizeRef.current.w, sizeRef.current.h, startPos.right - lastDx, startPos.bottom - lastDy);
-        applyPosStyle(next.right, next.bottom);
-      };
-
-      const onUp = () => {
+      const startDrag = (state: DragState) => {
+        if (state.started) return;
+        state.started = true;
         try {
-          target?.releasePointerCapture(pointerId);
+          state.target?.setPointerCapture(state.pointerId);
         } catch {
           /* no-op */
         }
+        if (state.target) {
+          state.target.style.touchAction = "none";
+          state.target.dataset.dragging = "true";
+        }
+        if (cardRef.current) {
+          cardRef.current.dataset.dragging = "true";
+          cardRef.current.style.transition = "none";
+        }
+      };
+
+      const onMove = (ev: PointerEvent) => {
+        const state = dragStateRef.current;
+        if (!state || ev.pointerId !== state.pointerId) return;
+
+        const dx = ev.clientX - state.startX;
+        const dy = ev.clientY - state.startY;
+        state.lastDx = dx;
+        state.lastDy = dy;
+
+        if (!state.started) {
+          if (Math.hypot(dx, dy) < DRAG_START_THRESHOLD_PX) return;
+          startDrag(state);
+        }
+
+        const next = clampPos(
+          sizeRef.current.w,
+          sizeRef.current.h,
+          state.startPos.right - dx,
+          state.startPos.bottom - dy,
+        );
+        applyPosStyle(next.right, next.bottom);
+      };
+
+      const onEnd = (ev: PointerEvent) => {
+        const state = dragStateRef.current;
+        if (!state || ev.pointerId !== state.pointerId) return;
+
+        dragStateRef.current = null;
+
         window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        window.removeEventListener("pointercancel", onUp);
+        window.removeEventListener("pointerup", onEnd);
+        window.removeEventListener("pointercancel", onEnd);
+
         if (rafRef.current != null) {
           cancelAnimationFrame(rafRef.current);
           rafRef.current = null;
         }
-        const next = clampPos(sizeRef.current.w, sizeRef.current.h, startPos.right - lastDx, startPos.bottom - lastDy);
-        setPos(next);
-        clearPosStyle();
-        if (target) target.style.touchAction = "";
-        if (cardRef.current) {
-          delete cardRef.current.dataset.dragging;
-          cardRef.current.style.transition = "";
+
+        if (state.started) {
+          try {
+            state.target?.releasePointerCapture(state.pointerId);
+          } catch {
+            /* no-op */
+          }
+          const next = clampPos(
+            sizeRef.current.w,
+            sizeRef.current.h,
+            state.startPos.right - state.lastDx,
+            state.startPos.bottom - state.lastDy,
+          );
+          setPos(next);
+          clearPosStyle();
+          if (cardRef.current) {
+            delete cardRef.current.dataset.dragging;
+            cardRef.current.style.transition = "";
+          }
+          if (state.target) {
+            delete state.target.dataset.dragging;
+            state.target.style.touchAction = "";
+          }
         }
-        if (target) delete target.dataset.dragging;
+
         releaseLauncherSuppress();
         unlockLauncherSoon();
       };
 
       window.addEventListener("pointermove", onMove, { passive: true } as AddEventListenerOptions);
-      window.addEventListener("pointerup", onUp, { passive: true } as AddEventListenerOptions);
-      window.addEventListener("pointercancel", onUp, { passive: true } as AddEventListenerOptions);
+      window.addEventListener("pointerup", onEnd, { passive: true } as AddEventListenerOptions);
+      window.addEventListener("pointercancel", onEnd, { passive: true } as AddEventListenerOptions);
     },
     [applyPosStyle, clampPos, clearPosStyle, lockLauncher, markLauncherSuppress, maximized, releaseLauncherSuppress, unlockLauncherSoon],
   );
@@ -434,6 +522,36 @@ export function useFloatingPanel(options?: FloatingPanelOptions): FloatingPanelC
     [clampPos],
   );
 
+  const handleDragHandleKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      if (maximized) return;
+      const step = event.shiftKey ? 32 : 16;
+      let deltaRight = 0;
+      let deltaBottom = 0;
+      switch (event.key) {
+        case "ArrowRight":
+          deltaRight = -step;
+          break;
+        case "ArrowLeft":
+          deltaRight = step;
+          break;
+        case "ArrowDown":
+          deltaBottom = -step;
+          break;
+        case "ArrowUp":
+          deltaBottom = step;
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+      setPos((current) =>
+        clampPos(sizeRef.current.w, sizeRef.current.h, current.right + deltaRight, current.bottom + deltaBottom),
+      );
+    },
+    [clampPos, maximized],
+  );
+
   const handlePanelPointerDownCapture = React.useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
       if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -452,18 +570,22 @@ export function useFloatingPanel(options?: FloatingPanelOptions): FloatingPanelC
     [releaseLauncherSuppress, unlockLauncherSoon],
   );
 
-  const handlePanelPointerCancelCapture = React.useCallback(() => {
+  const handlePanelPointerCancelCapture = React.useCallback((event: React.PointerEvent<HTMLElement>) => {
     releaseLauncherSuppress();
     unlockLauncherSoon();
   }, [releaseLauncherSuppress, unlockLauncherSoon]);
 
-  const handlePanelClickCapture = React.useCallback(() => {
-    markLauncherSuppress();
-    releaseLauncherSuppress();
-  }, [markLauncherSuppress, releaseLauncherSuppress]);
+  const handlePanelClickCapture = React.useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      markLauncherSuppress();
+      releaseLauncherSuppress();
+    },
+    [markLauncherSuppress, releaseLauncherSuppress],
+  );
 
   const handlePanelClick = React.useCallback((event: React.MouseEvent<HTMLElement>) => {
     event.stopPropagation();
+    event.nativeEvent.stopImmediatePropagation?.();
   }, []);
 
   const shouldIgnoreLauncherToggle = React.useCallback(() => {
@@ -529,5 +651,6 @@ export function useFloatingPanel(options?: FloatingPanelOptions): FloatingPanelC
     handleDragPointerDown,
     handleResizePointerDown,
     handleResizeKeyDown,
+    handleDragHandleKeyDown,
   };
 }
