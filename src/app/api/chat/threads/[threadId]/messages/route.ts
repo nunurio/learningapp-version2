@@ -15,6 +15,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ threadId: stri
     if (!userId) return NextResponse.json([], { headers: { "Cache-Control": "no-store" } });
     const { threadId: rawId } = await ctx.params;
     const threadId = Id.parse(rawId);
+    const { data: thread, error: threadError } = await client
+      .from("chat_threads")
+      .select("id")
+      .eq("id", threadId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (threadError) throw threadError;
+    if (!thread) return NextResponse.json([], { headers: { "Cache-Control": "no-store" } });
     const { data, error } = await client
       .from("chat_messages")
       .select("id, role, content, created_at")
@@ -38,6 +46,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ threadId: stri
     if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     const { threadId: rawId } = await ctx.params;
     const threadId = Id.parse(rawId);
+    const { data: thread, error: threadError } = await client
+      .from("chat_threads")
+      .select("id")
+      .eq("id", threadId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (threadError) throw threadError;
+    if (!thread) return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     const body = await req.text();
     const { role, content } = z
       .object({ role: z.enum(["user", "assistant"]), content: z.string().min(1) })

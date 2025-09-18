@@ -69,11 +69,20 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ threadId: s
     if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     const { threadId: rawId } = await ctx.params;
     const threadId = Id.parse(rawId);
+    const { data: thread, error: threadError } = await client
+      .from("chat_threads")
+      .select("id")
+      .eq("id", threadId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (threadError) throw threadError;
+    if (!thread) return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     // Delete messages first, then thread
     const { error: e1 } = await client
       .from("chat_messages")
       .delete()
-      .eq("thread_id", threadId);
+      .eq("thread_id", threadId)
+      .eq("user_id", userId);
     if (e1) throw e1;
     const { error: e2 } = await client
       .from("chat_threads")
