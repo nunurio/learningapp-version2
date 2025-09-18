@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 // Markdown 表示用（react-markdown + GitHub風スタイル）
 import "github-markdown-css/github-markdown.css";
+import "katex/dist/katex.min.css";
 import { Toaster } from "@/components/ui/toaster";
 import { CommandPalette } from "@/components/ui/command-palette";
 

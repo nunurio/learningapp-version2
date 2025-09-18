@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { snapshot as fetchSnapshot, listFlaggedByCourse } from "@/lib/client-api";
-import type { UUID, Card, Lesson, CardType, Course, QuizCardContent, FillBlankCardContent, Progress } from "@/lib/types";
+import type { UUID, Card, Lesson, CardType, Course, Progress } from "@/lib/types";
 import type { SaveCardDraftInput } from "@/lib/data";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -18,6 +18,7 @@ import { Confirm } from "@/components/ui/confirm";
 import { deleteLesson as deleteLessonApi, deleteCard as deleteCardApi } from "@/lib/client-api";
 import { workspaceStore } from "@/lib/state/workspace-store";
 import { useWorkspace } from "@/lib/state/workspace-store";
+import { cn } from "@/lib/utils/cn";
 
 type Props = {
   courseId: UUID;
@@ -507,18 +508,36 @@ function TreeCourseRow({ id, title, level, expanded, selected, active, onClick, 
         data-type="course"
         onFocus={onActive}
         onClick={onClick}
-        className="group relative flex items-center gap-2 h-10 px-2 rounded hover:bg-[hsl(var(--accent))] focus-visible:bg-[hsl(var(--accent))] cursor-pointer data-[sel=true]:bg-[hsl(var(--accent))] data-[sel=true]:ring-1 data-[sel=true]:ring-[hsl(var(--primary))]/30 transition-colors"
+        className={cn(
+          "group relative flex items-center gap-2 h-10 px-2 rounded-sm cursor-pointer",
+          "nav-tree-item",
+          "hover:bg-[hsl(var(--accent))]/50 dark:hover:bg-[hsl(var(--accent))]/30",
+          "focus-visible:ring-1 focus-visible:ring-[hsl(var(--primary-400))]/40 focus-visible:ring-offset-0",
+          "transition-colors duration-150",
+          selected && "nav-course-selected",
+          active && !selected && "bg-[hsl(var(--accent))]/40"
+        )}
         data-sel={selected}
       >
-        <span aria-hidden className="pointer-events-none absolute left-0 top-1 bottom-1 w-1 rounded bg-[hsl(var(--primary))]/30 origin-left scale-x-0 group-hover:scale-x-100 group-focus-within:scale-x-100 transition-transform duration-150" />
+        {/* Clean accent bar indicator - handled in CSS now */}
+
+
         <button
           aria-label={expanded ? "折りたたむ" : "展開"}
           onClick={(e) => { e.stopPropagation(); onToggle(); }}
-          className="inline-flex items-center justify-center size-6 rounded hover:bg-black/5"
+          className={cn(
+            "inline-flex items-center justify-center size-6 rounded hover:bg-black/5 dark:hover:bg-white/5",
+            "transition-transform duration-200"
+          )}
         >
           <Chevron open={expanded} />
         </button>
-        <span className="truncate font-semibold">{title}</span>
+        <span className={cn(
+          "truncate font-semibold",
+          selected && "text-[hsl(var(--primary-700))] dark:text-[hsl(var(--primary-300))]"
+        )}>
+          {title}
+        </span>
       </div>
     </div>
   );
@@ -539,6 +558,7 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
   onDelete: () => Promise<void> | void;
 }) {
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+
   return (
     <div className="px-2" style={{ paddingLeft: (level - 1) * 14 }}>
       <div
@@ -551,24 +571,50 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
         data-type="lesson"
         onFocus={onActive}
         onClick={onClick}
-        className="group relative flex items-center gap-2 h-9 px-2 rounded hover:bg-[hsl(var(--accent))] focus-visible:bg-[hsl(var(--accent))] cursor-pointer data-[sel=true]:bg-[hsl(var(--accent))] data-[sel=true]:ring-1 data-[sel=true]:ring-[hsl(var(--primary))]/30 transition-colors"
+        className={cn(
+          "group relative flex items-center gap-2 h-9 px-2 rounded-sm cursor-pointer",
+          "nav-tree-item",
+          "hover:bg-[hsl(var(--accent))]/40 dark:hover:bg-[hsl(var(--accent))]/25",
+          "focus-visible:ring-1 focus-visible:ring-[hsl(var(--primary-400))]/30 focus-visible:ring-offset-0",
+          "transition-colors duration-150",
+          selected && "nav-lesson-selected",
+          active && !selected && "bg-[hsl(var(--accent))]/30"
+        )}
         data-sel={selected}
       >
-        <span aria-hidden className="pointer-events-none absolute left-0 top-1 bottom-1 w-1 rounded bg-[hsl(var(--primary))]/30 origin-left scale-x-0 group-hover:scale-x-100 group-focus-within:scale-x-100 transition-transform duration-150" />
+        {/* Clean accent bar indicator - handled in CSS now */}
+
+
         <button
           aria-label={expanded ? "折りたたむ" : "展開"}
           onClick={(e) => { e.stopPropagation(); onToggle(); }}
-          className="inline-flex items-center justify-center size-6 rounded hover:bg-black/5"
+          className={cn(
+            "inline-flex items-center justify-center size-6 rounded hover:bg-black/5 dark:hover:bg-white/5",
+            "transition-transform duration-200"
+          )}
         >
           <Chevron open={expanded} />
         </button>
-        <ProgressRing value={progressPct} size={14} stroke={2} title={`完了 ${progressPct}%`} />
-        <span className="truncate font-medium flex-1">{title}</span>
+        <div className={cn(selected && "scale-105 transition-transform duration-150")}>
+          <ProgressRing value={progressPct} size={14} stroke={2} title={`完了 ${progressPct}%`} />
+        </div>
+        <span className={cn(
+          "truncate font-medium flex-1",
+          selected && "text-[hsl(var(--primary-600))] dark:text-[hsl(var(--primary-300))]"
+        )}>
+          {title}
+        </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               aria-label="レッスンメニュー"
-              className="inline-flex items-center justify-center size-6 rounded hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ring-offset-background focus-visible:ring-offset-2"
+              className={cn(
+                "inline-flex items-center justify-center size-6 rounded",
+                "hover:bg-black/5 dark:hover:bg-white/5",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ring-offset-background focus-visible:ring-offset-2",
+                "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+                "transition-opacity duration-200"
+              )}
               onClick={(e) => e.stopPropagation()}
             >
               <span aria-hidden>⋯</span>
@@ -613,6 +659,8 @@ function TreeCardRow({ id, title, level, selected, active, tags, progressPct, on
   onDelete: () => Promise<void> | void;
 }) {
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [isHovered, setIsHovered] = React.useState(false);
+
   return (
     <div role="group" className="">
       <div className="px-2" style={{ paddingLeft: (level - 1) * 14 }}>
@@ -625,25 +673,85 @@ function TreeCardRow({ id, title, level, selected, active, tags, progressPct, on
           data-type="card"
           onFocus={onActive}
           onClick={onClick}
-          className="group relative flex items-center gap-2 h-7 px-2 rounded hover:bg-[hsl(var(--accent))] focus-visible:bg-[hsl(var(--accent))] cursor-pointer data-[sel=true]:bg-[hsl(var(--accent))] data-[sel=true]:ring-1 data-[sel=true]:ring-[hsl(var(--primary))]/30 transition-colors"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          className={cn(
+            "group relative flex items-center gap-2 h-7 px-2 rounded-sm cursor-pointer",
+            "nav-tree-item",
+            "hover:bg-[hsl(var(--accent))]/50 dark:hover:bg-[hsl(var(--accent))]/30",
+            "focus-visible:ring-1 focus-visible:ring-[hsl(var(--primary-400))]/20 focus-visible:ring-offset-0",
+            "transition-colors duration-150",
+            selected && "nav-card-selected",
+            active && !selected && "bg-[hsl(var(--accent))]/40"
+          )}
           data-sel={selected}
         >
-          <span aria-hidden className="pointer-events-none absolute left-0 top-1 bottom-1 w-1 rounded bg-[hsl(var(--primary))]/30 origin-left scale-x-0 group-hover:scale-x-100 group-focus-within:scale-x-100 transition-transform duration-150" />
-          <ProgressRing value={progressPct} size={12} stroke={2} title={`進捗 ${progressPct}%`} />
-          <span className="truncate">{title}</span>
+          {/* Clean accent bar indicator - handled in CSS now */}
+
+          {/* Progress ring with conditional glow */}
+          <div className={cn(
+            "transition-all duration-200",
+            selected && "nav-selected-progress scale-110",
+            isHovered && !selected && "scale-105"
+          )}>
+            <ProgressRing value={progressPct} size={12} stroke={2} title={`進捗 ${progressPct}%`} />
+          </div>
+
+          {/* Title with subtle color change */}
+          <span className={cn(
+            "truncate text-sm",
+            selected && "text-[hsl(var(--primary-600))] dark:text-[hsl(var(--primary-400))] font-medium"
+          )}>
+            {title}
+          </span>
+
+          {/* Tags with animation */}
           {tags?.length ? (
-            <span className="ml-2 flex items-center gap-1 overflow-hidden">
+            <span className={cn(
+              "ml-2 flex items-center gap-1 overflow-hidden",
+              "transition-all duration-200",
+              selected && "scale-105"
+            )}>
               {tags.slice(0, 3).map((t, i) => (
-                <Badge key={i} variant="secondary" className="text-[10px] px-1 py-0">{t}</Badge>
+                <Badge
+                  key={i}
+                  variant="secondary"
+                  className={cn(
+                    "text-[10px] px-1 py-0",
+                    "transition-all duration-200",
+                    selected && "bg-[hsl(var(--primary-100))] dark:bg-[hsl(var(--primary-800))]/30"
+                  )}
+                >
+                  {t}
+                </Badge>
               ))}
-              {tags.length > 3 ? <Badge variant="secondary" className="text-[10px] px-1 py-0">+{tags.length - 3}</Badge> : null}
+              {tags.length > 3 ? (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "text-[10px] px-1 py-0",
+                    selected && "bg-[hsl(var(--primary-100))] dark:bg-[hsl(var(--primary-800))]/30"
+                  )}
+                >
+                  +{tags.length - 3}
+                </Badge>
+              ) : null}
             </span>
           ) : null}
+
+          {/* Dropdown menu with fade-in animation */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 aria-label="カードメニュー"
-                className="ml-auto inline-flex items-center justify-center size-6 rounded hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ring-offset-background focus-visible:ring-offset-2"
+                className={cn(
+                  "ml-auto inline-flex items-center justify-center size-6 rounded",
+                  "hover:bg-black/5 dark:hover:bg-white/5",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ring-offset-background focus-visible:ring-offset-2",
+                  "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+                  selected && "opacity-60 hover:opacity-100",
+                  "transition-all duration-200"
+                )}
                 onClick={(e) => e.stopPropagation()}
               >
                 <span aria-hidden>⋯</span>

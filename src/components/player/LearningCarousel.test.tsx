@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -138,5 +138,126 @@ describe("LearningCarousel", () => {
     expect(last2).toBeTruthy();
     const lastChecked2: NonNullable<typeof last2> = last2 as NonNullable<typeof last2>;
     expect(lastChecked2).toMatchObject({ cardId: "card-q1", completed: true, answer: { level: 3 } });
+  });
+
+  it("quizカードでMarkdownとLaTeXがレンダリングされる", async () => {
+    const lesson = { id: "l-quiz" as UUID, courseId: baseCourse.id, title: "Lesson", orderIndex: 1, createdAt: makeIso(1) };
+    vi.mocked(clientApi.snapshot).mockResolvedValue({
+      courses: [baseCourse],
+      lessons: [lesson],
+      cards: [
+        {
+          id: "quiz-md",
+          lessonId: lesson.id,
+          cardType: "quiz",
+          title: "Q",
+          content: {
+            question: "**公式**は $E = mc^2$ です",
+            options: ["**正解**", "選択肢 $\\alpha$"],
+            answerIndex: 0,
+            explanation: "**強調**",
+            optionExplanations: ["$\\alpha$ の説明", "もう一方"],
+          },
+          orderIndex: 0,
+          createdAt: makeIso(2),
+        },
+      ],
+      progress: [],
+      flags: [],
+      notes: [],
+    });
+
+    const { container } = render(<LearningCarousel courseId={baseCourse.id} />);
+
+    await screen.findByRole("radiogroup", { name: "選択肢" });
+    await waitFor(() => {
+      expect(container.querySelector("strong")?.textContent).toBe("公式");
+    });
+    const katexNodes = container.querySelectorAll("span.katex");
+    expect(katexNodes.length).toBeGreaterThan(0);
+
+    const group = await screen.findByRole("radiogroup", { name: "選択肢" });
+    const radios = within(group).getAllByRole("radio");
+    expect(radios.length).toBeGreaterThan(0);
+    const optionHasKaTeX = radios.some((radio) => radio.querySelector("span.katex"));
+    expect(optionHasKaTeX).toBe(true);
+  });
+
+  it("穴埋めカードでMarkdownがレンダリングされる", async () => {
+    const lesson = { id: "l-fill" as UUID, courseId: baseCourse.id, title: "Lesson", orderIndex: 1, createdAt: makeIso(1) };
+    vi.mocked(clientApi.snapshot).mockResolvedValue({
+      courses: [baseCourse],
+      lessons: [lesson],
+      cards: [
+        {
+          id: "fill-md",
+          lessonId: lesson.id,
+          cardType: "fill-blank",
+          title: "Fill",
+          content: {
+            text: "導出の**途中**で $\\alpha$ を利用し [[1]] に代入",
+            answers: { "1": "\\beta" },
+          },
+          orderIndex: 0,
+          createdAt: makeIso(2),
+        },
+      ],
+      progress: [],
+      flags: [],
+      notes: [],
+    });
+
+    const { container } = render(<LearningCarousel courseId={baseCourse.id} initialCardId="fill-md" />);
+
+    expect(await screen.findByPlaceholderText("#1")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(container.querySelector("strong")?.textContent).toBe("途中");
+    });
+    const inlineKatex = container.querySelectorAll("span.katex");
+    expect(inlineKatex.length).toBeGreaterThan(0);
+  });
+
+  it("穴埋めカードで連続文章が改行されない", async () => {
+    const lesson = { id: "l-fill-inline" as UUID, courseId: baseCourse.id, title: "Lesson", orderIndex: 1, createdAt: makeIso(1) };
+    const text = "二次関数 $y=ax^2+bx+c$ を平方完成すると $y=a(x-p)^2+q$ の形になる。このとき放物線の[[1]]は$(p, q)$、[[2]]は$x=p$。$a>0$なら開きは上向きで[[3]]をもち、その値は$y=q$、それを[[4]]は$x=p$でとる。$a<0$なら開きは下向きで[[5]]をもち、その値は$y=q$、それを[[6]]は$x=p$でとる。[[7]]は、$a>0$のとき$y\\ge q$、$a<0$のとき$y\\le q$。区間$[m,n]$に限定するときは、[[8]]$x=m$と[[9]]$x=n$における値、そして[[2]]が区間内にあればその値を比べて最大・最小を決める。";
+    vi.mocked(clientApi.snapshot).mockResolvedValue({
+      courses: [baseCourse],
+      lessons: [lesson],
+      cards: [
+        {
+          id: "fill-inline",
+          lessonId: lesson.id,
+          cardType: "fill-blank",
+          title: "Fill",
+          content: {
+            text,
+            answers: {
+              "1": "頂点",
+              "2": "軸",
+              "3": "最小値",
+              "4": "x=p",
+              "5": "最大値",
+              "6": "x=p",
+              "7": "値域",
+              "8": "端点",
+              "9": "端点",
+            },
+          },
+          orderIndex: 0,
+          createdAt: makeIso(2),
+        },
+      ],
+      progress: [],
+      flags: [],
+      notes: [],
+    });
+
+    const { container } = render(<LearningCarousel courseId={baseCourse.id} initialCardId="fill-inline" />);
+
+    expect(await screen.findByPlaceholderText("#1")).toBeInTheDocument();
+    const region = container.querySelector(".text-gray-900");
+    expect(region).toBeTruthy();
+    expect(region?.querySelectorAll("br")).toHaveLength(0);
+    expect(region?.innerHTML.includes("\n")).toBe(false);
   });
 });

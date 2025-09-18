@@ -122,6 +122,7 @@ ${LEVEL_STYLE_RULES}
 ${renderCardTypeGuidelines(kind)}
 
 # 厳格ルール
+- 数式が必要な箇所は必ずMarkdown 内で LaTeX 記法を用いる（インライン: $...$ / ブロック: $$...$$）。HTML タグで数式を組まない。
 - 不要フィールドは **null** にする。
 `.trim();
 }
