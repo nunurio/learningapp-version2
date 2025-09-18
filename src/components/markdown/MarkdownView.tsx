@@ -48,34 +48,40 @@ const katexTagNames = new Set(defaultSchema.tagNames ?? []);
   "menclose",
 ].forEach((tag) => katexTagNames.add(tag));
 
-const wildcardAttributes = new Set(defaultSchema.attributes?.["*"] ?? []);
-wildcardAttributes.add("className");
+type UnknownRecord = Record<string, unknown>;
+type AttributeList = readonly unknown[];
+type AttributeMap = Record<string, AttributeList>;
 
-const katexAttributes: NonNullable<Schema["attributes"]> = {
-  ...defaultSchema.attributes,
-  "*": Array.from(wildcardAttributes),
-  div: [
-    ...(defaultSchema.attributes?.div ?? []),
-    "className",
-    ["className", true],
-    "style",
-  ],
-  span: [
-    ...(defaultSchema.attributes?.span ?? []),
-    "className",
-    ["className", true],
-    "style",
-  ],
-  math: [
-    ...(defaultSchema.attributes?.math ?? []),
-    ["xmlns", "http://www.w3.org/1998/Math/MathML"],
-    ["display", true],
-  ],
-  annotation: [
-    ...(defaultSchema.attributes?.annotation ?? []),
-    ["encoding", "application/x-tex"],
-  ],
+const isAttributeList = (value: unknown): value is AttributeList => Array.isArray(value);
+
+const cloneAttributeMap = (value: unknown): AttributeMap => {
+  if (!value || typeof value !== "object") return {};
+  const entries = value as UnknownRecord;
+  const result: AttributeMap = {};
+  for (const [key, list] of Object.entries(entries)) {
+    if (isAttributeList(list)) {
+      result[key] = [...list];
+    }
+  }
+  return result;
 };
+
+const katexAttributes = cloneAttributeMap(defaultSchema.attributes);
+
+const upsertAttributes = (tag: string, additions: AttributeList) => {
+  const current = katexAttributes[tag] ?? [];
+  katexAttributes[tag] = [...current, ...additions];
+};
+
+const wildcardAttributes = new Set(katexAttributes["*"] ?? []);
+wildcardAttributes.add("className");
+katexAttributes["*"] = Array.from(wildcardAttributes);
+
+upsertAttributes("div", ["className", ["className", true], "style"]);
+upsertAttributes("span", ["className", ["className", true], "style"]);
+upsertAttributes("math", [["xmlns", "http://www.w3.org/1998/Math/MathML"], ["display", true]]);
+upsertAttributes("annotation", [["encoding", "application/x-tex"]]);
+
 
 [
   "semantics",
@@ -101,14 +107,14 @@ const katexAttributes: NonNullable<Schema["attributes"]> = {
   "menclose",
 ].forEach((tag) => {
   if (!katexAttributes[tag]) {
-    katexAttributes[tag] = defaultSchema.attributes?.[tag] ?? [];
+    katexAttributes[tag] = [];
   }
 });
 
 const katexSanitizeSchema: Schema = {
   ...defaultSchema,
   tagNames: Array.from(katexTagNames),
-  attributes: katexAttributes,
+  attributes: katexAttributes as Schema["attributes"],
 };
 
 const inlineComponents: Components = {

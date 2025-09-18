@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as React from "react";
 import { CardPlayer } from "@/components/workspace/CardPlayer";
+import type { Snapshot } from "@/lib/client-api";
 
 const nowISO = new Date().toISOString();
 
@@ -19,7 +20,7 @@ vi.mock("@/lib/client-api", () => {
 
 const api = await import("@/lib/client-api");
 
-const createDefaultSnapshot = () => ({
+const createDefaultSnapshot = (): Snapshot => ({
   courses: [{ id: "course1", title: "C1", status: "draft", createdAt: nowISO, updatedAt: nowISO }],
   lessons: [{ id: "lesson1", courseId: "course1", title: "L1", orderIndex: 0, createdAt: nowISO }],
   cards: [
@@ -111,7 +112,7 @@ describe("CardPlayer - Quiz card with slider after Check", () => {
       progress: [],
       flags: [],
       notes: [],
-    });
+    } satisfies Snapshot);
 
     const { container } = render(
       <CardPlayer courseId={"course1"} selectedId={"cardMarkdown"} selectedKind="card" onNavigate={() => {}} />
