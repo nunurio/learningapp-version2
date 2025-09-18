@@ -527,8 +527,7 @@ function TreeCourseRow({ id, title, level, expanded, selected, active, onClick, 
           onClick={(e) => { e.stopPropagation(); onToggle(); }}
           className={cn(
             "inline-flex items-center justify-center size-6 rounded hover:bg-black/5 dark:hover:bg-white/5",
-            "transition-transform duration-200",
-            expanded && "rotate-90"
+            "transition-transform duration-200"
           )}
         >
           <Chevron open={expanded} />
@@ -591,8 +590,7 @@ function TreeLessonRow({ id, title, level, expanded, selected, active, progressP
           onClick={(e) => { e.stopPropagation(); onToggle(); }}
           className={cn(
             "inline-flex items-center justify-center size-6 rounded hover:bg-black/5 dark:hover:bg-white/5",
-            "transition-transform duration-200",
-            expanded && "rotate-90"
+            "transition-transform duration-200"
           )}
         >
           <Chevron open={expanded} />
