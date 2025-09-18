@@ -34,6 +34,14 @@ export function ChatWindow(props: ChatWindowProps) {
 
   const { atBottom, scrollToBottom, shouldFollowDuringStream, viewportRef, endRef } = autoScroll;
 
+  const handleScrollAreaWheel = React.useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  }, []);
+
+  const handleScrollAreaTouchMove = React.useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  }, []);
+
   React.useLayoutEffect(() => {
     if (!floating.open) return;
     const last = controller.messages[controller.messages.length - 1];
@@ -182,9 +190,10 @@ export function ChatWindow(props: ChatWindowProps) {
               maxSize={42}
               collapsible
               collapsedSize={0}
-              className="relative after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gradient-to-b after:from-transparent after:via-[hsl(var(--border-default)_/_0.4)] after:to-transparent"
+              className="relative after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gradient-to-b after:from-transparent after:via-[hsl(var(--border-default)_/_0.4)] after:to-transparent after:pointer-events-none after:z-0"
+              style={{ overflow: "hidden" }}
             >
-              <div className="h-full flex flex-col">
+              <div className="h-full min-h-0 flex flex-col">
                 <div className="p-2 flex items-center justify-between bg-muted/30 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-[hsl(var(--border-default)_/_0.4)] after:to-transparent">
                   <div className="text-xs font-medium">チャット履歴</div>
                   <Button size="sm" variant="outline" onClick={controller.createThread}>
@@ -194,8 +203,17 @@ export function ChatWindow(props: ChatWindowProps) {
                 <div className="p-2 text-xs text-muted-foreground">
                   {controller.loadingThreads ? "読み込み中…" : controller.threads.length === 0 ? "履歴はまだありません" : "最近のスレッド"}
                 </div>
-                <ScrollArea className="flex-1 px-2 pb-2">
-                  <div className="space-y-1">
+                <ScrollArea
+                  aria-label="チャット履歴一覧"
+                  className="flex-1 min-h-0"
+                  viewportClassName="h-full overscroll-contain"
+                  viewportProps={{
+                    onWheel: handleScrollAreaWheel,
+                    onTouchMove: handleScrollAreaTouchMove,
+                  }}
+                  type="always"
+                >
+                  <div data-testid="chat-sidebar-scroll-content" className="px-2 pb-2 space-y-1">
                     {controller.threads.map((thread) => (
                       <div
                         key={thread.id}
@@ -281,8 +299,16 @@ export function ChatWindow(props: ChatWindowProps) {
 
   function renderMessages() {
     return (
-      <ScrollArea className="h-full p-3 pr-4">
-        <div ref={viewportRef} className="h-full overflow-y-auto pr-2 chat-scroll-container">
+      <ScrollArea
+        className="h-full p-3 pr-4"
+        viewportClassName="h-full pr-2 overscroll-contain"
+        viewportProps={{
+          ref: viewportRef,
+          onWheel: handleScrollAreaWheel,
+          onTouchMove: handleScrollAreaTouchMove,
+        }}
+      >
+        <div className="space-y-0.5 chat-scroll-container">
           {controller.messages.length === 0 && (
             <div className="text-xs text-muted-foreground p-4 text-center animate-in fade-in-50 duration-500">
               <div className="mb-2">👋 こんにちは</div>
