@@ -97,7 +97,8 @@ test.describe("AIチャット", () => {
       .evaluate((node) => Boolean(node.closest("button")));
     expect(headerButtonAncestor).toBe(false);
 
-    await dialog.locator(".chat-header").click({ position: { x: 160, y: 16 } });
+    await dialog.getByRole("button", { name: "ドラッグで移動" }).click();
+    await page.waitForTimeout(600);
     await expect(dialog).toBeVisible();
   });
 });
