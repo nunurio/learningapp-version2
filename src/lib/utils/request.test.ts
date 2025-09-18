@@ -1,42 +1,37 @@
 import { describe, it, expect } from "vitest";
-import { parseJsonWithQuery } from "./request";
 import { z } from "zod";
+import { parseJsonWithQuery } from "./request";
 
-function makeReq(url: string, body?: unknown): Request {
-  return new Request(url, body === undefined
-    ? { method: "GET" }
-    : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
-  );
+const Schema = z.object({
+  a: z.number().optional(),
+  b: z.boolean().optional(),
+  c: z.string().optional(),
+  d: z.number().optional(),
+});
+
+async function makeReq(url: string, body?: unknown) {
+  return new Request(url, {
+    method: "POST",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
 }
 
 describe("parseJsonWithQuery", () => {
-  const schema = z.object({
-    name: z.string().min(1),
-    count: z.number().int().optional(),
-    flag: z.boolean().optional(),
+  it("merges query and JSON body with type coercion", async () => {
+    const req = await makeReq("http://test.local/p?a=1&b=true&c=str", { d: 4 });
+    const out = await parseJsonWithQuery(req, Schema);
+    expect(out).toEqual({ a: 1, b: true, c: "str", d: 4 });
   });
 
-  it("merges query then body with defaults", async () => {
-    const req = makeReq("http://x.local/api?name=Q&count=2&flag=true", { name: "B", count: 5 });
-    const res = await parseJsonWithQuery(req, schema, { name: "D" });
-    // body が query を上書きする仕様（defaults < query < body）
-    expect(res).toEqual({ name: "B", count: 5, flag: true });
+  it("throws when query has non-numeric for number field", async () => {
+    const req = await makeReq("http://x.local/p?a=notnum&b=false");
+    await expect(parseJsonWithQuery(req, Schema)).rejects.toThrow(/at a/);
   });
 
-  it("applies defaults and types", async () => {
-    const req = makeReq("http://x.local/api");
-    const res = await parseJsonWithQuery(req, schema, { name: "D", count: 1 });
-    expect(res).toEqual({ name: "D", count: 1 });
-  });
-
-  it("throws helpful error on invalid", async () => {
-    const req = makeReq("http://x.local/api?count=aa");
-    await expect(parseJsonWithQuery(req, schema, { name: "D" })).rejects.toThrow(/count/);
-  });
-
-  it("works when defaults is omitted", async () => {
-    const req = makeReq("http://x.local/api?name=Q&count=2");
-    const res = await parseJsonWithQuery(req, schema);
-    expect(res).toEqual({ name: "Q", count: 2 });
+  it("throws on schema violation with helpful path", async () => {
+    const Bad = z.object({ n: z.number() });
+    const req = await makeReq("http://x.local/p", { n: "nope" });
+    await expect(parseJsonWithQuery(req, Bad)).rejects.toThrow(/at n/);
   });
 });

@@ -1,4 +1,4 @@
-import { Agent } from "@openai/agents";
+import { Agent, user, type AgentInputItem } from "@openai/agents";
 import type { UnknownContext } from "@openai/agents";
 import { runner } from "@/lib/ai/agents/index";
 import { LessonCardsPlanSchema, type LessonCardsPlan } from "@/lib/ai/schema";
@@ -11,7 +11,7 @@ export const CardsPlannerAgent = new Agent<UnknownContext, typeof LessonCardsPla
   name: "Lesson Cards Planner",
   instructions: CARDS_PLANNER_INSTRUCTIONS,
   outputType: LessonCardsPlanSchema,
-  model: process.env.OPENAI_MODEL,
+  // モデルは runner 側の既定を使用
 });
 
 export async function runCardsPlanner(input: {
@@ -23,15 +23,25 @@ export async function runCardsPlanner(input: {
     index: number; // 現レッスンのインデックス
   };
 }): Promise<LessonCardsPlan> {
-  const payload = {
-    task: "Plan lesson cards strictly as LessonCardsPlan JSON.",
-    parameters: {
-      lessonTitle: input.lessonTitle,
-      desiredCount: typeof input.desiredCount === "number" ? input.desiredCount : null,
-      context: input.context,
-    },
-  } as const;
-  const res = await runner.run(CardsPlannerAgent, JSON.stringify(payload), { maxTurns: 1 });
+  // 入力は Items 化（user）して渡す
+  const ctx = input.context;
+  const items: AgentInputItem[] = [
+    user(
+      [
+        "レッスン用のカード計画を作成してください。",
+        `レッスン: ${input.lessonTitle}`,
+        `カード目安数: ${typeof input.desiredCount === "number" ? input.desiredCount : "(未指定)"}`,
+        "コース文脈:",
+        `  タイトル: ${ctx.course.title}`,
+        `  説明: ${ctx.course.description ?? "(なし)"}`,
+        `  カテゴリ: ${ctx.course.category ?? "(なし)"}`,
+        `  レベル: ${ctx.course.level ?? "(未指定)"}`,
+        `レッスン一覧(${ctx.lessons.length}件): ${ctx.lessons.map((l) => l.title).join(" | ")}`,
+        `このレッスンのインデックス: ${ctx.index}`,
+      ].join("\n")
+    ),
+  ];
+  const res = await runner.run(CardsPlannerAgent, items, { maxTurns: 1 });
   // まず finalOutput を信頼（Zod 検証済み）
   const result = res.finalOutput as unknown;
   if (!result) {

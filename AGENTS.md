@@ -19,6 +19,8 @@
 - `pnpm test`: run unit/component tests (Vitest + React Testing Library).
 - `pnpm test:e2e`: run E2E tests (Playwright).
 
+**MANDATORY (English): On every implementation change, verify that ESLint, TypeScript type checks, and all unit tests pass locally before committing or opening a PR. Run: `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test`.**
+
 ## Coding Style & Naming Conventions
 - Language: TypeScript (strict). Prefer functional React components and hooks. Use `"use client"` only when required.
 - Imports: use path alias `@/*` for modules under `src/*`.

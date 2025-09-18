@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Textarea } from "@/components/ui/textarea";
 import { Star, StickyNote, HelpCircle } from "lucide-react";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { publishActiveRef } from "@/components/ai/active-ref";
 
 type Props = {
   courseId: UUID;
@@ -199,6 +200,20 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
     const idx = api.selectedScrollSnap();
     if (idx !== active) api.scrollTo(active, true);
   }, [api, active]);
+
+  React.useEffect(() => {
+    const current = cards[active];
+    if (!current) {
+      publishActiveRef({ courseId, mode: "learn" });
+      return;
+    }
+    publishActiveRef({
+      courseId,
+      lessonId: current.lessonId,
+      cardId: current.id,
+      mode: "learn",
+    });
+  }, [courseId, cards, active]);
 
   const current = cards[active];
   const progressValue = cards.length ? ((active + 1) / cards.length) * 100 : 0;

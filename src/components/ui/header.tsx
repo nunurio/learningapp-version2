@@ -21,7 +21,7 @@ export function Header({
   const showCtas = !minimal;
 
   return (
-    <header className="sticky top-0 z-30 bg-white/80 dark:bg-[hsl(var(--bg))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-[hsl(var(--bg))]/70 border-b border-[hsl(var(--border))] shadow-sm">
+    <header className="sticky top-0 z-30 bg-white/80 dark:bg-[hsl(var(--bg))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-[hsl(var(--bg))]/70 shadow-[0_1px_3px_rgb(0_0_0_/_0.04),0_0_0_1px_hsl(var(--border-default)_/_0.3)] relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-[hsl(var(--border-default)_/_0.8)] after:to-transparent after:content-['']">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
         <div className="flex items-center justify-between">
           <Link href="/" className="font-bold text-xl tracking-tight bg-gradient-to-r from-[hsl(var(--primary-600))] to-[hsl(var(--primary-400))] bg-clip-text text-transparent hover:from-[hsl(var(--primary-700))] hover:to-[hsl(var(--primary-500))] transition-all duration-300">Learnify</Link>

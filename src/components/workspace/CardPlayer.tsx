@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import MarkdownView from "@/components/markdown/MarkdownView";
 import { useWorkspaceSelector, workspaceStore } from "@/lib/state/workspace-store";
 import { Star, StickyNote, HelpCircle } from "lucide-react";
+import { publishActiveRef } from "@/components/ai/active-ref";
 
 type Props = {
   courseId: UUID;
@@ -221,6 +222,19 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
     return base;
   }, [card, draft]);
 
+  React.useEffect(() => {
+    if (!view) {
+      publishActiveRef({ courseId, mode: "workspace" });
+      return;
+    }
+    publishActiveRef({
+      courseId,
+      lessonId: view.lessonId,
+      cardId: view.id,
+      mode: "workspace",
+    });
+  }, [courseId, view]);
+
   if (!selectedId || !view) {
     return <p className="text-sm text-gray-700">カードを選択すると、ここで学習できます。</p>;
   }
@@ -295,7 +309,7 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
       </div>
 
       {showHelp && (
-        <div className="p-3 text-sm mb-4 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))]">
+        <div className="p-3 text-sm mb-4 rounded-md border border-[hsl(220_13%_85%_/_0.6)] bg-[hsl(var(--card))] shadow-sm">
           <p className="font-medium mb-1">キーボードショートカット</p>
           <ul className="list-disc list-inside text-gray-700">
             <li>クイズ: 1–9 で選択, Enter で回答</li>
