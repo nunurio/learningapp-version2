@@ -21,7 +21,7 @@ export function ResizablePanelGroup({ className, ...props }: GroupProps) {
   return (
     <ResizablePanelGroupPrimitive
       className={cn(
-        "flex h-full w-full data-[panel-group-direction=vertical]:flex-col",
+        "flex h-full min-h-0 w-full data-[panel-group-direction=vertical]:flex-col",
         className
       )}
       {...props}
@@ -32,7 +32,7 @@ export function ResizablePanelGroup({ className, ...props }: GroupProps) {
 export function ResizablePanel({ className, ...props }: PanelProps) {
   return (
     <ResizablePanelPrimitive
-      className={cn("h-full overflow-auto", className)}
+      className={cn("flex h-full min-h-0 flex-col overflow-hidden", className)}
       {...props}
     />
   );

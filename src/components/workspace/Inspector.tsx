@@ -320,43 +320,43 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
 
   return (
     <>
-    <aside className="h-full overflow-auto p-3">
-      <div className="text-xs text-gray-500 mb-2">インスペクタ</div>
-      {currentLesson && (
-        <LessonTools
-          courseId={courseId}
-          lesson={currentLesson}
-          runningLesson={runningLesson}
-          setRunningLesson={setRunningLesson}
-          logsByLesson={logsByLesson}
-          setLogsByLesson={setLogsByLesson}
-          previews={previews}
-          setPreviews={setPreviews}
-          selectedIndexes={selectedIndexes}
-          setSelectedIndexes={setSelectedIndexes}
-          selectedKind={selectedKind}
-          onSaveAll={async (lessonId, payload, selected) => {
-            const idxs = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
-            const res = idxs.length > 0
-              ? await commitLessonCardsPartialApi({ draftId: payload.draftId, lessonId, selectedIndexes: idxs })
-              : await commitLessonCardsApi({ draftId: payload.draftId, lessonId });
-            if (!res) return alert("保存に失敗しました");
-            refreshLists();
-            // 左ペイン（NavTree）のデータを即時更新させるため、外部ストアのバージョンを更新
-            workspaceStore.bumpVersion();
-            setPreviews((prev) => { const copy = { ...prev }; delete copy[lessonId]; return copy; });
-          }}
-          onRefresh={refreshLists}
-        />
-      )}
-      {!selectedId && (
-        <p className="text-sm text-gray-700">コースやレッスン/カードを選択してください。</p>
-      )}
+      <aside className="h-full min-h-0 overflow-auto p-3">
+        <div className="text-xs text-gray-500 mb-2">インスペクタ</div>
+        {currentLesson && (
+          <LessonTools
+            courseId={courseId}
+            lesson={currentLesson}
+            runningLesson={runningLesson}
+            setRunningLesson={setRunningLesson}
+            logsByLesson={logsByLesson}
+            setLogsByLesson={setLogsByLesson}
+            previews={previews}
+            setPreviews={setPreviews}
+            selectedIndexes={selectedIndexes}
+            setSelectedIndexes={setSelectedIndexes}
+            selectedKind={selectedKind}
+            onSaveAll={async (lessonId, payload, selected) => {
+              const idxs = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
+              const res = idxs.length > 0
+                ? await commitLessonCardsPartialApi({ draftId: payload.draftId, lessonId, selectedIndexes: idxs })
+                : await commitLessonCardsApi({ draftId: payload.draftId, lessonId });
+              if (!res) return alert("保存に失敗しました");
+              refreshLists();
+              // 左ペイン（NavTree）のデータを即時更新させるため、外部ストアのバージョンを更新
+              workspaceStore.bumpVersion();
+              setPreviews((prev) => { const copy = { ...prev }; delete copy[lessonId]; return copy; });
+            }}
+            onRefresh={refreshLists}
+          />
+        )}
+        {!selectedId && (
+          <p className="text-sm text-gray-700">コースやレッスン/カードを選択してください。</p>
+        )}
 
-      {/* Course-level: レッスン管理 */}
-      {!selectedId && course && (
-        <CourseInspector course={course} lessons={lessons} onRefresh={refreshLists} />
-      )}
+        {/* Course-level: レッスン管理 */}
+        {!selectedId && course && (
+          <CourseInspector course={course} lessons={lessons} onRefresh={refreshLists} />
+        )}
 
       {/* Lesson-level: カード管理 + AI生成 */}
       {selectedKind === "lesson" && lesson && (
@@ -617,29 +617,29 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
           <div className="text-sm">{course.title}</div>
         </section>
       )}
-    </aside>
-    <AlertDialog open={pendingAction != null} onOpenChange={(open: boolean) => { if (!open) setPendingAction(null); }}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>保存されていない変更があります</AlertDialogTitle>
-          <AlertDialogDescription>
-            保存せずに移動すると変更が失われます。移動してもよろしいですか？
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => setPendingAction(null)}>キャンセル</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => {
-              const action = pendingAction;
-              setPendingAction(null);
-              action?.();
-            }}
-          >
-            保存せずに移動
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      </aside>
+      <AlertDialog open={pendingAction != null} onOpenChange={(open: boolean) => { if (!open) setPendingAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>保存されていない変更があります</AlertDialogTitle>
+            <AlertDialogDescription>
+              保存せずに移動すると変更が失われます。移動してもよろしいですか？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingAction(null)}>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const action = pendingAction;
+                setPendingAction(null);
+                action?.();
+              }}
+            >
+              保存せずに移動
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
