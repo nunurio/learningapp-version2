@@ -5,18 +5,19 @@ declare global {
   var __ai_inflight: Set<string> | undefined;
 }
 import { generateLessonCardsParallel } from "@/lib/client-api";
-import type { LessonCards, UUID } from "@/lib/types";
+import type { LessonCards, UUID, CardType } from "@/lib/types";
 
 type Props = {
   courseId: UUID;
   lessonId: UUID;
   lessonTitle: string;
+  desiredCardType: CardType;
   onLog: (lessonId: UUID, text: string) => void;
   onPreview: (lessonId: UUID, draftId: string, payload: LessonCards) => void;
   onFinish: () => void; // called on done or error
 };
 
-export function LessonCardsRunner({ courseId, lessonId, lessonTitle, onLog, onPreview, onFinish }: Props) {
+export function LessonCardsRunner({ courseId, lessonId, lessonTitle, desiredCardType, onLog, onPreview, onFinish }: Props) {
   // dev StrictMode の副作用による二重起動を抑止する軽量ガード（型安全）
   const key = `${lessonId}-batch`;
   function ensureInflight(): Set<string> {
@@ -35,7 +36,7 @@ export function LessonCardsRunner({ courseId, lessonId, lessonTitle, onLog, onPr
     let aborted = false;
     (async () => {
       try {
-        const res = await generateLessonCardsParallel({ courseId, lessonId, lessonTitle });
+        const res = await generateLessonCardsParallel({ courseId, lessonId, lessonTitle, desiredCardType });
         if (aborted) return;
         for (const u of res.updates) {
           logRef.current(lessonId, u.text);
@@ -54,6 +55,6 @@ export function LessonCardsRunner({ courseId, lessonId, lessonTitle, onLog, onPr
       aborted = true;
       setTimeout(() => { ensureInflight().delete(key); }, 1500);
     };
-  }, [lessonId, lessonTitle, courseId]);
+  }, [lessonId, lessonTitle, courseId, desiredCardType]);
   return null;
 }

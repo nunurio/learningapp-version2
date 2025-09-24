@@ -10,6 +10,7 @@ import type {
   SrsRating,
   CoursePlan,
   LessonCards,
+  CardType,
 } from "@/lib/types";
 import { createCourseAction, updateCourseAction, deleteCourseAction } from "@/server-actions/courses";
 import { addLessonAction, deleteLessonAction, reorderLessonsAction } from "@/server-actions/lessons";
@@ -17,7 +18,6 @@ import { addCardAction, updateCardAction, deleteCardAction, deleteCardsAction, r
 import { saveProgressAction, rateSrsAction, toggleFlagAction, saveNoteAction } from "@/server-actions/progress";
 import { saveDraftAction, commitCoursePlanAction, commitCoursePlanPartialAction, commitLessonCardsAction, commitLessonCardsPartialAction, generateLessonCardsParallelAction, generateSingleCardAction } from "@/server-actions/ai";
 import type { AiUpdate } from "@/lib/ai/log";
-import type { CardType } from "@/lib/types";
 
 export type Snapshot = {
   courses: Course[];
@@ -163,7 +163,13 @@ export async function commitLessonCardsPartial(opts: { draftId: string; lessonId
 }
 
 // AI generation (server-side parallel)
-export async function generateLessonCardsParallel(opts: { courseId: UUID; lessonId: UUID; lessonTitle: string; desiredCount?: number }): Promise<{ count: number; cardIds: UUID[]; updates: AiUpdate[] }> {
+export async function generateLessonCardsParallel(opts: {
+  courseId: UUID;
+  lessonId: UUID;
+  lessonTitle: string;
+  desiredCount?: number;
+  desiredCardType: CardType;
+}): Promise<{ count: number; cardIds: UUID[]; updates: AiUpdate[] }> {
   const res = await generateLessonCardsParallelAction(opts);
   return { count: res.committed?.count ?? 0, cardIds: res.committed?.cardIds ?? [], updates: res.updates };
 }
@@ -171,4 +177,3 @@ export async function generateLessonCardsParallel(opts: { courseId: UUID; lesson
 export async function generateSingleCard(opts: { courseId?: UUID; lessonId: UUID; lessonTitle: string; desiredCardType?: CardType; userBrief?: string }): Promise<{ draftId: string; payload: LessonCards; committed?: { count: number; cardIds: UUID[] }; updates: AiUpdate[] }> {
   return await generateSingleCardAction(opts);
 }
-

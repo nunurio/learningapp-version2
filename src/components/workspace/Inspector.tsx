@@ -39,6 +39,8 @@ import {
 } from "@/components/ui/shadcn-select";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils/cn";
 import { SortableList } from "@/components/dnd/SortableList";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { saveCard, type SaveCardDraftInput } from "@/lib/data";
@@ -662,6 +664,8 @@ type LessonToolsProps = {
 
 function LessonTools({ courseId, lesson, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, onSaveAll, onRefresh, selectedKind }: LessonToolsProps) {
   const [aiMode, setAiMode] = React.useState<"batch" | "single">("batch");
+  const [batchType, setBatchType] = React.useState<CardType>("text");
+  const [runningBatchType, setRunningBatchType] = React.useState<CardType | null>(null);
   // 実行開始時点のモードをロックして保持（実行中のモード変更で再マウントさせない）
   const [runningMode, setRunningMode] = React.useState<"batch" | "single" | null>(null);
   const isRunning = !!runningLesson && runningLesson.id === lesson.id;
@@ -672,24 +676,44 @@ function LessonTools({ courseId, lesson, runningLesson, setRunningLesson, logsBy
   React.useEffect(() => {
     if (isRunning) return; // 実行中は現在の選択に影響させない
     setAiMode(selectedKind === "card" ? "single" : "batch");
+    setRunningBatchType(null);
   }, [selectedKind, lesson.id, isRunning]);
+  const effectiveBatchType = runningBatchType ?? batchType;
   return (
     <section className="mb-4 rounded-md border border-[hsl(220_13%_85%_/_0.8)] bg-[hsl(var(--card))] p-4 md:p-5 space-y-3 shadow-sm hover:border-[hsl(220_13%_80%)] transition-all duration-200">
       <div className="flex items-start justify-between gap-3 mb-1">
         <div className="text-sm font-medium leading-6">レッスンツール</div>
         <div className="text-xs text-gray-600 truncate max-w-[70%] md:max-w-[60%]" title={lesson.title}>{lesson.title}</div>
       </div>
-      <div className="grid grid-cols-1 gap-3 w-full">
-        <div className="w-full">
-          <SelectMenu value={aiMode} onValueChange={(v) => setAiMode(v as "batch" | "single") }>
-            <SelectMenuTrigger className="h-10 w-full" disabled={isRunning}>
-              <SelectMenuValue placeholder="AIモードを選択" />
-            </SelectMenuTrigger>
-            <SelectMenuContent>
-              <SelectMenuItem value="batch">カード一式をAI生成</SelectMenuItem>
-              <SelectMenuItem value="single">カード単体をAI生成</SelectMenuItem>
-            </SelectMenuContent>
-          </SelectMenu>
+      <div className="w-full space-y-3">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end">
+          <div className="flex w-full flex-col gap-1 md:w-56">
+            <Label className="text-xs text-gray-600">AIモード</Label>
+            <SelectMenu value={aiMode} onValueChange={(v) => setAiMode(v as "batch" | "single")}>
+              <SelectMenuTrigger className="h-10 w-full" disabled={isRunning}>
+                <SelectMenuValue placeholder="AIモードを選択" />
+              </SelectMenuTrigger>
+              <SelectMenuContent>
+                <SelectMenuItem value="batch">カード一式をAI生成</SelectMenuItem>
+                <SelectMenuItem value="single">カード単体をAI生成</SelectMenuItem>
+              </SelectMenuContent>
+            </SelectMenu>
+          </div>
+          {aiMode === "batch" && (
+            <div className="flex flex-col gap-1 md:flex-1">
+              <Label className="text-xs text-gray-600">カードタイプ</Label>
+              <ToggleGroup
+                type="single"
+                value={batchType}
+                onValueChange={(v) => { if (!v || isRunning) return; setBatchType(v as CardType); }}
+                className={cn("w-full", isRunning && "pointer-events-none opacity-60")}
+              >
+                <ToggleGroupItem value="text" className="flex-1">テキスト</ToggleGroupItem>
+                <ToggleGroupItem value="quiz" className="flex-1">クイズ</ToggleGroupItem>
+                <ToggleGroupItem value="fill-blank" className="flex-1">穴埋め</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+          )}
         </div>
         {aiMode === "single" && !isRunning && (
           <div className="w-full grid grid-cols-1 gap-2">
@@ -720,7 +744,11 @@ function LessonTools({ courseId, lesson, runningLesson, setRunningLesson, logsBy
           <Button
             className="h-10 w-full"
             size="default"
-            onClick={() => { setRunningMode(aiMode); setRunningLesson(lesson); }}
+            onClick={() => {
+              setRunningMode(aiMode);
+              if (aiMode === "batch") setRunningBatchType(batchType);
+              setRunningLesson(lesson);
+            }}
             disabled={isRunning}
           >
             {runningLesson?.id === lesson.id ? "生成中…" : "AIで生成"}
@@ -733,9 +761,10 @@ function LessonTools({ courseId, lesson, runningLesson, setRunningLesson, logsBy
             courseId={courseId}
             lessonId={lesson.id}
             lessonTitle={lesson.title}
+            desiredCardType={effectiveBatchType}
             onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
             onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
-            onFinish={() => { setRunningLesson(null); setRunningMode(null); onRefresh(); workspaceStore.bumpVersion(); }}
+            onFinish={() => { setRunningLesson(null); setRunningMode(null); setRunningBatchType(null); onRefresh(); workspaceStore.bumpVersion(); }}
           />
         ) : (
           <SingleCardRunner
@@ -746,7 +775,7 @@ function LessonTools({ courseId, lesson, runningLesson, setRunningLesson, logsBy
             userBrief={singleBrief}
             onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
             onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
-            onFinish={() => { setRunningLesson(null); setRunningMode(null); onRefresh(); workspaceStore.bumpVersion(); }}
+            onFinish={() => { setRunningLesson(null); setRunningMode(null); setRunningBatchType(null); onRefresh(); workspaceStore.bumpVersion(); }}
           />
         )
       )}
@@ -840,6 +869,7 @@ function LessonInspector(props: {
             courseId={props.courseId}
             lessonId={lesson.id}
             lessonTitle={lesson.title}
+            desiredCardType="text"
             onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
             onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
             onFinish={() => { setRunningLesson(null); onRefresh(); workspaceStore.bumpVersion(); }}

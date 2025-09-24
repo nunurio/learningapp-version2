@@ -192,6 +192,7 @@ export async function generateLessonCardsParallelAction(input: {
   lessonId: UUID;
   lessonTitle: string;
   desiredCount?: number;
+  desiredCardType: LessonCards["cards"][number]["type"];
 }): Promise<{ draftId: string; payload: LessonCards; committed?: { count: number; cardIds: UUID[] }; updates: AiUpdate[] }> {
   const updates: AiUpdate[] = [];
   const now = () => Date.now();
@@ -210,10 +211,10 @@ export async function generateLessonCardsParallelAction(input: {
       index: idx >= 0 ? idx : 0,
     } as const;
     if (useMock) {
-      plan = createLessonCardsPlanMock({ lessonTitle: input.lessonTitle, desiredCount: input.desiredCount, course: context.course, lessons: context.lessons, index: context.index });
+      plan = createLessonCardsPlanMock({ lessonTitle: input.lessonTitle, desiredCount: input.desiredCount, desiredCardType: input.desiredCardType, course: context.course, lessons: context.lessons, index: context.index });
     } else {
       initAgents();
-      const p = await runCardsPlanner({ lessonTitle: input.lessonTitle, desiredCount: input.desiredCount, context });
+      const p = await runCardsPlanner({ lessonTitle: input.lessonTitle, desiredCount: input.desiredCount, desiredCardType: input.desiredCardType, context });
       plan = { lessonTitle: p.lessonTitle, count: p.count, sharedPrefix: p.sharedPrefix ?? null, cards: p.cards };
     }
   } catch (e) {
