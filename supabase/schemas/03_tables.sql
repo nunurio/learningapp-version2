@@ -106,4 +106,23 @@ create table if not exists public.ai_drafts (
   created_at timestamptz not null default now()
 );
 
+-- Chat threads (per-user)
+create table if not exists public.chat_threads (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  title text not null default '新しいチャット',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Chat messages (belong to a thread; same user_id as owner)
+create table if not exists public.chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  thread_id uuid not null references public.chat_threads (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  role public.chat_role not null,
+  content text not null,
+  created_at timestamptz not null default now()
+);
+
 commit;

@@ -6,6 +6,7 @@ import "github-markdown-css/github-markdown.css";
 import "katex/dist/katex.min.css";
 import { Toaster } from "@/components/ui/toaster";
 import { CommandPalette } from "@/components/ui/command-palette";
+import ChatWidget from "@/components/ai/ChatWidget";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -68,6 +69,7 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}>
         {children}
         <CommandPalette />
+        <ChatWidget />
         <Toaster />
       </body>
     </html>

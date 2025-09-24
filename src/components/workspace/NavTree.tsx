@@ -341,7 +341,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
 
   return (
     <aside className="h-full flex flex-col">
-      <div className="p-2 border-b grid grid-cols-1 gap-2">
+      <div className="p-2 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-[hsl(var(--border-default)_/_0.5)] after:to-transparent grid grid-cols-1 gap-2">
         <div>
           <label className="sr-only" htmlFor="tree-search">検索</label>
           <Input id="tree-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="検索（タイトル/タイプ）" />

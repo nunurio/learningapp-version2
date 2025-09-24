@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useHydrateDraftsOnce } from "@/lib/state/useHydrateDrafts";
+import { publishActiveRef } from "@/components/ai/active-ref";
 
 type Props = { courseId: UUID; defaultLayout?: number[]; cookieKey?: string; initialCardId?: string };
 
@@ -142,6 +143,19 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
     }
   }, [initialCardId]);
 
+  React.useEffect(() => {
+    if (!selId) {
+      publishActiveRef({ courseId, mode: "workspace" });
+      return;
+    }
+    if (selKind === "card") return; // CardPlayer がより詳細な情報を publish
+    if (selKind === "lesson") {
+      publishActiveRef({ courseId, lessonId: selId, mode: "workspace" });
+      return;
+    }
+    publishActiveRef({ courseId, mode: "workspace" });
+  }, [courseId, selId, selKind]);
+
   // カード選択時は所属レッスンに自動スコープ（初期遷移/戻る遷移の双方をカバー）
   React.useEffect(() => {
     let active = true;
@@ -187,7 +201,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
             <ResizablePanel
               defaultSize={defaultLayout?.[0] ?? 24}
               minSize={16}
-              className="border-r"
+              className="relative after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gradient-to-b after:from-transparent after:via-[hsl(var(--border-default)_/_0.5)] after:to-transparent"
               onPointerDownCapture={() => workspaceStore.setActivePane("nav")}
             >
               <NavTree
@@ -217,7 +231,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
             <ResizablePanel
               defaultSize={defaultLayout?.[2] ?? 28}
               minSize={18}
-              className="border-l"
+              className="relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-px before:bg-gradient-to-b before:from-transparent before:via-[hsl(var(--border-default)_/_0.5)] before:to-transparent"
               onPointerDownCapture={() => workspaceStore.setActivePane("inspector")}
             >
               <Inspector courseId={courseId} selectedId={selId} selectedKind={selKind} />
@@ -226,7 +240,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
         </div>
 
         <div className="md:hidden h-full">
-          <div className="px-3 py-2 border-b flex items-center justify-between">
+          <div className="px-3 py-2 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-[hsl(var(--border-default)_/_0.6)] after:to-transparent flex items-center justify-between">
             <div className="font-medium">学習ワークスペース</div>
             <div className="flex items-center gap-2">
               <Sheet open={openNav} onOpenChange={setOpenNav}>

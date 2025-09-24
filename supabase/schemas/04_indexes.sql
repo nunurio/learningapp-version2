@@ -27,5 +27,10 @@ create index if not exists idx_notes_card on public.notes (card_id);
 -- AI drafts (latest by kind)
 create index if not exists idx_ai_drafts_user_kind_created on public.ai_drafts (user_id, kind, created_at desc);
 
-commit;
+-- Chat
+create index if not exists idx_chat_threads_user on public.chat_threads (user_id);
+create index if not exists idx_chat_threads_updated on public.chat_threads (updated_at desc);
+create index if not exists idx_chat_messages_thread on public.chat_messages (thread_id, created_at);
+create index if not exists idx_chat_messages_user on public.chat_messages (user_id);
 
+commit;

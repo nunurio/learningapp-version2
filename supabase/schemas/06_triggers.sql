@@ -64,4 +64,22 @@ create trigger trg_cards_touch_course
   after insert or update or delete on public.cards
   for each row execute function public.touch_course_updated_at_from_card();
 
+-- Chat: maintain updated_at and touch on new messages
+drop trigger if exists trg_chat_threads_updated_at on public.chat_threads;
+create trigger trg_chat_threads_updated_at
+  before update on public.chat_threads
+  for each row execute function public.set_updated_at_clock();
+
+create or replace function public.touch_thread_updated_at_from_message() returns trigger as $$
+begin
+  update public.chat_threads set updated_at = clock_timestamp() where id = new.thread_id;
+  return null;
+end;
+$$ language plpgsql security definer set search_path=public;
+
+drop trigger if exists trg_chat_messages_touch_thread on public.chat_messages;
+create trigger trg_chat_messages_touch_thread
+  after insert on public.chat_messages
+  for each row execute function public.touch_thread_updated_at_from_message();
+
 commit;

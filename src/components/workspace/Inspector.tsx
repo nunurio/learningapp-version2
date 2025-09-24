@@ -674,7 +674,7 @@ function LessonTools({ courseId, lesson, runningLesson, setRunningLesson, logsBy
     setAiMode(selectedKind === "card" ? "single" : "batch");
   }, [selectedKind, lesson.id, isRunning]);
   return (
-    <section className="mb-4 rounded-md border border-[hsl(var(--border))] p-4 md:p-5 space-y-3">
+    <section className="mb-4 rounded-md border border-[hsl(220_13%_85%_/_0.8)] bg-[hsl(var(--card))] p-4 md:p-5 space-y-3 shadow-sm hover:border-[hsl(220_13%_80%)] transition-all duration-200">
       <div className="flex items-start justify-between gap-3 mb-1">
         <div className="text-sm font-medium leading-6">レッスンツール</div>
         <div className="text-xs text-gray-600 truncate max-w-[70%] md:max-w-[60%]" title={lesson.title}>{lesson.title}</div>
@@ -828,7 +828,7 @@ function LessonInspector(props: {
 
       {/* AI 生成（上部 LessonTools と重複させないオプション） */}
       {!hideAiSection && (
-      <div className="rounded-md border border-[hsl(var(--border))] p-3">
+      <div className="rounded-md border border-[hsl(220_13%_85%_/_0.8)] bg-[hsl(var(--card))] p-3 shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <div className="text-sm text-gray-700">AIでこのレッスンのカードを生成</div>
           <Button size="sm" onClick={() => setRunningLesson(lesson)} disabled={!!runningLesson && runningLesson.id === lesson.id}>
@@ -851,9 +851,9 @@ function LessonInspector(props: {
       )}
 
       {/* 手動でカード追加（開閉可能） */}
-      <div className="rounded-md border border-[hsl(var(--border))]">
+      <div className="rounded-md border border-[hsl(220_13%_85%_/_0.8)] bg-[hsl(var(--card))] shadow-sm overflow-hidden">
         <Accordion type="single" collapsible>
-          <AccordionItem value="new-card" className="border-b-0">
+          <AccordionItem value="new-card" className="after:hidden">
             <AccordionTrigger className="px-3 py-3 text-sm font-medium">
               新規カードを作成
             </AccordionTrigger>
