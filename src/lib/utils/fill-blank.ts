@@ -1,5 +1,14 @@
-const PRE_PLACEHOLDER_BREAK_LOOKAHEAD = /(?:\r?\n|\r)+(\s*\[\[\d+\]\])/g;
-const POST_PLACEHOLDER_BREAK = /(\[\[(\d+)\]\])([ \t]*(?:\r?\n|\r)+)/g;
+const PRE_PLACEHOLDER_BREAK_LOOKAHEAD = /((?:\r?\n|\r)+)(\s*\[\[\d+\]\])/g;
+const POST_PLACEHOLDER_BREAK = /(\[\[\d+\]\])([ \t]*(?:\r?\n|\r)+)/g;
+const PARAGRAPH_BREAK = /(?:\r?\n|\r){2,}/;
+
+function stripInlineWhitespace(breaks: string): string {
+  return breaks.replace(/[ \t]+/g, "");
+}
+
+function isParagraphBreak(breaks: string): boolean {
+  return PARAGRAPH_BREAK.test(stripInlineWhitespace(breaks));
+}
 
 /**
  * Normalize fill-blank card text so that placeholders `[[n]]` do not force
@@ -14,13 +23,24 @@ export function normalizeFillBlankText(text: string): string {
   // e.g. "foo\n[[1]]" -> "foo [[1]]".
   const withoutLeadingBreaks = withStandardBreaks.replace(
     PRE_PLACEHOLDER_BREAK_LOOKAHEAD,
-    (_, capture: string) => ` ${capture.trimStart()}`
+    (_, breaks: string, capture: string) => {
+      const trimmedPlaceholder = capture.trimStart();
+      if (isParagraphBreak(breaks)) {
+        return `${stripInlineWhitespace(breaks)}${trimmedPlaceholder}`;
+      }
+      return ` ${trimmedPlaceholder}`;
+    }
   );
   // Replace line breaks immediately after a placeholder with a space.
   // e.g. "[[1]]\nbar" -> "[[1]] bar".
   const withoutTrailingBreaks = withoutLeadingBreaks.replace(
     POST_PLACEHOLDER_BREAK,
-    (_, placeholder: string) => `${placeholder} `
+    (_, placeholder: string, breaks: string) => {
+      if (isParagraphBreak(breaks)) {
+        return `${placeholder}${stripInlineWhitespace(breaks)}`;
+      }
+      return `${placeholder} `;
+    }
   );
   // Collapse multiple consecutive spaces introduced by the replacements.
   return withoutTrailingBreaks.replace(/[ \t]{2,}/g, " ");
