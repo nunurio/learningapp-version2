@@ -23,25 +23,41 @@ export function normalizeFillBlankText(text: string): string {
   // e.g. "foo\n[[1]]" -> "foo [[1]]".
   const withoutLeadingBreaks = withStandardBreaks.replace(
     PRE_PLACEHOLDER_BREAK_LOOKAHEAD,
-    (_, breaks: string, capture: string) => {
+    (
+      _,
+      breaks: string,
+      capture: string,
+      offset: number,
+      fullString: string
+    ) => {
       const trimmedPlaceholder = capture.trimStart();
       if (isParagraphBreak(breaks)) {
         return `${stripInlineWhitespace(breaks)}${trimmedPlaceholder}`;
       }
-      return ` ${trimmedPlaceholder}`;
+      const precedingChar = offset > 0 ? fullString[offset - 1] : undefined;
+      const needsSpace = precedingChar ? !/\s/.test(precedingChar) : false;
+      return `${needsSpace ? " " : ""}${trimmedPlaceholder}`;
     }
   );
   // Replace line breaks immediately after a placeholder with a space.
   // e.g. "[[1]]\nbar" -> "[[1]] bar".
   const withoutTrailingBreaks = withoutLeadingBreaks.replace(
     POST_PLACEHOLDER_BREAK,
-    (_, placeholder: string, breaks: string) => {
+    (
+      _,
+      placeholder: string,
+      breaks: string,
+      offset: number,
+      fullString: string
+    ) => {
       if (isParagraphBreak(breaks)) {
         return `${placeholder}${stripInlineWhitespace(breaks)}`;
       }
-      return `${placeholder} `;
+      const afterIndex = offset + placeholder.length + breaks.length;
+      const nextChar = fullString[afterIndex];
+      const needsSpace = nextChar ? !/\s/.test(nextChar) : false;
+      return `${placeholder}${needsSpace ? " " : ""}`;
     }
   );
-  // Collapse multiple consecutive spaces introduced by the replacements.
-  return withoutTrailingBreaks.replace(/[ \t]{2,}/g, " ");
+  return withoutTrailingBreaks;
 }
