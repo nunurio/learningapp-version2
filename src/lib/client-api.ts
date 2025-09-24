@@ -19,7 +19,7 @@ import { saveDraftAction, commitCoursePlanAction, commitCoursePlanPartialAction,
 import type { AiUpdate } from "@/lib/ai/log";
 import type { CardType } from "@/lib/types";
 
-type Snapshot = {
+export type Snapshot = {
   courses: Course[];
   lessons: Lesson[];
   cards: Card[];
@@ -172,4 +172,3 @@ export async function generateSingleCard(opts: { courseId?: UUID; lessonId: UUID
   return await generateSingleCardAction(opts);
 }
 
-export type { Snapshot };

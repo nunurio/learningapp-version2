@@ -50,11 +50,35 @@ describe("MarkdownView", () => {
     expect(pre).toHaveTextContent("const x: number = 1;");
   });
 
+  it("renders inline and block LaTeX math", () => {
+    const md = "エネルギーは $E = mc^2$ で表される。\n\n$$\\int_0^1 x^2 \\mathrm{d}x$$";
+    const { container } = render(<MarkdownView markdown={md} />);
+    const katexNodes = container.querySelectorAll("span.katex");
+    expect(katexNodes.length).toBeGreaterThanOrEqual(2);
+    const paragraphs = container.querySelectorAll("p");
+    expect(paragraphs[0]?.querySelector("span.katex")).not.toBeNull();
+    expect(paragraphs[1]?.querySelector("span.katex")).not.toBeNull();
+    const mathMl = container.querySelectorAll("math");
+    expect(mathMl.length).toBeGreaterThanOrEqual(2);
+    const strut = container.querySelector("span.strut");
+    expect(strut?.hasAttribute("style")).toBe(true);
+  });
+
   it("allows safe http links", () => {
     const md = "See [site](https://example.com).";
     const { container } = render(<MarkdownView markdown={md} />);
     const a = container.querySelector("a[href='https://example.com']");
     expect(a).toBeInTheDocument();
     expect(a).toHaveTextContent("site");
+  });
+
+  it("supports inline variant without paragraph wrappers", () => {
+    const md = "**Bold** math $a^2 + b^2 = c^2$.";
+    const { container } = render(<MarkdownView markdown={md} variant="inline" />);
+    // inline variant should not introduce block-level paragraphs
+    expect(container.querySelector("p")).toBeNull();
+    expect(container.textContent ?? "").toContain("Bold");
+    const katex = container.querySelector("span.katex");
+    expect(katex).toBeInTheDocument();
   });
 });

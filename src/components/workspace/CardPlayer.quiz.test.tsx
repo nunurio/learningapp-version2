@@ -1,32 +1,15 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as React from "react";
 import { CardPlayer } from "@/components/workspace/CardPlayer";
+import type { Snapshot } from "@/lib/client-api";
 
 const nowISO = new Date().toISOString();
 
 vi.mock("@/lib/client-api", () => {
   return {
-    snapshot: vi.fn(async () => ({
-      courses: [{ id: "course1", title: "C1", status: "draft", createdAt: nowISO, updatedAt: nowISO }],
-      lessons: [{ id: "lesson1", courseId: "course1", title: "L1", orderIndex: 0, createdAt: nowISO }],
-      cards: [
-        {
-          id: "cardQ",
-          lessonId: "lesson1",
-          cardType: "quiz",
-          title: null,
-          tags: [],
-          content: { question: "Q?", options: ["A", "B", "C"], answerIndex: 1 },
-          orderIndex: 0,
-          createdAt: nowISO,
-        },
-      ],
-      progress: [],
-      flags: [],
-      notes: [],
-    })),
+    snapshot: vi.fn(),
     listFlaggedByCourse: vi.fn(async () => []),
     toggleFlag: vi.fn(async () => false),
     saveNote: vi.fn(async () => {}),
@@ -36,6 +19,32 @@ vi.mock("@/lib/client-api", () => {
 });
 
 const api = await import("@/lib/client-api");
+
+const createDefaultSnapshot = (): Snapshot => ({
+  courses: [{ id: "course1", title: "C1", status: "draft", createdAt: nowISO, updatedAt: nowISO }],
+  lessons: [{ id: "lesson1", courseId: "course1", title: "L1", orderIndex: 0, createdAt: nowISO }],
+  cards: [
+    {
+      id: "cardQ",
+      lessonId: "lesson1",
+      cardType: "quiz",
+      title: null,
+      tags: [],
+      content: { question: "Q?", options: ["A", "B", "C"], answerIndex: 1 },
+      orderIndex: 0,
+      createdAt: nowISO,
+    },
+  ],
+  progress: [],
+  flags: [],
+  notes: [],
+});
+
+beforeEach(() => {
+  vi.mocked(api.snapshot).mockReset();
+  vi.mocked(api.snapshot).mockResolvedValue(createDefaultSnapshot());
+  vi.mocked(api.saveProgress).mockClear();
+});
 
 describe("CardPlayer - Quiz card with slider after Check", () => {
   it("Skip が無く、採点後にスライダーで3以上にすると完了", async () => {
@@ -77,5 +86,45 @@ describe("CardPlayer - Quiz card with slider after Check", () => {
 
     // SRS パネル（Again/Hard など）は存在しない
     expect(screen.queryByRole("button", { name: /Again|Hard|Good|Easy/i })).toBeNull();
+  });
+
+  it("Markdown と LaTeX を含むクイズ内容を表示できる", async () => {
+    vi.mocked(api.snapshot).mockResolvedValueOnce({
+      courses: [{ id: "course1", title: "C1", status: "draft", createdAt: nowISO, updatedAt: nowISO }],
+      lessons: [{ id: "lesson1", courseId: "course1", title: "L1", orderIndex: 0, createdAt: nowISO }],
+      cards: [
+        {
+          id: "cardMarkdown",
+          lessonId: "lesson1",
+          cardType: "quiz",
+          title: null,
+          tags: [],
+          content: {
+            question: "**定理** $a^2 + b^2 = c^2$",
+            options: ["$a$", "**b**"],
+            answerIndex: 0,
+            explanation: "$c$ の値",
+          },
+          orderIndex: 0,
+          createdAt: nowISO,
+        },
+      ],
+      progress: [],
+      flags: [],
+      notes: [],
+    } satisfies Snapshot);
+
+    const { container } = render(
+      <CardPlayer courseId={"course1"} selectedId={"cardMarkdown"} selectedKind="card" onNavigate={() => {}} />
+    );
+
+    await screen.findByRole("radiogroup", { name: "選択肢" });
+    await waitFor(() => {
+      expect(container.querySelector("strong")?.textContent).toBe("定理");
+    });
+    const katexNodes = container.querySelectorAll("span.katex");
+    expect(katexNodes.length).toBeGreaterThan(0);
+    const radios = await screen.findAllByRole("radio");
+    expect(radios.some((radio) => radio.querySelector("span.katex"))).toBe(true);
   });
 });

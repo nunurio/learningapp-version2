@@ -16,7 +16,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Textarea } from "@/components/ui/textarea";
 import { Star, StickyNote, HelpCircle } from "lucide-react";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { normalizeFillBlankText } from "@/lib/utils/fill-blank";
 import { publishActiveRef } from "@/components/ai/active-ref";
+
 
 type Props = {
   courseId: UUID;
@@ -538,7 +540,10 @@ function QuizContent({ cardId, content, selected, onSelect, result, onCheck }: {
   const showResult = result !== "idle";
   return (
     <div>
-      <div className="font-medium text-gray-900">{content.question}</div>
+      <MarkdownView
+        markdown={content.question ?? ""}
+        className="markdown-body text-base font-medium text-gray-900"
+      />
       <div role="radiogroup" aria-label="選択肢" className="mt-2 space-y-2">
         {content.options.map((o, i) => (
           <QuizOption key={i} id={`opt-${cardId}-${i}`} label={o} checked={selected === i} onSelect={() => onSelect(i)} />
@@ -572,7 +577,10 @@ function FillBlankContent({ cardId, content, values, onChange, result, onCheck }
   result: "idle" | "correct" | "wrong";
   onCheck: (res: "correct" | "wrong", vals: Record<string, string>) => void;
 }) {
-  const indices = React.useMemo(() => Array.from(content.text.matchAll(/\[\[(\d+)\]\]/g)).map((m) => m[1]), [content.text]);
+  const normalized = React.useMemo(() => normalizeFillBlankText(content.text), [content.text]);
+  const indices = React.useMemo(() => Array.from(normalized.matchAll(/\[\[(\d+)\]\]/g)).map((m) => m[1]), [normalized]);
+  const parts = React.useMemo(() => normalized.split(/(\[\[\d+\]\])/g), [normalized]);
+  const placeholderPattern = /^\[\[(\d+)\]\]$/;
   function check() {
     const ok = indices.every((k) => {
       const a = (values[k] ?? "").trim();
@@ -582,16 +590,34 @@ function FillBlankContent({ cardId, content, values, onChange, result, onCheck }
     });
     onCheck(ok ? "correct" : "wrong", values);
   }
-  const parts = content.text.split(/(\[\[\d+\]\])/g);
   return (
     <div>
-      <div className="text-gray-900">
+      <div className="text-gray-900 text-base leading-relaxed">
         {parts.map((part, i) => {
-          const m = part.match(/^\[\[(\d+)\]\]$/);
-          if (!m) return <span key={i}>{part}</span>;
+          const m = part.match(placeholderPattern);
+          if (!m) {
+            if (!part) return null;
+            if (!part.trim()) {
+              return <span key={`space-${i}`} aria-hidden="true"> </span>;
+            }
+            return (
+              <MarkdownView
+                key={`text-${i}`}
+                markdown={part}
+                variant="inline"
+              />
+            );
+          }
           const k = m[1];
           return (
-            <Input key={i} className="w-24 mx-1 inline-flex" placeholder={`#${k}`} value={values[k] ?? ""} onChange={(e) => onChange({ ...values, [k]: e.target.value })} />
+            <span key={`blank-${i}`} className="inline-flex items-center align-middle mx-1">
+              <Input
+                className="inline-flex w-24"
+                placeholder={`#${k}`}
+                value={values[k] ?? ""}
+                onChange={(e) => onChange({ ...values, [k]: e.target.value })}
+              />
+            </span>
           );
         })}
       </div>

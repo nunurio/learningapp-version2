@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import { cn } from "@/lib/utils/cn";
+import MarkdownView from "@/components/markdown/MarkdownView";
 
 type QuizOptionProps = {
   id: string;
@@ -12,15 +13,18 @@ type QuizOptionProps = {
 
 export function QuizOption({ id, label, checked, onSelect, disabled }: QuizOptionProps) {
   return (
-    <button
-      type="button"
+    <div
       role="radio"
       aria-checked={checked}
       aria-disabled={disabled || undefined}
       id={id}
       tabIndex={checked ? 0 : -1}
-      onClick={onSelect}
+      onClick={() => {
+        if (disabled) return;
+        onSelect();
+      }}
       onKeyDown={(e) => {
+        if (disabled) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onSelect();
@@ -34,10 +38,9 @@ export function QuizOption({ id, label, checked, onSelect, disabled }: QuizOptio
           const idx = items.indexOf(current);
           if (idx === -1) return;
           const next = (idx + delta + items.length) % items.length;
-          // ラジオの矢印キー操作は選択を移動させるのが慣例
           const target = items[next];
           target.focus();
-          (target as HTMLButtonElement).click();
+          (target as HTMLElement).click();
         };
         if (e.key === "ArrowRight" || e.key === "ArrowDown") {
           e.preventDefault();
@@ -52,7 +55,7 @@ export function QuizOption({ id, label, checked, onSelect, disabled }: QuizOptio
           const first = group?.querySelector<HTMLElement>('[role="radio"]:not([aria-disabled="true"])');
           if (first) {
             first.focus();
-            (first as HTMLButtonElement).click();
+            (first as HTMLElement).click();
           }
         } else if (e.key === "End") {
           e.preventDefault();
@@ -62,20 +65,26 @@ export function QuizOption({ id, label, checked, onSelect, disabled }: QuizOptio
           const last = items[items.length - 1];
           if (last) {
             last.focus();
-            (last as HTMLButtonElement).click();
+            (last as HTMLElement).click();
           }
         }
       }}
       className={cn(
-        "w-full text-left rounded-md border border-[hsl(var(--border))] px-4 py-3",
-        checked && "outline outline-2 outline-[hsl(var(--primary))]"
+        "w-full cursor-pointer rounded-md border border-[hsl(var(--border))] px-4 py-3 text-left transition-shadow",
+        checked && "outline outline-2 outline-[hsl(var(--primary))] shadow-sm",
+        disabled && "pointer-events-none opacity-60"
       )}
       data-checked={checked}
+      data-disabled={disabled || undefined}
     >
-      <span className="inline-flex items-center gap-2">
-        <span aria-hidden className={cn("size-4 rounded-full border", checked && "bg-[hsl(var(--primary))]")} />
-        {label}
+      <span className="flex items-start gap-3">
+        <span aria-hidden className={cn("mt-1 size-4 rounded-full border", checked && "bg-[hsl(var(--primary))]")} />
+        <MarkdownView
+          markdown={label}
+          variant="inline"
+          className="markdown-body text-sm leading-relaxed text-gray-900"
+        />
       </span>
-    </button>
+    </div>
   );
 }

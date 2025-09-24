@@ -44,7 +44,7 @@
 - Test-time env: E2E uses `AI_MOCK=1` and may set `NEXT_PUBLIC_TIMELINE_SCALE` for shorter preview timelines.
 
 ## Directory Structure (normalized from requirements.md)
-We normalize the "Directory Example" from requirements.md under `src/` (including future expansions).
+We normalize the "Directory Example" from requirements.md. Application code lives under `src/`, and static assets stay in the root-level `public/` directory.
 
 ```
 src/
@@ -104,7 +104,7 @@ src/
     player/
     ui/
     workspace/
-  public/
+public/
 ```
 
 Notes:

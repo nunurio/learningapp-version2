@@ -3,6 +3,7 @@ import * as React from "react";
 import type { QuizCardContent } from "@/lib/types";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import MarkdownView from "@/components/markdown/MarkdownView";
 import { cn } from "@/lib/utils/cn";
 
 type QuizHintCardProps = {
@@ -21,7 +22,10 @@ export function QuizHintCard({ hint, visible, className }: QuizHintCardProps) {
         <CardDescription>正解を見る前の手掛かりです。</CardDescription>
       </CardHeader>
       <CardContent className="pt-0 pb-4">
-        <p className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">{text}</p>
+        <MarkdownView
+          markdown={text}
+          className="markdown-body text-sm leading-relaxed text-gray-800"
+        />
       </CardContent>
     </Card>
   );
@@ -55,13 +59,20 @@ export function QuizSolutionPanel({ content, selected, visible, className }: Qui
           <p className="text-sm font-medium text-gray-900">正解</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Badge variant="success" size="sm">正解</Badge>
-            <span className="text-sm text-gray-800">{answer || "正解の選択肢が設定されていません。"}</span>
+            <MarkdownView
+              markdown={answer || "正解の選択肢が設定されていません。"}
+              variant="inline"
+              className="markdown-body text-sm text-gray-800"
+            />
           </div>
         </section>
         {overall && (
           <section>
             <p className="text-sm font-medium text-gray-900">全体の解説</p>
-            <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{overall}</p>
+            <MarkdownView
+              markdown={overall}
+              className="markdown-body mt-1 text-sm leading-relaxed text-gray-700"
+            />
           </section>
         )}
         <section>
@@ -83,9 +94,16 @@ export function QuizSolutionPanel({ content, selected, visible, className }: Qui
                     {isChosen && (
                       <Badge variant={isCorrect ? "success" : "warning"} size="sm">あなたの回答</Badge>
                     )}
-                    <span className="text-sm font-medium text-gray-900">{option}</span>
+                    <MarkdownView
+                      markdown={option}
+                      variant="inline"
+                      className="markdown-body text-sm font-medium text-gray-900"
+                    />
                   </div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{rationale}</p>
+                  <MarkdownView
+                    markdown={rationale}
+                    className="markdown-body mt-2 text-sm leading-relaxed text-gray-700"
+                  />
                 </div>
               );
             })}
