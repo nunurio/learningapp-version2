@@ -82,7 +82,11 @@ function cardKindLabel(kind: CardKind): string {
 
 export function buildCardsPlannerInstructions(kind?: CardKind): string {
   const typeDirective = kind
-    ? `- 今回は cards[*].type をすべて "${kind}"（${cardKindLabel(kind)}）に統一し、brief 内で導入→概念→応用の流れが伝わるように設計する。`
+    ? `- 今回は cards[*].type をすべて "${kind}"（${cardKindLabel(kind)}）に統一し、brief 内で導入→概念→応用の流れが伝わるように設計する。${
+        kind === "text"
+          ? "テキストのみの構成では学習スタイルをインプット中心とし、演習的タスクや課題提示は控えて知識整理・概念理解を深める内容に集中する。"
+          : ""
+      }`
     : "- 入力に『カードタイプ制約』がある場合はその type のみで cards を構成し、制約が無ければ text | quiz | fill-blank を学習効果最大化の配列で多様に混ぜる。";
 
   return `
@@ -96,6 +100,9 @@ ${PEDAGOGY_BASICS}
 - 目的：今回は **アウトラインのみ** を決める。各カードは { type, brief, (title?) }。
 - **禁止**：問題文そのもの、選択肢/正解、[[n]] の空所指定、具体的数式/コード/API列挙、文字数指示。
 ${typeDirective}
+- course 情報（要件/制約/ゴール）と学習者レベルを読み解き、理解定着に必要な観点や前提補完、演習ステップを洗い出して cards[*].brief に反映する。
+- レッスンの到達目標と扱う概念・スキルから必要な学習ステップを設計し、3〜20枚の範囲で過不足ない枚数を自律的に決定する。水増しや重要工程の欠落を避ける。
+- 各カードは 5〜10 分で学習できる粒度を目安に設計し、集中力の途切れや冗長な細分化を防ぐ。
 - count === cards.length を厳守。導入→概念→応用の流れ。
 
 # sharedPrefix
