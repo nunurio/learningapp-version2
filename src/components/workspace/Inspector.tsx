@@ -10,6 +10,7 @@ import {
   reorderCards as reorderCardsApi,
   commitLessonCards as commitLessonCardsApi,
   commitLessonCardsPartial as commitLessonCardsPartialApi,
+  saveNote as saveNoteApi,
 } from "@/lib/client-api";
 import type {
   UUID,
@@ -107,6 +108,13 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   const formRef = React.useRef<SaveCardDraftInput | null>(form);
   const [lessons, setLessons] = React.useState<Lesson[]>([]);
   const [cards, setCards] = React.useState<WorkspaceCard[]>([]);
+  const [notesByCard, setNotesByCard] = React.useState<Record<string, { text: string; updatedAt: string }>>({});
+  const [noteDraft, setNoteDraft] = React.useState("");
+  const [noteDirty, setNoteDirty] = React.useState(false);
+  const [noteSaving, setNoteSaving] = React.useState<"idle" | "saving" | "saved">("idle");
+  const [noteAccordionOpen, setNoteAccordionOpen] = React.useState(false);
+  const noteBaselineRef = React.useRef<string>("");
+  const noteCardRef = React.useRef<UUID | null>(null);
   // Reserved UI states (unused currently)
 
   // AI lesson-cards generation state
@@ -117,6 +125,7 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   // fill-blank 回答の一時テキスト（未完成行の入力を保持）
   const [answersText, setAnswersText] = React.useState<string>("");
   const [richMode, setRichMode] = React.useState(false);
+  const noteFieldId = React.useId();
   const quizFieldIdBase = React.useId();
   const router = useRouter();
   const [pendingAction, setPendingAction] = React.useState<(() => void) | null>(null);
@@ -134,6 +143,11 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
     setCourse(co);
     const ls = snap.lessons.filter((l) => l.courseId === courseId).sort((a, b) => a.orderIndex - b.orderIndex || a.createdAt.localeCompare(b.createdAt));
     setLessons(ls);
+    const noteMap: Record<string, { text: string; updatedAt: string }> = {};
+    for (const n of snap.notes) {
+      noteMap[n.cardId] = { text: n.text, updatedAt: n.updatedAt };
+    }
+    setNotesByCard(noteMap);
     if (selectedKind === "lesson" && selectedId) {
       const l = ls.find((x) => x.id === selectedId) ?? null;
       setLesson(l);
@@ -318,6 +332,95 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
     return null;
   })();
 
+  const [lessonToolsOpen, setLessonToolsOpen] = React.useState(true);
+  const [cardEditorOpen, setCardEditorOpen] = React.useState(true);
+
+  React.useEffect(() => {
+    setLessonToolsOpen(true);
+  }, [currentLesson?.id]);
+
+  React.useEffect(() => {
+    setCardEditorOpen(true);
+  }, [card?.id]);
+
+  React.useEffect(() => {
+    if (selectedKind === "card" && selectedId) {
+      const note = notesByCard[selectedId];
+      const noteText = note?.text ?? "";
+      const cardChanged = noteCardRef.current !== selectedId;
+      const baseline = noteBaselineRef.current;
+      const noteChangedExternally = noteText !== baseline;
+      if (cardChanged || (!noteDirty && noteChangedExternally)) {
+        setNoteDraft(noteText);
+        setNoteDirty(false);
+        setNoteSaving("idle");
+        noteBaselineRef.current = noteText;
+      }
+      if (cardChanged) {
+        setNoteAccordionOpen(true);
+      }
+      noteCardRef.current = selectedId;
+    } else {
+      if (noteCardRef.current !== null) {
+        noteCardRef.current = null;
+        noteBaselineRef.current = "";
+        setNoteDraft("");
+        setNoteDirty(false);
+        setNoteSaving("idle");
+      }
+      setNoteAccordionOpen(false);
+    }
+  }, [notesByCard, noteDirty, selectedId, selectedKind]);
+
+  const handleNoteSave = React.useCallback(async () => {
+    if (selectedKind !== "card" || !selectedId) return false;
+    setNoteSaving("saving");
+    try {
+      await saveNoteApi(selectedId, noteDraft);
+      const updatedAt = new Date().toISOString();
+      setNotesByCard((prev) => ({
+        ...prev,
+        [selectedId]: { text: noteDraft, updatedAt },
+      }));
+      noteBaselineRef.current = noteDraft;
+      setNoteDirty(false);
+      setNoteSaving("saved");
+      workspaceStore.bumpVersion();
+      return true;
+    } catch (err) {
+      console.error(err);
+      setNoteSaving("idle");
+      return false;
+    }
+  }, [noteDraft, selectedId, selectedKind]);
+
+  const cardSaveLabel = React.useMemo(() => {
+    if (!form) return "-";
+    if (saving === "saving") return "保存中…";
+    if (dirty) return "未保存";
+    if (saving === "saved") return savedAt ? `保存済み（${new Date(savedAt).toLocaleTimeString()}）` : "保存済み";
+    return "-";
+  }, [dirty, form, savedAt, saving]);
+
+  const currentCardNote = selectedKind === "card" && selectedId ? notesByCard[selectedId] : undefined;
+
+  const noteStatusLabel = React.useMemo(() => {
+    if (noteSaving === "saving") return "保存中…";
+    if (noteDirty) return "未保存";
+    if (noteSaving === "saved") return "保存済み";
+    return "-";
+  }, [noteDirty, noteSaving]);
+
+  const noteUpdatedAtLabel = React.useMemo(() => {
+    const updatedAt = currentCardNote?.updatedAt;
+    if (!updatedAt) return undefined;
+    try {
+      return new Date(updatedAt).toLocaleString();
+    } catch {
+      return updatedAt;
+    }
+  }, [currentCardNote?.updatedAt]);
+
   // レッスン上部ツールはファイルスコープの安定コンポーネントに移動（下方で定義）
 
   return (
@@ -337,6 +440,8 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
             selectedIndexes={selectedIndexes}
             setSelectedIndexes={setSelectedIndexes}
             selectedKind={selectedKind}
+            open={lessonToolsOpen}
+            onOpenChange={setLessonToolsOpen}
             onSaveAll={async (lessonId, payload, selected) => {
               const idxs = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
               const res = idxs.length > 0
@@ -378,98 +483,186 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
           onRefresh={refreshLists}
         />
       )}
-      {selectedKind === "card" && card && form && (
-        <section className="space-y-2">
-          <h3 className="font-medium">カード編集</h3>
-          <div className="text-xs text-gray-500" aria-live="polite">
-            タイプ: {form.cardType} / 保存: {saving === "saving" ? "保存中…" : dirty ? "未保存" : saving === "saved" ? (savedAt ? `保存済み（${new Date(savedAt).toLocaleTimeString()}）` : "保存済み") : "-"}
-          </div>
-          <div>
-            <label className="block text-sm mb-1">タイトル（任意）</label>
-            <Input
-              value={form.title ?? ""}
-              onChange={(e) => {
-                applyDraftUpdate((current) => ({ ...current, title: e.target.value }));
-              }}
-            />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">タグ（カンマ区切り）</label>
-            <Input
-              value={(form.tags ?? []).join(", ")}
-              onChange={(e) => {
-                applyDraftUpdate((current) => {
-                  const tags = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
-                  return { ...current, tags };
-                });
-              }}
-              placeholder="例: 基礎, 重要, 用語"
-            />
-          </div>
-          {form.cardType === "text" && (
-          <div>
-            <div className="mb-1 flex items-center justify-between">
-              <label className="block text-sm">本文</label>
-              <div className="flex items-center gap-2">
-                {card && (
-                  <Button asChild size="sm" variant="default">
-                    <Link
-                      href={`/courses/${courseId}/edit/${card.id}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const navigate = () => {
-                          if (form) {
-                            workspaceStore.clearDraft(form.cardId);
-                            workspaceStore.bumpVersion();
-                            setDirty(false);
-                          }
-                          router.push(`/courses/${courseId}/edit/${card.id}`);
-                        };
-                        requestDiscard(navigate);
-                      }}
-                    >
-                      編集モードで開く
-                    </Link>
-                  </Button>
-                )}
+      {selectedKind === "card" && card && (
+        <Accordion
+          type="single"
+          collapsible
+          value={noteAccordionOpen ? "card-note" : ""}
+          onValueChange={(value) => setNoteAccordionOpen(value === "card-note")}
+          className="mb-3 rounded-md border border-[hsl(220_13%_85%_/_0.8)] bg-[hsl(var(--card))] shadow-sm"
+        >
+          <AccordionItem value="card-note" className="after:hidden">
+            <AccordionTrigger className="px-3 py-3 text-sm font-medium">
+              <div className="flex w-full flex-col items-start gap-1 text-left">
+                <div className="flex w-full items-center justify-between gap-2 text-sm font-medium">
+                  <span>カードメモ</span>
+                  <span className="text-xs text-muted-foreground">状態: {noteStatusLabel}</span>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  最終更新: {noteUpdatedAtLabel ?? "-"}
+                </span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="space-y-3 px-3">
+              <div className="text-xs text-gray-500">
+                カードごとの学習メモを保存できます。
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor={noteFieldId} className="text-sm font-medium">
+                  メモ
+                </Label>
+                <Textarea
+                  id={noteFieldId}
+                  value={noteDraft}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setNoteDraft(next);
+                    if (noteSaving !== "saving") setNoteSaving("idle");
+                    const baseline = selectedKind === "card" && selectedId ? (notesByCard[selectedId]?.text ?? "") : "";
+                    setNoteDirty(next !== baseline);
+                  }}
+                  placeholder="このカードについて覚えておきたいこと…"
+                  className="min-h-[120px]"
+                />
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>状態: {noteStatusLabel}</span>
+                <span>{noteUpdatedAtLabel ? `更新日時: ${noteUpdatedAtLabel}` : "更新日時: -"}</span>
+              </div>
+              <div className="flex justify-end gap-2">
                 <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setRichMode((v) => !v)}
-                  aria-pressed={richMode}
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    const baseline = selectedKind === "card" && selectedId ? (notesByCard[selectedId]?.text ?? "") : "";
+                    setNoteDraft(baseline);
+                    setNoteDirty(false);
+                    setNoteSaving("idle");
+                  }}
+                  disabled={!noteDirty || noteSaving === "saving"}
                 >
-                  {richMode ? "素のMarkdown" : "軽量編集"}
+                  リセット
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => { void handleNoteSave(); }}
+                  disabled={!noteDirty || noteSaving === "saving"}
+                >
+                  {noteSaving === "saving" ? "保存中…" : "保存"}
                 </Button>
               </div>
-            </div>
-            {richMode ? (
-              <Textarea
-                value={form.body ?? ""}
-                onChange={(e) => {
-                  applyDraftUpdate((current) => {
-                    if (current.cardType !== "text") return current;
-                    return { ...current, body: e.target.value };
-                  });
-                }}
-                placeholder="Markdown を記述…"
-              />
-            ) : (
-              <Textarea
-                value={form.body ?? ""}
-                onChange={(e) => {
-                  applyDraftUpdate((current) => {
-                    if (current.cardType !== "text") return current;
-                    return { ...current, body: e.target.value };
-                  });
-                }}
-                placeholder="Markdown を記述…"
-              />
-            )}
-          </div>
-          )}
-          {form.cardType === "quiz" && (
-            <div className="grid grid-cols-1 gap-4">
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      )}
+      {selectedKind === "card" && card && form && (
+        <Accordion
+          type="single"
+          collapsible
+          value={cardEditorOpen ? "card-editor" : ""}
+          onValueChange={(value) => setCardEditorOpen(value === "card-editor")}
+          className="rounded-md border border-[hsl(220_13%_85%_/_0.8)] bg-[hsl(var(--card))] shadow-sm"
+        >
+          <AccordionItem value="card-editor" className="after:hidden">
+            <AccordionTrigger className="px-3 py-3 text-sm font-medium">
+              <div className="flex w-full flex-col items-start gap-1 text-left">
+                <div className="flex w-full items-center justify-between gap-2 text-sm font-medium">
+                  <span>カード編集</span>
+                  <span className="text-xs text-muted-foreground">タイプ: {form.cardType}</span>
+                </div>
+                <span className="text-xs text-muted-foreground">保存: {cardSaveLabel}</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="space-y-3 px-3">
+              <div className="text-xs text-gray-500" aria-live="polite">
+                タイプ: {form.cardType} / 保存: {cardSaveLabel}
+              </div>
+              <div>
+                <label className="block text-sm mb-1">タイトル（任意）</label>
+                <Input
+                  value={form.title ?? ""}
+                  onChange={(e) => {
+                    applyDraftUpdate((current) => ({ ...current, title: e.target.value }));
+                  }}
+                />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">タグ（カンマ区切り）</label>
+                <Input
+                  value={(form.tags ?? []).join(", ")}
+                  onChange={(e) => {
+                    applyDraftUpdate((current) => {
+                      const tags = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                      return { ...current, tags };
+                    });
+                  }}
+                  placeholder="例: 基礎, 重要, 用語"
+                />
+              </div>
+              {form.cardType === "text" && (
+                <div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="block text-sm">本文</label>
+                    <div className="flex items-center gap-2">
+                      {card && (
+                        <Button asChild size="sm" variant="default">
+                          <Link
+                            href={`/courses/${courseId}/edit/${card.id}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const navigate = () => {
+                                if (form) {
+                                  workspaceStore.clearDraft(form.cardId);
+                                  workspaceStore.bumpVersion();
+                                  setDirty(false);
+                                }
+                                router.push(`/courses/${courseId}/edit/${card.id}`);
+                              };
+                              requestDiscard(navigate);
+                            }}
+                          >
+                            編集モードで開く
+                          </Link>
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setRichMode((v) => !v)}
+                        aria-pressed={richMode}
+                      >
+                        {richMode ? "素のMarkdown" : "軽量編集"}
+                      </Button>
+                    </div>
+                  </div>
+                  {richMode ? (
+                    <Textarea
+                      value={form.body ?? ""}
+                      onChange={(e) => {
+                        applyDraftUpdate((current) => {
+                          if (current.cardType !== "text") return current;
+                          return { ...current, body: e.target.value };
+                        });
+                      }}
+                      placeholder="Markdown を記述…"
+                    />
+                  ) : (
+                    <Textarea
+                      value={form.body ?? ""}
+                      onChange={(e) => {
+                        applyDraftUpdate((current) => {
+                          if (current.cardType !== "text") return current;
+                          return { ...current, body: e.target.value };
+                        });
+                      }}
+                      placeholder="Markdown を記述…"
+                    />
+                  )}
+                </div>
+              )}
+              {form.cardType === "quiz" && (
+                <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="inspector-quiz-question" className="text-sm font-medium">
                   設問
@@ -611,7 +804,9 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
           <div className="flex justify-end gap-2">
             <Button onClick={async () => { try { await handleSave(); } catch {} }} disabled={!dirty || saving === "saving"}>保存</Button>
           </div>
-        </section>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       )}
       {course && (
         <section className="mt-4">
@@ -660,9 +855,11 @@ type LessonToolsProps = {
   onRefresh: () => void;
   selectedKind?: "lesson" | "card";
   courseId: UUID;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 };
 
-function LessonTools({ courseId, lesson, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, onSaveAll, onRefresh, selectedKind }: LessonToolsProps) {
+function LessonTools({ courseId, lesson, runningLesson, setRunningLesson, logsByLesson, setLogsByLesson, previews, setPreviews, selectedIndexes, setSelectedIndexes, onSaveAll, onRefresh, selectedKind, open, onOpenChange }: LessonToolsProps) {
   const [aiMode, setAiMode] = React.useState<"batch" | "single">("batch");
   const [batchType, setBatchType] = React.useState<CardType>("text");
   const [runningBatchType, setRunningBatchType] = React.useState<CardType | null>(null);
@@ -679,111 +876,128 @@ function LessonTools({ courseId, lesson, runningLesson, setRunningLesson, logsBy
     setRunningBatchType(null);
   }, [selectedKind, lesson.id, isRunning]);
   const effectiveBatchType = runningBatchType ?? batchType;
+  const accordionValue = open ? "lesson-tools" : "";
   return (
-    <section className="mb-4 rounded-md border border-[hsl(220_13%_85%_/_0.8)] bg-[hsl(var(--card))] p-4 md:p-5 space-y-3 shadow-sm hover:border-[hsl(220_13%_80%)] transition-all duration-200">
-      <div className="flex items-start justify-between gap-3 mb-1">
-        <div className="text-sm font-medium leading-6">レッスンツール</div>
-        <div className="text-xs text-gray-600 truncate max-w-[70%] md:max-w-[60%]" title={lesson.title}>{lesson.title}</div>
-      </div>
-      <div className="w-full space-y-3">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end">
-          <div className="flex w-full flex-col gap-1 md:w-56">
-            <Label className="text-xs text-gray-600">AIモード</Label>
-            <SelectMenu value={aiMode} onValueChange={(v) => setAiMode(v as "batch" | "single")}>
-              <SelectMenuTrigger className="h-10 w-full" disabled={isRunning}>
-                <SelectMenuValue placeholder="AIモードを選択" />
-              </SelectMenuTrigger>
-              <SelectMenuContent>
-                <SelectMenuItem value="batch">カード一式をAI生成</SelectMenuItem>
-                <SelectMenuItem value="single">カード単体をAI生成</SelectMenuItem>
-              </SelectMenuContent>
-            </SelectMenu>
+    <Accordion
+      type="single"
+      collapsible
+      value={accordionValue}
+      onValueChange={(value) => onOpenChange(value === "lesson-tools")}
+      className="mb-4 rounded-md border border-[hsl(220_13%_85%_/_0.8)] bg-[hsl(var(--card))] shadow-sm hover:border-[hsl(220_13%_80%)] transition-all duration-200"
+    >
+      <AccordionItem value="lesson-tools" className="after:hidden">
+        <AccordionTrigger className="px-4 py-3 text-sm font-medium">
+          <div className="flex w-full flex-col items-start gap-1 text-left">
+            <div className="flex w-full items-center justify-between gap-2">
+              <span>レッスンツール</span>
+              <span className="text-xs text-muted-foreground truncate max-w-[65%] md:max-w-[55%]" title={lesson.title}>
+                {lesson.title}
+              </span>
+            </div>
+            {isRunning && <span className="text-xs text-primary">生成中…</span>}
           </div>
-          {aiMode === "batch" && (
-            <div className="flex flex-col gap-1 md:flex-1">
-              <Label className="text-xs text-gray-600">カードタイプ</Label>
-              <ToggleGroup
-                type="single"
-                value={batchType}
-                onValueChange={(v) => { if (!v || isRunning) return; setBatchType(v as CardType); }}
-                className={cn("w-full", isRunning && "pointer-events-none opacity-60")}
+        </AccordionTrigger>
+        <AccordionContent className="space-y-3 px-4 pb-4">
+          <div className="space-y-3">
+            <div className="flex flex-col gap-2 md:flex-row md:items-end">
+              <div className="flex w-full flex-col gap-1 md:w-56">
+                <Label className="text-xs text-gray-600">AIモード</Label>
+                <SelectMenu value={aiMode} onValueChange={(v) => setAiMode(v as "batch" | "single")}>
+                  <SelectMenuTrigger className="h-10 w-full" disabled={isRunning}>
+                    <SelectMenuValue placeholder="AIモードを選択" />
+                  </SelectMenuTrigger>
+                  <SelectMenuContent>
+                    <SelectMenuItem value="batch">カード一式をAI生成</SelectMenuItem>
+                    <SelectMenuItem value="single">カード単体をAI生成</SelectMenuItem>
+                  </SelectMenuContent>
+                </SelectMenu>
+              </div>
+              {aiMode === "batch" && (
+                <div className="flex flex-col gap-1 md:flex-1">
+                  <Label className="text-xs text-gray-600">カードタイプ</Label>
+                  <ToggleGroup
+                    type="single"
+                    value={batchType}
+                    onValueChange={(v) => { if (!v || isRunning) return; setBatchType(v as CardType); }}
+                    className={cn("w-full", isRunning && "pointer-events-none opacity-60")}
+                  >
+                    <ToggleGroupItem value="text" className="flex-1">テキスト</ToggleGroupItem>
+                    <ToggleGroupItem value="quiz" className="flex-1">クイズ</ToggleGroupItem>
+                    <ToggleGroupItem value="fill-blank" className="flex-1">穴埋め</ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
+              )}
+            </div>
+            {aiMode === "single" && !isRunning && (
+              <div className="grid grid-cols-1 gap-2">
+                <div>
+                  <Label className="mb-1 block text-xs text-gray-600">カードタイプ</Label>
+                  <SelectMenu value={singleType} onValueChange={(v) => setSingleType(v as CardType)}>
+                    <SelectMenuTrigger className="h-9 w-full">
+                      <SelectMenuValue placeholder="カードタイプを選択" />
+                    </SelectMenuTrigger>
+                    <SelectMenuContent>
+                      <SelectMenuItem value="text">Text</SelectMenuItem>
+                      <SelectMenuItem value="quiz">Quiz</SelectMenuItem>
+                      <SelectMenuItem value="fill-blank">Fill‑blank</SelectMenuItem>
+                    </SelectMenuContent>
+                  </SelectMenu>
+                </div>
+                <div>
+                  <Label className="mb-1 block text-xs text-gray-600">カードの概要（任意）</Label>
+                  <Textarea
+                    value={singleBrief}
+                    onChange={(e) => setSingleBrief(e.target.value)}
+                    placeholder="例: 変数の定義と型注釈について要点を説明（学習者は初学者想定）"
+                  />
+                </div>
+              </div>
+            )}
+            <div className="w-full">
+              <Button
+                className="h-10 w-full"
+                size="default"
+                onClick={() => {
+                  setRunningMode(aiMode);
+                  if (aiMode === "batch") setRunningBatchType(batchType);
+                  setRunningLesson(lesson);
+                }}
+                disabled={isRunning}
               >
-                <ToggleGroupItem value="text" className="flex-1">テキスト</ToggleGroupItem>
-                <ToggleGroupItem value="quiz" className="flex-1">クイズ</ToggleGroupItem>
-                <ToggleGroupItem value="fill-blank" className="flex-1">穴埋め</ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-          )}
-        </div>
-        {aiMode === "single" && !isRunning && (
-          <div className="w-full grid grid-cols-1 gap-2">
-            <div>
-              <Label className="mb-1 block text-xs text-gray-600">カードタイプ</Label>
-              <SelectMenu value={singleType} onValueChange={(v) => setSingleType(v as CardType)}>
-                <SelectMenuTrigger className="h-9 w-full">
-                  <SelectMenuValue placeholder="カードタイプを選択" />
-                </SelectMenuTrigger>
-                <SelectMenuContent>
-                  <SelectMenuItem value="text">Text</SelectMenuItem>
-                  <SelectMenuItem value="quiz">Quiz</SelectMenuItem>
-                  <SelectMenuItem value="fill-blank">Fill‑blank</SelectMenuItem>
-                </SelectMenuContent>
-              </SelectMenu>
-            </div>
-            <div>
-              <Label className="mb-1 block text-xs text-gray-600">カードの概要（任意）</Label>
-              <Textarea
-                value={singleBrief}
-                onChange={(e) => setSingleBrief(e.target.value)}
-                placeholder="例: 変数の定義と型注釈について要点を説明（学習者は初学者想定）"
-              />
+                {runningLesson?.id === lesson.id ? "生成中…" : "AIで生成"}
+              </Button>
             </div>
           </div>
-        )}
-        <div className="w-full">
-          <Button
-            className="h-10 w-full"
-            size="default"
-            onClick={() => {
-              setRunningMode(aiMode);
-              if (aiMode === "batch") setRunningBatchType(batchType);
-              setRunningLesson(lesson);
-            }}
-            disabled={isRunning}
-          >
-            {runningLesson?.id === lesson.id ? "生成中…" : "AIで生成"}
-          </Button>
-        </div>
-      </div>
-      {isRunning && (
-        (runningMode ?? aiMode) === "batch" ? (
-          <LessonCardsRunner
-            courseId={courseId}
-            lessonId={lesson.id}
-            lessonTitle={lesson.title}
-            desiredCardType={effectiveBatchType}
-            onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
-            onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
-            onFinish={() => { setRunningLesson(null); setRunningMode(null); setRunningBatchType(null); onRefresh(); workspaceStore.bumpVersion(); }}
-          />
-        ) : (
-          <SingleCardRunner
-            courseId={courseId}
-            lessonId={lesson.id}
-            lessonTitle={lesson.title}
-            desiredCardType={singleType}
-            userBrief={singleBrief}
-            onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
-            onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
-            onFinish={() => { setRunningLesson(null); setRunningMode(null); setRunningBatchType(null); onRefresh(); workspaceStore.bumpVersion(); }}
-          />
-        )
-      )}
-      <div className="pt-1 md:pt-2">
-        <SSETimeline layout="inline" size="compact" logs={logsByLesson[lesson.id] ?? []} />
-      </div>
-      {/* プレビュー表示は要件により廃止 */}
-    </section>
+          {isRunning && (
+            (runningMode ?? aiMode) === "batch" ? (
+              <LessonCardsRunner
+                courseId={courseId}
+                lessonId={lesson.id}
+                lessonTitle={lesson.title}
+                desiredCardType={effectiveBatchType}
+                onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
+                onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
+                onFinish={() => { setRunningLesson(null); setRunningMode(null); setRunningBatchType(null); onRefresh(); workspaceStore.bumpVersion(); }}
+              />
+            ) : (
+              <SingleCardRunner
+                courseId={courseId}
+                lessonId={lesson.id}
+                lessonTitle={lesson.title}
+                desiredCardType={singleType}
+                userBrief={singleBrief}
+                onLog={(id, text) => setLogsByLesson((m) => ({ ...m, [id]: [...(m[id] ?? []), { ts: Date.now(), text }] }))}
+                onPreview={(id, draftId, payload) => setPreviews((prev) => ({ ...prev, [id]: { draftId, payload } }))}
+                onFinish={() => { setRunningLesson(null); setRunningMode(null); setRunningBatchType(null); onRefresh(); workspaceStore.bumpVersion(); }}
+              />
+            )
+          )}
+          <div className="pt-1 md:pt-2">
+            <SSETimeline layout="inline" size="compact" logs={logsByLesson[lesson.id] ?? []} />
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }
 
