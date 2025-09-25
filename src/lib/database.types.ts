@@ -989,18 +989,24 @@ export type Database = {
       notes: {
         Row: {
           card_id: string
+          created_at: string
+          id: string
           text: string
           updated_at: string
           user_id: string
         }
         Insert: {
           card_id: string
+          created_at?: string
+          id?: string
           text?: string
           updated_at?: string
           user_id: string
         }
         Update: {
           card_id?: string
+          created_at?: string
+          id?: string
           text?: string
           updated_at?: string
           user_id?: string

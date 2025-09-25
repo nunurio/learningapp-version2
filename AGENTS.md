@@ -185,3 +185,12 @@ These rules apply to this repo (App Router, strict TypeScript) and should be fol
 - **Cache strategy:** Are `revalidate*`/tags/`cache` policies explicit?
 - **Bundle health:** Are heavy deps lazy/dynamically loaded when appropriate?
 - **Nav & a11y:** Are `Link`/`metadata` and semantics in place?
+
+## Supabase DB Workflow
+- Treat `supabase/schemas/*.sql` as the source of truth. Update tables, indexes, policies, and triggers here before creating migrations.
+- Standard Supabase CLI loop:
+  1. Start the local stack if needed (`supabase start`; stop later via `supabase stop --project-id learningapp-version2`).
+  2. Generate a migration from declarative changes: `PGSSLMODE=disable supabase db diff -f <yyyymmdd>_<slug>`.
+  3. Verify the migration applies cleanly: `PGSSLMODE=disable supabase db reset --yes` or `supabase db migrate up`.
+- Regenerate TypeScript types after any schema change:
+  - `supabase gen types typescript --local --schema public,storage,auth > src/lib/database.types.ts`
