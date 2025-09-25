@@ -201,12 +201,17 @@ export async function generateLessonCardsParallelAction(input: {
   // Resolve planning context from DB
   let plan: { lessonTitle: string; count: number; sharedPrefix?: string | null; cards: { type: LessonCards["cards"][number]["type"]; brief: string; title?: string | null }[] };
   const useMock = shouldUseMockAI();
+  let courseForAgent: { title: string; description?: string | null; category?: string | null; level?: string | null } | undefined;
   try {
     const [course, lessons] = await Promise.all([getCourse(input.courseId), listLessons(input.courseId)]);
     const idx = lessons.findIndex((l) => l.title === input.lessonTitle);
     const level = (course as { level?: string | null } | undefined)?.level ?? "初心者";
+    const normalizedCourse = course
+      ? { title: course.title, description: course.description ?? null, category: course.category ?? null, level }
+      : { title: input.lessonTitle, description: null, category: null, level: "初心者" };
+    courseForAgent = normalizedCourse;
     const context = {
-      course: course ? { title: course.title, description: course.description ?? null, category: course.category ?? null, level } : { title: input.lessonTitle },
+      course: normalizedCourse,
       lessons: lessons.map((l) => ({ title: l.title })),
       index: idx >= 0 ? idx : 0,
     } as const;
@@ -256,8 +261,8 @@ export async function generateLessonCardsParallelAction(input: {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const payload = useMock
-          ? createLessonCardsMock({ lessonTitle: plan.lessonTitle, desiredCount: 1, desiredCardType: item.type, userBrief: item.brief })
-          : await runSingleCardAgent({ lessonTitle: plan.lessonTitle, desiredCardType: item.type, userBrief: item.brief, sharedPrefix: plan.sharedPrefix ?? undefined });
+          ? createLessonCardsMock({ lessonTitle: plan.lessonTitle, desiredCount: 1, desiredCardType: item.type, userBrief: item.brief, course: courseForAgent })
+          : await runSingleCardAgent({ lessonTitle: plan.lessonTitle, course: courseForAgent, desiredCardType: item.type, userBrief: item.brief, sharedPrefix: plan.sharedPrefix ?? undefined });
         const card = payload.cards[0];
         if (item.title && "title" in card) (card as { title?: string | null }).title = item.title;
         slots[i] = card;
@@ -330,7 +335,7 @@ export async function generateSingleCardAction(input: {
 
   const useMock = shouldUseMockAI();
   const payload = useMock
-    ? createLessonCardsMock({ lessonTitle: input.lessonTitle, desiredCount: 1, desiredCardType: input.desiredCardType, userBrief: input.userBrief })
+    ? createLessonCardsMock({ lessonTitle: input.lessonTitle, desiredCount: 1, desiredCardType: input.desiredCardType, userBrief: input.userBrief, course })
     : (initAgents(), await runSingleCardAgent({ lessonTitle: input.lessonTitle, course, desiredCardType: input.desiredCardType, userBrief: input.userBrief }));
 
   const draft = await saveDraftAction("lesson-cards", payload);

@@ -38,6 +38,7 @@ export function createLessonCardsMock(input: {
   desiredCount?: number;
   desiredCardType?: CardType;
   userBrief?: string;
+  course?: { title: string; description?: string | null; category?: string | null; level?: string | null };
 }): LessonCards {
   const dc = typeof input.desiredCount === "number" ? input.desiredCount : 6;
   const count = Math.max(1, Math.min(dc, 20));
