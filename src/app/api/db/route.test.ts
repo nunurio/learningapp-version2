@@ -38,14 +38,16 @@ describe("api/db POST", () => {
     expect(json[0]?.id).toBe("c1");
   });
 
-  it("Reads: getCourse/listLessons/listCards/getProgress/listFlaggedByCourse/getNote", async () => {
+  it("Reads: getCourse/listLessons/listCards/getProgress/listFlaggedByCourse/listNotes", async () => {
     vi.doMock("@/lib/db/queries", () => ({
       getCourse: vi.fn(async (id: string) => ({ id, title: "T", status: "draft", createdAt: "", updatedAt: "" })),
       listLessons: vi.fn(async (cid: string) => [{ id: uuid2, courseId: cid, title: "L", orderIndex: 0, createdAt: "" }]),
       listCards: vi.fn(async (lid: string) => [{ id: uuid3, lessonId: lid, cardType: "text", content: { body: "b" }, orderIndex: 0, createdAt: "" }]),
       getProgress: vi.fn(async () => ({ cardId: uuid3, completed: true })),
       listFlaggedByCourse: vi.fn(async () => [uuid3]),
-      getNote: vi.fn(async () => "memo"),
+      listNotes: vi.fn(async () => [
+        { id: uuid3, cardId: uuid3, text: "memo", createdAt: "2025-09-25T00:00:00.000Z", updatedAt: "2025-09-25T00:00:00.000Z" },
+      ]),
     }));
     const { POST } = await import("./route");
     const mk = (op: string, params: unknown) => new Request("http://local/api/db", { method: "POST", body: JSON.stringify({ op, params }) });
@@ -60,8 +62,8 @@ describe("api/db POST", () => {
     expect((await jsonOf<Progress | null>(r4))?.completed).toBe(true);
     const r5 = await POST(mk("listFlaggedByCourse", { courseId: uuid1 }));
     expect((await jsonOf<UUID[]>(r5))[0]).toBe(uuid3);
-    const r6 = await POST(mk("getNote", { cardId: uuid3 }));
-    expect(await jsonOf<string | null>(r6)).toBe("memo");
+    const r6 = await POST(mk("listNotes", { cardId: uuid3 }));
+    expect((await jsonOf<{ id: string; text: string }[]>(r6))[0]?.text).toBe("memo");
   });
 
   it("Writes: create/update/deleteCourse は Server Actions を呼ぶ", async () => {
@@ -118,12 +120,21 @@ describe("api/db POST", () => {
     expect(reord).toHaveBeenCalledWith(uuid2, [uuid3]);
   });
 
-  it("Progress: saveProgress/rateSrs/toggleFlag/saveNote を仲介", async () => {
+  it("Progress: saveProgress/rateSrs/toggleFlag + note CRUD を仲介", async () => {
     const save = vi.fn(async () => undefined);
     const rate = vi.fn(async () => ({ cardId: uuid3, ease: 2.5, interval: 1, due: "2025-01-01" }));
     const flag = vi.fn(async () => true);
-    const note = vi.fn(async () => undefined);
-    vi.doMock("@/server-actions/progress", () => ({ saveProgressAction: save, rateSrsAction: rate, toggleFlagAction: flag, saveNoteAction: note }));
+    const create = vi.fn(async () => ({ noteId: uuid3, createdAt: "2025-09-25T00:00:00.000Z", updatedAt: "2025-09-25T00:00:00.000Z" }));
+    const update = vi.fn(async () => ({ updatedAt: "2025-09-25T00:00:01.000Z" }));
+    const delNote = vi.fn(async () => undefined);
+    vi.doMock("@/server-actions/progress", () => ({
+      saveProgressAction: save,
+      rateSrsAction: rate,
+      toggleFlagAction: flag,
+      createNoteAction: create,
+      updateNoteAction: update,
+      deleteNoteAction: delNote,
+    }));
     const { POST } = await import("./route");
     const mk = (op: string, params: unknown) => new Request("http://local/api/db", { method: "POST", body: JSON.stringify({ op, params }) });
     await POST(mk("saveProgress", { input: { cardId: uuid3, completed: true } }));
@@ -132,8 +143,14 @@ describe("api/db POST", () => {
     expect((await jsonOf<SrsEntry>(r)).interval).toBe(1);
     const t = await POST(mk("toggleFlag", { cardId: uuid3 }));
     expect(await jsonOf<{ on: boolean }>(t)).toEqual({ on: true });
-    await POST(mk("saveNote", { cardId: uuid3, text: "memo" }));
-    expect(note).toHaveBeenCalledWith(uuid3, "memo");
+    const created = await POST(mk("createNote", { cardId: uuid3, text: "memo" }));
+    expect(await jsonOf<{ noteId: string; createdAt: string; updatedAt: string }>(created)).toMatchObject({ noteId: uuid3 });
+    expect(create).toHaveBeenCalledWith(uuid3, "memo");
+    const updated = await POST(mk("updateNote", { noteId: uuid3, text: "updated" }));
+    expect(await jsonOf<{ updatedAt: string }>(updated)).toEqual({ updatedAt: "2025-09-25T00:00:01.000Z" });
+    expect(update).toHaveBeenCalledWith(uuid3, { text: "updated" });
+    await POST(mk("deleteNote", { noteId: uuid3 }));
+    expect(delNote).toHaveBeenCalledWith(uuid3);
   });
 
   it("AI Drafts: save / commit 一式を仲介", async () => {

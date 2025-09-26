@@ -125,12 +125,59 @@ describe("server-actions/progress", () => {
     expect(t2).toBe(false);
   });
 
-  it("saveNoteAction: upsertで保存", async () => {
-    const captured: unknown[] = [];
-    const supa = { from: vi.fn((t: string) => ({ upsert: (payload: unknown) => { captured.push(payload); return { error: null }; } })) } as const;
+  it("note actions: create/update/delete が notes テーブル経由で動く", async () => {
+    const inserts: unknown[] = [];
+    const updates: unknown[] = [];
+    const updateIds: UUID[] = [];
+    const deletes: UUID[] = [];
+    const supa = {
+      from: vi.fn((table: string) => {
+        if (table !== "notes") throw new Error(`unexpected table ${table}`);
+        return {
+          insert: (payload: unknown) => {
+            inserts.push(payload);
+            return {
+              select: () => ({
+                single: async () => ({
+                  data: { id: "NOTE" as UUID, created_at: "2025-09-25T00:00:00.000Z", updated_at: "2025-09-25T00:00:00.000Z" },
+                  error: null,
+                }),
+              }),
+            };
+          },
+          update: (payload: unknown) => {
+            updates.push(payload);
+            return {
+              eq: (_column: string, id: UUID) => {
+                updateIds.push(id);
+                return {
+                  select: () => ({
+                    single: async () => ({ data: { updated_at: "2025-09-25T00:00:01.000Z" }, error: null }),
+                  }),
+                };
+              },
+            };
+          },
+          delete: () => ({
+            eq: async (_column: string, id: UUID) => {
+              deletes.push(id);
+              return { error: null };
+            },
+          }),
+          select: vi.fn(),
+        };
+      }),
+    } as const;
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa, getCurrentUserId: async () => "U" }));
-    const { saveNoteAction } = await import("./progress");
-    await saveNoteAction("CARD" as UUID, "text");
-    expect(captured[0]).toMatchObject({ user_id: "U", card_id: "CARD", text: "text" });
+    const { createNoteAction, updateNoteAction, deleteNoteAction } = await import("./progress");
+    const created = await createNoteAction("CARD" as UUID, "text");
+    expect(created).toMatchObject({ noteId: "NOTE", createdAt: "2025-09-25T00:00:00.000Z" });
+    expect(inserts[0]).toMatchObject({ user_id: "U", card_id: "CARD", text: "text" });
+    const updated = await updateNoteAction("NOTE" as UUID, { text: "updated" });
+    expect(updated).toMatchObject({ updatedAt: "2025-09-25T00:00:01.000Z" });
+    expect(updates[0]).toMatchObject({ text: "updated" });
+    expect(updateIds[0]).toBe("NOTE");
+    await deleteNoteAction("NOTE" as UUID);
+    expect(deletes[0]).toBe("NOTE");
   });
 });

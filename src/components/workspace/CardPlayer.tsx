@@ -5,18 +5,18 @@ import {
   saveProgress as saveProgressApi,
   listFlaggedByCourse,
   toggleFlag as toggleFlagApi,
-  saveNote as saveNoteApi,
-  getNote as getNoteApi,
+  listNotes as listNotesApi,
 } from "@/lib/client-api";
-import type { UUID, Card, QuizCardContent, FillBlankCardContent, SrsRating, TextCardContent, Progress } from "@/lib/types";
+import type { UUID, Card, QuizCardContent, FillBlankCardContent, SrsRating, TextCardContent, Progress, Note } from "@/lib/types";
 import type { SaveCardDraftInput } from "@/lib/data";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { QuizOption } from "@/components/player/QuizOption";
 import { QuizHintCard, QuizSolutionPanel } from "@/components/player/QuizSolutionPanel";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
+import { NotesDialog } from "@/components/notes/NotesDialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { notesHaveContent } from "@/lib/utils/notes";
 import MarkdownView from "@/components/markdown/MarkdownView";
 import { useWorkspaceSelector, workspaceStore } from "@/lib/state/workspace-store";
 import { Star, StickyNote, HelpCircle } from "lucide-react";
@@ -96,7 +96,7 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
   const [levels, setLevels] = React.useState<Record<string, number | undefined>>({});
   const [flag, setFlag] = React.useState<boolean>(false);
   const [noteOpen, setNoteOpen] = React.useState(false);
-  const [note, setNote] = React.useState<string>("");
+  const [noteRecords, setNoteRecords] = React.useState<Note[]>([]);
   const [showHelp, setShowHelp] = React.useState(false);
 
   // 進捗ローカル更新 + 永続化のヘルパ
@@ -171,20 +171,6 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
     }
   }, []);
 
-  React.useEffect(() => {
-    if (!selectedId) { setCard(null); return; }
-    if (selectedKind === "card") {
-      const found = flatCards.find((c) => c.id === selectedId) ?? null;
-      setCard(found);
-      // カード切り替え→計測開始＆フラグ/ノート同期
-      cardStartRef.current = Date.now();
-      setFlag(flagged.has(selectedId));
-      (async () => setNote((await getNoteApi(selectedId)) ?? ""))();
-    } else {
-      setCard(null);
-    }
-  }, [courseId, selectedId, selectedKind, flatCards, flagged]);
-
   // Draft overlay: create a view-model merged with transient edits
   const draft: SaveCardDraftInput | undefined =
     draftForSelected && card && (draftForSelected as SaveCardDraftInput).cardId === card.id
@@ -224,6 +210,21 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
   }, [card, draft]);
 
   React.useEffect(() => {
+    if (!selectedId) { setCard(null); return; }
+    if (selectedKind === "card") {
+      const found = flatCards.find((c) => c.id === selectedId) ?? null;
+      setCard(found);
+      // カード切り替え→計測開始＆フラグ/ノート同期
+      cardStartRef.current = Date.now();
+      setFlag(flagged.has(selectedId));
+      setNoteRecords([]);
+      setNoteOpen(false);
+    } else {
+      setCard(null);
+    }
+  }, [courseId, selectedId, selectedKind, flatCards, flagged]);
+
+  React.useEffect(() => {
     if (!view) {
       publishActiveRef({ courseId, mode: "workspace" });
       return;
@@ -235,6 +236,28 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
       mode: "workspace",
     });
   }, [courseId, view]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!view) {
+      setNoteRecords([]);
+      setNoteOpen(false);
+      return;
+    }
+    const loadNotes = async () => {
+      try {
+        const items = await listNotesApi(view.id);
+        if (cancelled) return;
+        setNoteRecords(items);
+      } catch (error) {
+        console.error("Failed to load notes", error);
+      }
+    };
+    void loadNotes();
+    return () => { cancelled = true; };
+  }, [view?.id, version]);
+
+  const hasNotes = React.useMemo(() => notesHaveContent(noteRecords), [noteRecords]);
 
   if (!selectedId || !view) {
     return <p className="text-sm text-gray-700">カードを選択すると、ここで学習できます。</p>;
@@ -266,24 +289,18 @@ export function CardPlayer({ courseId, selectedId, selectedKind, onNavigate, les
           >
             <Star className={flag ? "h-4 w-4 fill-current text-yellow-500" : "h-4 w-4"} />
           </Button>
-          <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
-            <DialogTrigger asChild>
+          <NotesDialog
+            cardId={view.id}
+            open={noteOpen}
+            onOpenChange={setNoteOpen}
+            onNotesChange={setNoteRecords}
+            context="workspace"
+            trigger={(
               <Button size="icon" variant="ghost" aria-label="ノート" className="h-8 w-8">
-                {/* メモが存在する場合は目立つ色で塗りつぶし */}
-                <StickyNote className={note && note.trim().length > 0 ? "h-4 w-4 fill-current text-sky-500" : "h-4 w-4"} />
+                <StickyNote className={hasNotes ? "h-4 w-4 fill-current text-sky-500" : "h-4 w-4"} />
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>ノート</DialogTitle>
-                <DialogDescription>このカードのメモを保存</DialogDescription>
-              </DialogHeader>
-              <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="メモ…" />
-              <div className="mt-3 flex justify-end">
-                <Button onClick={async () => { await saveNoteApi(view.id, note); setNoteOpen(false); }} variant="default">保存</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+            )}
+          />
           <Button onClick={() => setShowHelp((s) => !s)} size="icon" variant="ghost" aria-label="キーボードヘルプ" className="h-8 w-8">
             <HelpCircle className="h-4 w-4" />
           </Button>

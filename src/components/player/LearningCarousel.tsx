@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import type { Card as CardModel, Progress, QuizCardContent, FillBlankCardContent, TextCardContent, UUID } from "@/lib/types";
+import type { Card as CardModel, Progress, QuizCardContent, FillBlankCardContent, TextCardContent, UUID, Note } from "@/lib/types";
 import * as clientApi from "@/lib/client-api";
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext, type CarouselApi } from "@/components/ui/carousel";
 import { Progress as LinearProgress } from "@/components/ui/progress";
@@ -12,9 +12,22 @@ import { QuizOption } from "@/components/player/QuizOption";
 import { QuizHintCard, QuizSolutionPanel } from "@/components/player/QuizSolutionPanel";
 import { Card, CardContent } from "@/components/ui/card";
 import MarkdownView from "@/components/markdown/MarkdownView";
+import { notesHaveContent } from "@/lib/utils/notes";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Star, StickyNote, HelpCircle } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Star, StickyNote, HelpCircle, Plus, Trash2 } from "lucide-react";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { normalizeFillBlankText } from "@/lib/utils/fill-blank";
 import { publishActiveRef } from "@/components/ai/active-ref";
@@ -41,9 +54,138 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
   const [quizSel, setQuizSel] = React.useState<Record<string, number | null>>({});
   const [fillAns, setFillAns] = React.useState<Record<string, Record<string, string>>>({});
   const [flagged, setFlagged] = React.useState<Set<UUID>>(new Set());
-  const [notes, setNotes] = React.useState<Record<string, string | undefined>>({});
+  const [notes, setNotes] = React.useState<Record<string, Note[]>>({});
+  const [noteDrafts, setNoteDrafts] = React.useState<Record<string, string>>({});
+  const [newNoteDrafts, setNewNoteDrafts] = React.useState<Record<string, string>>({});
   const [noteOpenFor, setNoteOpenFor] = React.useState<string | null>(null);
-  const [noteDraft, setNoteDraft] = React.useState<string>("");
+  const [noteLoading, setNoteLoading] = React.useState<Record<string, boolean>>({});
+  const [noteCreating, setNoteCreating] = React.useState<Record<string, boolean>>({});
+  const [noteSaving, setNoteSaving] = React.useState<Record<string, boolean>>({});
+  const [noteDeleting, setNoteDeleting] = React.useState<Record<string, boolean>>({});
+  const [pendingFocusNoteId, setPendingFocusNoteId] = React.useState<string | null>(null);
+  const noteTextareaRefs = React.useRef(new Map<string, HTMLTextAreaElement>());
+
+  const noteTimestampFormatter = React.useMemo(() =>
+    new Intl.DateTimeFormat("ja-JP", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  , []);
+
+  const formatNoteTimestamp = React.useCallback((iso: string) => {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return iso;
+    return noteTimestampFormatter.format(date);
+  }, [noteTimestampFormatter]);
+
+  const loadNotesForCard = React.useCallback(async (cardId: UUID) => {
+    setNoteLoading((state) => ({ ...state, [cardId]: true }));
+    try {
+      const response = await clientApi.listNotes(cardId);
+      const sorted = [...response].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      setNotes((prev) => {
+        const prevNotes = prev[cardId] ?? [];
+        setNoteDrafts((drafts) => {
+          const next = { ...drafts };
+          for (const old of prevNotes) {
+            delete next[old.id];
+            noteTextareaRefs.current.delete(old.id);
+          }
+          for (const note of sorted) {
+            next[note.id] = note.text;
+          }
+          return next;
+        });
+        return { ...prev, [cardId]: sorted };
+      });
+    } catch (error) {
+      console.error("Failed to load notes", error);
+    } finally {
+      setNoteLoading((state) => ({ ...state, [cardId]: false }));
+    }
+  }, []);
+
+  const handleCreateNote = React.useCallback(async (cardId: UUID) => {
+    const draft = (newNoteDrafts[cardId] ?? "").trim();
+    if (!draft) return;
+    setNoteCreating((state) => ({ ...state, [cardId]: true }));
+    try {
+      const created = await clientApi.createNote(cardId, draft);
+      const newNote: Note = {
+        id: created.noteId,
+        cardId,
+        text: draft,
+        createdAt: created.createdAt,
+        updatedAt: created.updatedAt,
+      };
+      setNotes((prev) => ({
+        ...prev,
+        [cardId]: [newNote, ...(prev[cardId] ?? [])],
+      }));
+      setNoteDrafts((drafts) => ({ ...drafts, [created.noteId]: draft }));
+      setNewNoteDrafts((drafts) => ({ ...drafts, [cardId]: "" }));
+      setPendingFocusNoteId(created.noteId);
+    } catch (error) {
+      console.error("Failed to create note", error);
+    } finally {
+      setNoteCreating((state) => ({ ...state, [cardId]: false }));
+    }
+  }, [newNoteDrafts]);
+
+  const handleSaveNote = React.useCallback(async (cardId: UUID, noteId: UUID) => {
+    const draft = (noteDrafts[noteId] ?? "").trim();
+    if (!draft) return;
+    setNoteSaving((state) => ({ ...state, [noteId]: true }));
+    try {
+      const updated = await clientApi.updateNote(noteId, { text: draft });
+      setNotes((prev) => ({
+        ...prev,
+        [cardId]: (prev[cardId] ?? []).map((note) =>
+          note.id === noteId ? { ...note, text: draft, updatedAt: updated.updatedAt } : note
+        ),
+      }));
+      setNoteDrafts((drafts) => ({ ...drafts, [noteId]: draft }));
+    } catch (error) {
+      console.error("Failed to update note", error);
+    } finally {
+      setNoteSaving((state) => ({ ...state, [noteId]: false }));
+    }
+  }, [noteDrafts]);
+
+  const handleDeleteNote = React.useCallback(async (cardId: UUID, noteId: UUID) => {
+    setNoteDeleting((state) => ({ ...state, [noteId]: true }));
+    try {
+      await clientApi.deleteNote(noteId);
+      setNotes((prev) => ({
+        ...prev,
+        [cardId]: (prev[cardId] ?? []).filter((note) => note.id !== noteId),
+      }));
+      setNoteDrafts((drafts) => {
+        const next = { ...drafts };
+        delete next[noteId];
+        return next;
+      });
+      noteTextareaRefs.current.delete(noteId);
+    } catch (error) {
+      console.error("Failed to delete note", error);
+    } finally {
+      setNoteDeleting((state) => ({ ...state, [noteId]: false }));
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!pendingFocusNoteId) return;
+    const el = noteTextareaRefs.current.get(pendingFocusNoteId);
+    if (el) {
+      const len = el.value.length;
+      el.focus();
+      el.setSelectionRange(len, len);
+      setPendingFocusNoteId(null);
+    }
+  }, [pendingFocusNoteId, notes]);
 
   // 画面下端までの最大高さを計測してセット（スライダー領域を差し引く）
   const measureLayout = React.useCallback(() => {
@@ -144,11 +286,24 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
       setFillAns(initFillAns);
 
       // ノート初期化（スナップショットから）
-      const noteMap: Record<string, string | undefined> = {};
+      const noteMap: Record<string, Note[]> = {};
       for (const n of snap.notes) {
-        noteMap[n.cardId] = n.text;
+        const bucket = noteMap[n.cardId] ?? (noteMap[n.cardId] = []);
+        bucket.push(n);
+      }
+      for (const key of Object.keys(noteMap)) {
+        noteMap[key].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       }
       setNotes(noteMap);
+      setNoteDrafts((drafts) => {
+        const next = { ...drafts };
+        for (const arr of Object.values(noteMap)) {
+          for (const note of arr) {
+            next[note.id] = note.text;
+          }
+        }
+        return next;
+      });
 
       setCards(effectiveCards);
       setActive(startIndex);
@@ -292,8 +447,15 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
             viewportClassName="py-3 sm:py-5"
             className="ml-0 mr-0"
           >
-            {cards.map((card) => (
-              <CarouselItem key={card.id} className="px-4 sm:px-6">
+            {cards.map((card) => {
+              const cardNotes = notes[card.id] ?? [];
+              const hasNotes = notesHaveContent(cardNotes);
+              const noteIsOpen = noteOpenFor === card.id;
+              const loadingNotes = noteLoading[card.id] ?? false;
+              const creatingNote = noteCreating[card.id] ?? false;
+              const newNoteDraft = newNoteDrafts[card.id] ?? "";
+              return (
+                <CarouselItem key={card.id} className="px-4 sm:px-6">
                 <Card
                   variant="elevated"
                   className="rounded-2xl shadow-[0_10px_24px_-16px_hsl(0_0%_0%/0.22),0_4px_12px_-8px_hsl(0_0%_0%/0.14)] hover:shadow-[0_16px_36px_-20px_hsl(0_0%_0%/0.28),0_8px_18px_-10px_hsl(0_0%_0%/0.16)]"
@@ -335,22 +497,12 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
                           <Star className={flagged.has(card.id) ? "h-4 w-4 fill-current text-yellow-500" : "h-4 w-4"} />
                         </Button>
                         <Dialog
-                          open={noteOpenFor === card.id}
-                          onOpenChange={async (open) => {
+                          open={noteIsOpen}
+                          onOpenChange={(open) => {
                             if (open) {
                               setNoteOpenFor(card.id);
-                              // 未取得の場合のみ取得
-                              let existing = notes[card.id];
-                              if (typeof existing === "undefined") {
-                                try {
-                                  if ("getNote" in clientApi) {
-                                    existing = (await (clientApi as unknown as { getNote: (id: UUID) => Promise<string | undefined> }).getNote(card.id)) ?? "";
-                                  } else {
-                                    existing = "";
-                                  }
-                                } catch { existing = ""; }
-                              }
-                              setNoteDraft(existing ?? "");
+                              void loadNotesForCard(card.id);
+                              setNewNoteDrafts((drafts) => ({ ...drafts, [card.id]: drafts[card.id] ?? "" }));
                             } else {
                               setNoteOpenFor(null);
                             }
@@ -358,27 +510,121 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
                         >
                           <DialogTrigger asChild>
                             <Button size="icon" variant="ghost" aria-label="ノート" className="h-8 w-8">
-                              <StickyNote className={(notes[card.id] && (notes[card.id] ?? "").trim().length > 0) ? "h-4 w-4 fill-current text-sky-500" : "h-4 w-4"} />
+                              <StickyNote className={hasNotes ? "h-4 w-4 fill-current text-sky-500" : "h-4 w-4"} />
                             </Button>
                           </DialogTrigger>
-                          <DialogContent>
+                          <DialogContent className="sm:max-w-lg">
                             <DialogHeader>
                               <DialogTitle>ノート</DialogTitle>
-                              <DialogDescription>このカードのメモを保存</DialogDescription>
+                              <DialogDescription>カードごとのメモを追加・編集できます。</DialogDescription>
                             </DialogHeader>
-                            <Textarea value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} placeholder="メモ…" />
-                            <div className="mt-3 flex justify-end">
-                              <Button
-                                onClick={async () => {
-                                  if ("saveNote" in clientApi) {
-                                    await (clientApi as unknown as { saveNote: (id: UUID, text: string) => Promise<void> }).saveNote(card.id, noteDraft);
-                                  }
-                                  setNotes((m) => ({ ...m, [card.id]: noteDraft }));
-                                  setNoteOpenFor(null);
-                                }}
-                                variant="default"
-                              >保存</Button>
-                            </div>
+                            {loadingNotes ? (
+                              <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 読み込み中…
+                              </div>
+                            ) : (
+                              <div className="space-y-4">
+                                <ScrollArea className="max-h-72 pr-3" data-testid="note-dialog-list">
+                                  <div className="space-y-3 py-1">
+                                    {cardNotes.length === 0 ? (
+                                      <p className="px-1 text-sm text-muted-foreground">まだメモはありません。</p>
+                                    ) : (
+                                      cardNotes.map((note) => {
+                                        const draft = noteDrafts[note.id] ?? "";
+                                        const dirty = draft !== note.text;
+                                        const saving = noteSaving[note.id] ?? false;
+                                        const deleting = noteDeleting[note.id] ?? false;
+                                        return (
+                                          <Card key={note.id} data-testid={`note-dialog-item-${note.id}`}>
+                                            <CardContent className="space-y-2 pt-4">
+                                              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                                                <span>作成: {formatNoteTimestamp(note.createdAt)}</span>
+                                                <span>更新: {formatNoteTimestamp(note.updatedAt)}</span>
+                                              </div>
+                                              <Textarea
+                                                ref={(el) => {
+                                                  if (el) {
+                                                    noteTextareaRefs.current.set(note.id, el);
+                                                  } else {
+                                                    noteTextareaRefs.current.delete(note.id);
+                                                  }
+                                                }}
+                                                value={draft}
+                                                onChange={(e) => setNoteDrafts((drafts) => ({ ...drafts, [note.id]: e.target.value }))}
+                                                placeholder="メモ…"
+                                                rows={4}
+                                              />
+                                              <div className="flex justify-end gap-2">
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  onClick={() => setNoteDrafts((drafts) => ({ ...drafts, [note.id]: note.text }))}
+                                                  disabled={!dirty || saving || deleting}
+                                                >リセット</Button>
+                                                <Button
+                                                  size="sm"
+                                                  onClick={() => handleSaveNote(card.id, note.id)}
+                                                  disabled={!dirty || saving || deleting || !(draft.trim())}
+                                                >
+                                                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                                  保存
+                                                </Button>
+                                                <AlertDialog>
+                                                  <AlertDialogTrigger asChild>
+                                                    <Button size="sm" variant="destructive" disabled={deleting || saving}>
+                                                      {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}削除
+                                                    </Button>
+                                                  </AlertDialogTrigger>
+                                                  <AlertDialogContent>
+                                                    <AlertDialogHeader>
+                                                      <AlertDialogTitle>メモを削除しますか？</AlertDialogTitle>
+                                                      <AlertDialogDescription>
+                                                        この操作は取り消せません。このメモを削除すると復元できません。
+                                                      </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                      <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                                                      <AlertDialogAction
+                                                        onClick={() => { void handleDeleteNote(card.id, note.id); }}
+                                                        disabled={deleting}
+                                                      >削除する</AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                  </AlertDialogContent>
+                                                </AlertDialog>
+                                              </div>
+                                            </CardContent>
+                                          </Card>
+                                        );
+                                      })
+                                    )}
+                                  </div>
+                                </ScrollArea>
+                                <div className="space-y-2" data-testid="note-dialog-new">
+                                  <Textarea
+                                    value={newNoteDraft}
+                                    onChange={(e) => setNewNoteDrafts((drafts) => ({ ...drafts, [card.id]: e.target.value }))}
+                                    placeholder="新しいメモを入力…"
+                                    rows={3}
+                                  />
+                                  <div className="flex justify-end gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => setNewNoteDrafts((drafts) => ({ ...drafts, [card.id]: "" }))}
+                                      disabled={!newNoteDraft}
+                                    >クリア</Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleCreateNote(card.id)}
+                                      disabled={creatingNote || !(newNoteDraft.trim())}
+                                    >
+                                      {creatingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                                      追加
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </DialogContent>
                         </Dialog>
 
@@ -442,8 +688,9 @@ export function LearningCarousel({ courseId, initialCardId, initialLessonId }: P
                     </div>
                   </CardContent>
                 </Card>
-              </CarouselItem>
-            ))}
+                </CarouselItem>
+              );
+            })}
           </CarouselContent>
           <CarouselPrevious />
           <CarouselNext />

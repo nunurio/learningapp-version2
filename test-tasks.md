@@ -30,7 +30,7 @@
 ### フェーズ1: ライブラリ強化（優先）
 - [x] `src/lib/idb.ts` 基本操作（put/get/all/delete）
 - [x] `src/lib/client-api.ts` 読み取り（JSON期待/非JSON時エラー）・書き込み（Action 委譲）
-- [x] `src/lib/db/queries.ts` スナップショット・`getNote` 未ヒット
+- [x] `src/lib/db/queries.ts` スナップショット・`listNotes` 未ヒット
 - [x] `src/lib/ai/mock.ts` 生成件数の境界・型並び
 - [x] `src/lib/utils/cn.ts`
 - [x] `src/lib/utils/uid.ts`
@@ -61,7 +61,7 @@
   - [x] `saveProgressAction`（upsert・認証なしエラー）
   - [x] `rateSrsAction`（ease/interval/duedate の遷移ロジック、各 rating 分岐、upsert）
   - [x] `toggleFlagAction`（insert→true / delete→false）
-  - [x] `saveNoteAction`（upsert）
+  - [x] `createNoteAction`/`updateNoteAction`/`deleteNoteAction`
 - ai（`src/server-actions/ai.ts`）
   - [x] `saveDraftAction`（認証・insert）
   - [x] `commitCoursePlanAction`（draft→courses+lessons 挿入→draft 削除）
@@ -73,9 +73,9 @@
 - `/api/db`（`src/app/api/db/route.ts`）
   - [x] 未知 `op` は 400
   - [x] `listCourses` 正常
-  - [x] Reads: `getCourse`/`listLessons`/`listCards`/`getProgress`/`listFlaggedByCourse`/`getNote`
+- [x] Reads: `getCourse`/`listLessons`/`listCards`/`getProgress`/`listFlaggedByCourse`/`listNotes`
   - [x] Writes: `create/update/deleteCourse`、`add/delete/reorderLessons`、`add/update/delete/deleteCards/reorderCards`
-  - [x] Progress: `saveProgress`、`rateSrs`、`toggleFlag`、`saveNote`
+  - [x] Progress: `saveProgress`、`rateSrs`、`toggleFlag`、`createNote`/`updateNote`/`deleteNote`
   - [x] AI Drafts: `saveDraft`、`commitCoursePlan(_Partial)`、`commitLessonCards(_Partial)`
 - `/api/ai/outline`（JSON/no-store, デフォルト`"コース"`）
   - [x] 正常（最小）

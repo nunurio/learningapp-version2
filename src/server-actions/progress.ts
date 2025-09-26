@@ -154,13 +154,44 @@ export async function toggleFlagAction(cardId: UUID): Promise<boolean> {
   }
 }
 
-export async function saveNoteAction(cardId: UUID, text: string) {
+export async function createNoteAction(cardId: UUID, text: string): Promise<{ noteId: UUID; createdAt: string; updatedAt: string }> {
   const supaClient = await supa.createClient();
   const userId = await getCurrentUserIdSafe();
   if (!userId) throw new Error("Not authenticated");
-  const { error } = await supaClient
+  const { data, error } = await supaClient
     .from("notes")
-    .upsert({ user_id: userId, card_id: cardId, text } satisfies TablesInsert<"notes">);
+    .insert({ user_id: userId, card_id: cardId, text } satisfies TablesInsert<"notes">)
+    .select("id, created_at, updated_at")
+    .single();
+  if (error) throw error;
+  if (!data) throw new Error("Failed to create note");
+  safeRevalidatePath("/dashboard");
+  safeRevalidateTag(dashboardUserTag(userId));
+  return { noteId: data.id as UUID, createdAt: data.created_at, updatedAt: data.updated_at };
+}
+
+export async function updateNoteAction(noteId: UUID, patch: { text: string }): Promise<{ updatedAt: string }> {
+  const supaClient = await supa.createClient();
+  const userId = await getCurrentUserIdSafe();
+  if (!userId) throw new Error("Not authenticated");
+  const { data, error } = await supaClient
+    .from("notes")
+    .update({ text: patch.text })
+    .eq("id", noteId)
+    .select("updated_at")
+    .single();
+  if (error) throw error;
+  if (!data) throw new Error("Note not found");
+  safeRevalidatePath("/dashboard");
+  safeRevalidateTag(dashboardUserTag(userId));
+  return { updatedAt: data.updated_at };
+}
+
+export async function deleteNoteAction(noteId: UUID): Promise<void> {
+  const supaClient = await supa.createClient();
+  const userId = await getCurrentUserIdSafe();
+  if (!userId) throw new Error("Not authenticated");
+  const { error } = await supaClient.from("notes").delete().eq("id", noteId);
   if (error) throw error;
   safeRevalidatePath("/dashboard");
   safeRevalidateTag(dashboardUserTag(userId));

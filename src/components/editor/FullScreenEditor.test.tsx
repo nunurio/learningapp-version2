@@ -160,9 +160,8 @@ describe("FullScreenEditor (text card)", () => {
     const gate = new Promise<{ updatedAt: string }>((res) => { resolveSave = res; });
     vi.mocked(saveCard).mockImplementationOnce(async (_i: SaveCardDraftInput) => gate);
 
-    // Open Menubar > File, click Back to Workspace
-    await user.click(screen.getByRole("menuitem", { name: "File" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Back to Workspace" }));
+    // Click the primary Back to Workspace button in the header
+    await user.click(screen.getByRole("button", { name: "ワークスペースに戻る" }));
 
     expect(saveCard).toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();

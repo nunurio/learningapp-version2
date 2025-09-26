@@ -10,7 +10,9 @@ import {
   reorderCards as reorderCardsApi,
   commitLessonCards as commitLessonCardsApi,
   commitLessonCardsPartial as commitLessonCardsPartialApi,
-  saveNote as saveNoteApi,
+  createNote as createNoteApi,
+  updateNote as updateNoteApi,
+  deleteNote as deleteNoteApi,
 } from "@/lib/client-api";
 import type {
   UUID,
@@ -22,6 +24,7 @@ import type {
   LessonCards,
   CardType,
   TextCardContent,
+  Note,
 } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,11 +47,19 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils/cn";
 import { SortableList } from "@/components/dnd/SortableList";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { saveCard, type SaveCardDraftInput } from "@/lib/data";
 import { workspaceStore, useWorkspace } from "@/lib/state/workspace-store";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Plus, Trash2 } from "lucide-react";
+import { Check, Plus, Trash2, Loader2, MoreHorizontal } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -108,13 +119,13 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   const formRef = React.useRef<SaveCardDraftInput | null>(form);
   const [lessons, setLessons] = React.useState<Lesson[]>([]);
   const [cards, setCards] = React.useState<WorkspaceCard[]>([]);
-  const [notesByCard, setNotesByCard] = React.useState<Record<string, { text: string; updatedAt: string }>>({});
-  const [noteDraft, setNoteDraft] = React.useState("");
-  const [noteDirty, setNoteDirty] = React.useState(false);
-  const [noteSaving, setNoteSaving] = React.useState<"idle" | "saving" | "saved">("idle");
+  const [notesByCard, setNotesByCard] = React.useState<Record<string, Note[]>>({});
+  const [activeNoteId, setActiveNoteId] = React.useState<UUID | null>(null);
+  const [noteDrafts, setNoteDrafts] = React.useState<Record<string, string>>({});
+  const [noteStatuses, setNoteStatuses] = React.useState<Record<string, "idle" | "creating" | "updating" | "deleting">>({});
+  const [newNoteDraft, setNewNoteDraft] = React.useState("");
   const [noteAccordionOpen, setNoteAccordionOpen] = React.useState(false);
-  const noteBaselineRef = React.useRef<string>("");
-  const noteCardRef = React.useRef<UUID | null>(null);
+  const [noteToDelete, setNoteToDelete] = React.useState<Note | null>(null);
   // Reserved UI states (unused currently)
 
   // AI lesson-cards generation state
@@ -125,7 +136,8 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
   // fill-blank 回答の一時テキスト（未完成行の入力を保持）
   const [answersText, setAnswersText] = React.useState<string>("");
   const [richMode, setRichMode] = React.useState(false);
-  const noteFieldId = React.useId();
+  const existingNoteFieldId = React.useId();
+  const newNoteFieldId = React.useId();
   const quizFieldIdBase = React.useId();
   const router = useRouter();
   const [pendingAction, setPendingAction] = React.useState<(() => void) | null>(null);
@@ -143,11 +155,24 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
     setCourse(co);
     const ls = snap.lessons.filter((l) => l.courseId === courseId).sort((a, b) => a.orderIndex - b.orderIndex || a.createdAt.localeCompare(b.createdAt));
     setLessons(ls);
-    const noteMap: Record<string, { text: string; updatedAt: string }> = {};
+    const noteMap: Record<string, Note[]> = {};
     for (const n of snap.notes) {
-      noteMap[n.cardId] = { text: n.text, updatedAt: n.updatedAt };
+      const bucket = noteMap[n.cardId] ?? (noteMap[n.cardId] = []);
+      bucket.push(n);
+    }
+    for (const key of Object.keys(noteMap)) {
+      noteMap[key].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     }
     setNotesByCard(noteMap);
+    setNoteDrafts(() => {
+      const drafts: Record<string, string> = {};
+      for (const arr of Object.values(noteMap)) {
+        for (const note of arr) {
+          drafts[note.id] = note.text;
+        }
+      }
+      return drafts;
+    });
     if (selectedKind === "lesson" && selectedId) {
       const l = ls.find((x) => x.id === selectedId) ?? null;
       setLesson(l);
@@ -343,56 +368,209 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
     setCardEditorOpen(true);
   }, [card?.id]);
 
+  const noteTimeFormatter = React.useMemo(
+    () =>
+      new Intl.DateTimeFormat("ja-JP", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    []
+  );
+
+  const formatNoteTime = React.useCallback(
+    (iso: string | undefined) => {
+      if (!iso) return "-";
+      const date = new Date(iso);
+      if (Number.isNaN(date.getTime())) return iso;
+      return noteTimeFormatter.format(date);
+    },
+    [noteTimeFormatter]
+  );
+
   React.useEffect(() => {
     if (selectedKind === "card" && selectedId) {
-      const note = notesByCard[selectedId];
-      const noteText = note?.text ?? "";
-      const cardChanged = noteCardRef.current !== selectedId;
-      const baseline = noteBaselineRef.current;
-      const noteChangedExternally = noteText !== baseline;
-      if (cardChanged || (!noteDirty && noteChangedExternally)) {
-        setNoteDraft(noteText);
-        setNoteDirty(false);
-        setNoteSaving("idle");
-        noteBaselineRef.current = noteText;
-      }
-      if (cardChanged) {
-        setNoteAccordionOpen(true);
-      }
-      noteCardRef.current = selectedId;
+      const list = notesByCard[selectedId] ?? [];
+      setActiveNoteId((prev) => {
+        if (prev && list.some((n) => n.id === prev)) return prev;
+        return list[0]?.id ?? null;
+      });
+      setNoteAccordionOpen(true);
     } else {
-      if (noteCardRef.current !== null) {
-        noteCardRef.current = null;
-        noteBaselineRef.current = "";
-        setNoteDraft("");
-        setNoteDirty(false);
-        setNoteSaving("idle");
-      }
+      setActiveNoteId(null);
+      setNewNoteDraft("");
       setNoteAccordionOpen(false);
     }
-  }, [notesByCard, noteDirty, selectedId, selectedKind]);
+  }, [notesByCard, selectedId, selectedKind]);
 
-  const handleNoteSave = React.useCallback(async () => {
-    if (selectedKind !== "card" || !selectedId) return false;
-    setNoteSaving("saving");
+  const currentCardNotes = React.useMemo(() => {
+    if (selectedKind !== "card" || !selectedId) return [] as Note[];
+    return notesByCard[selectedId] ?? [];
+  }, [notesByCard, selectedId, selectedKind]);
+
+  const activeNote = React.useMemo(() => {
+    if (!activeNoteId) return null;
+    return currentCardNotes.find((note) => note.id === activeNoteId) ?? null;
+  }, [activeNoteId, currentCardNotes]);
+
+  const activeNoteDraft = activeNote ? noteDrafts[activeNote.id] ?? activeNote.text : "";
+  const activeNoteDirty = activeNote ? (noteDrafts[activeNote.id] ?? activeNote.text) !== activeNote.text : false;
+  const activeNoteStatus = activeNote ? noteStatuses[activeNote.id] ?? "idle" : "idle";
+
+  const handleSelectNote = React.useCallback((noteId: UUID) => {
+    setActiveNoteId(noteId);
+  }, []);
+
+  const handleActiveNoteChange = React.useCallback((noteId: UUID, value: string) => {
+    setNoteDrafts((prev) => ({ ...prev, [noteId]: value }));
+  }, []);
+
+  const handleResetActiveNote = React.useCallback(() => {
+    if (!activeNote) return;
+    setNoteDrafts((prev) => ({ ...prev, [activeNote.id]: activeNote.text }));
+    setNoteStatuses((prev) => ({ ...prev, [activeNote.id]: "idle" }));
+  }, [activeNote]);
+
+  const handleUpdateActiveNote = React.useCallback(async () => {
+    if (!activeNote) return;
+    const draft = (noteDrafts[activeNote.id] ?? "").trim();
+    if (!draft) return;
+    const previous = { ...activeNote };
+    setNoteStatuses((prev) => ({ ...prev, [activeNote.id]: "updating" }));
+    setNotesByCard((prev) => ({
+      ...prev,
+      [activeNote.cardId]: (prev[activeNote.cardId] ?? []).map((note) =>
+        note.id === activeNote.id ? { ...note, text: draft } : note
+      ),
+    }));
+    setNoteDrafts((prev) => ({ ...prev, [activeNote.id]: draft }));
     try {
-      await saveNoteApi(selectedId, noteDraft);
-      const updatedAt = new Date().toISOString();
+      const res = await updateNoteApi(activeNote.id, { text: draft });
       setNotesByCard((prev) => ({
         ...prev,
-        [selectedId]: { text: noteDraft, updatedAt },
+        [activeNote.cardId]: (prev[activeNote.cardId] ?? []).map((note) =>
+          note.id === activeNote.id ? { ...note, text: draft, updatedAt: res.updatedAt } : note
+        ),
       }));
-      noteBaselineRef.current = noteDraft;
-      setNoteDirty(false);
-      setNoteSaving("saved");
+      setNoteStatuses((prev) => ({ ...prev, [activeNote.id]: "idle" }));
       workspaceStore.bumpVersion();
-      return true;
-    } catch (err) {
-      console.error(err);
-      setNoteSaving("idle");
-      return false;
+    } catch (error) {
+      console.error(error);
+      setNotesByCard((prev) => ({
+        ...prev,
+        [activeNote.cardId]: (prev[activeNote.cardId] ?? []).map((note) =>
+          note.id === previous.id ? previous : note
+        ),
+      }));
+      setNoteDrafts((prev) => ({ ...prev, [activeNote.id]: previous.text }));
+      setNoteStatuses((prev) => ({ ...prev, [activeNote.id]: "idle" }));
     }
-  }, [noteDraft, selectedId, selectedKind]);
+  }, [activeNote, noteDrafts]);
+
+  const handleCreateNote = React.useCallback(async () => {
+    if (selectedKind !== "card" || !selectedId) return;
+    const draft = newNoteDraft.trim();
+    if (!draft) return;
+    const tempId = (`temp-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`) as UUID;
+    const now = new Date().toISOString();
+    const optimistic: Note = { id: tempId, cardId: selectedId, text: draft, createdAt: now, updatedAt: now };
+    setNotesByCard((prev) => ({
+      ...prev,
+      [selectedId]: [optimistic, ...(prev[selectedId] ?? [])],
+    }));
+    setNoteDrafts((prev) => ({ ...prev, [tempId]: draft }));
+    setNoteStatuses((prev) => ({ ...prev, [tempId]: "creating" }));
+    setActiveNoteId(tempId);
+    setNewNoteDraft("");
+    try {
+      const res = await createNoteApi(selectedId, draft);
+      setNotesByCard((prev) => ({
+        ...prev,
+        [selectedId]: (prev[selectedId] ?? []).map((note) =>
+          note.id === tempId
+            ? { id: res.noteId, cardId: selectedId, text: draft, createdAt: res.createdAt, updatedAt: res.updatedAt }
+            : note
+        ),
+      }));
+      setNoteDrafts((prev) => {
+        const next = { ...prev };
+        delete next[tempId];
+        next[res.noteId] = draft;
+        return next;
+      });
+      setNoteStatuses((prev) => {
+        const next = { ...prev };
+        delete next[tempId];
+        next[res.noteId] = "idle";
+        return next;
+      });
+      setActiveNoteId(res.noteId);
+      workspaceStore.bumpVersion();
+    } catch (error) {
+      console.error(error);
+      setNotesByCard((prev) => ({
+        ...prev,
+        [selectedId]: (prev[selectedId] ?? []).filter((note) => note.id !== tempId),
+      }));
+      setNoteDrafts((prev) => {
+        const next = { ...prev };
+        delete next[tempId];
+        return next;
+      });
+      setNoteStatuses((prev) => {
+        const next = { ...prev };
+        delete next[tempId];
+        return next;
+      });
+      if (activeNoteId === tempId) {
+        setActiveNoteId(null);
+      }
+    }
+  }, [activeNoteId, newNoteDraft, selectedId, selectedKind]);
+
+  const handleDeleteNote = React.useCallback(async (note: Note) => {
+    const prevList = notesByCard[note.cardId] ?? [];
+    const without = prevList.filter((n) => n.id !== note.id);
+    setNoteStatuses((prev) => ({ ...prev, [note.id]: "deleting" }));
+    setNotesByCard((prev) => ({ ...prev, [note.cardId]: without }));
+    try {
+      await deleteNoteApi(note.id);
+      setNoteDrafts((prev) => {
+        const next = { ...prev };
+        delete next[note.id];
+        return next;
+      });
+      setNoteStatuses((prev) => {
+        const next = { ...prev };
+        delete next[note.id];
+        return next;
+      });
+      if (activeNoteId === note.id) {
+        setActiveNoteId(without[0]?.id ?? null);
+      }
+      workspaceStore.bumpVersion();
+    } catch (error) {
+      console.error(error);
+      setNotesByCard((prev) => ({ ...prev, [note.cardId]: prevList }));
+      setNoteStatuses((prev) => ({ ...prev, [note.id]: "idle" }));
+    }
+  }, [activeNoteId, notesByCard]);
+
+  const activeNoteStatusLabel = React.useMemo(() => {
+    if (!activeNote) return "メモ未選択";
+    if (activeNoteStatus === "creating") return "作成中…";
+    if (activeNoteStatus === "updating") return "保存中…";
+    if (activeNoteStatus === "deleting") return "削除中…";
+    if (activeNoteDirty) return "未保存";
+    return "保存済み";
+  }, [activeNote, activeNoteDirty, activeNoteStatus]);
+
+  const activeNoteCreatedLabel = activeNote ? formatNoteTime(activeNote.createdAt) : "-";
+  const activeNoteUpdatedLabel = activeNote ? formatNoteTime(activeNote.updatedAt) : "-";
+  const noteCount = currentCardNotes.length;
+  const creatingInProgress = React.useMemo(() => Object.values(noteStatuses).some((status) => status === "creating"), [noteStatuses]);
 
   const cardSaveLabel = React.useMemo(() => {
     if (!form) return "-";
@@ -401,25 +579,6 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
     if (saving === "saved") return savedAt ? `保存済み（${new Date(savedAt).toLocaleTimeString()}）` : "保存済み";
     return "-";
   }, [dirty, form, savedAt, saving]);
-
-  const currentCardNote = selectedKind === "card" && selectedId ? notesByCard[selectedId] : undefined;
-
-  const noteStatusLabel = React.useMemo(() => {
-    if (noteSaving === "saving") return "保存中…";
-    if (noteDirty) return "未保存";
-    if (noteSaving === "saved") return "保存済み";
-    return "-";
-  }, [noteDirty, noteSaving]);
-
-  const noteUpdatedAtLabel = React.useMemo(() => {
-    const updatedAt = currentCardNote?.updatedAt;
-    if (!updatedAt) return undefined;
-    try {
-      return new Date(updatedAt).toLocaleString();
-    } catch {
-      return updatedAt;
-    }
-  }, [currentCardNote?.updatedAt]);
 
   // レッスン上部ツールはファイルスコープの安定コンポーネントに移動（下方で定義）
 
@@ -493,64 +652,171 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
         >
           <AccordionItem value="card-note" className="after:hidden">
             <AccordionTrigger className="px-3 py-3 text-sm font-medium">
-              <div className="flex w-full flex-col items-start gap-1 text-left">
-                <div className="flex w-full items-center justify-between gap-2 text-sm font-medium">
+              <div className="flex w-full items-center justify-between gap-2 text-left">
+                <div className="flex items-center gap-2">
                   <span>カードメモ</span>
-                  <span className="text-xs text-muted-foreground">状態: {noteStatusLabel}</span>
+                  <Badge variant="secondary">{noteCount}</Badge>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  最終更新: {noteUpdatedAtLabel ?? "-"}
-                </span>
+                <span className="text-xs text-muted-foreground">{activeNoteStatusLabel}</span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="space-y-3 px-3">
-              <div className="text-xs text-gray-500">
-                カードごとの学習メモを保存できます。
+            <AccordionContent className="px-3">
+              <div className="text-xs text-gray-500 mb-3">カードごとの気付きや補足を複数保存できます。</div>
+              <div className="grid gap-4 md:grid-cols-[minmax(220px,260px),1fr]">
+                <Card className="border-muted" data-testid="note-list-card">
+                  <div className="flex items-center justify-between border-b px-4 py-3">
+                    <span className="text-sm font-medium">メモ一覧</span>
+                    <Badge variant="secondary">{noteCount}件</Badge>
+                  </div>
+                  <ScrollArea className="max-h-72">
+                    <div className="space-y-2 p-3">
+                      {noteCount === 0 ? (
+                        <p className="text-sm text-muted-foreground">まだメモはありません。右側で新しいメモを追加できます。</p>
+                      ) : (
+                        currentCardNotes.map((note, index) => {
+                          const status = noteStatuses[note.id] ?? "idle";
+                          const isActive = activeNoteId === note.id;
+                          const isDeleting = status === "deleting";
+                          return (
+                            <Card
+                              key={note.id}
+                              className={cn("cursor-pointer transition-colors", isActive ? "border-primary shadow-md" : "hover:border-primary/40")}
+                              data-testid={`note-item-${note.id}`}
+                              onClick={() => handleSelectNote(note.id)}
+                            >
+                              <div className="flex items-start justify-between gap-2 p-3">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <Badge variant="secondary">#{index + 1}</Badge>
+                                    <span>更新: {formatNoteTime(note.updatedAt)}</span>
+                                  </div>
+                                  <p className="mt-1 line-clamp-2 text-sm text-left">{note.text.trim() || "（空のメモ）"}</p>
+                                </div>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      aria-label="メモメニュー"
+                                      onClick={(event) => event.stopPropagation()}
+                                    >
+                                      {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onSelect={(event) => {
+                                        event.preventDefault();
+                                        setNoteToDelete(note);
+                                      }}
+                                    >
+                                      削除
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </Card>
+                          );
+                        })
+                      )}
+                    </div>
+                  </ScrollArea>
+                </Card>
+                <Card className="border-muted" data-testid="note-editor-card">
+                  <div className="border-b px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium">メモ編集</p>
+                        {activeNote && (
+                          <p className="text-xs text-muted-foreground">作成: {activeNoteCreatedLabel} / 更新: {activeNoteUpdatedLabel}</p>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">状態: {activeNoteStatusLabel}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-3 p-4">
+                    {activeNote ? (
+                      <>
+                        <Label htmlFor={existingNoteFieldId} className="text-sm font-medium">選択中のメモ</Label>
+                        <Textarea
+                          id={existingNoteFieldId}
+                          value={activeNoteDraft}
+                          onChange={(e) => handleActiveNoteChange(activeNote.id, e.target.value)}
+                          disabled={activeNoteStatus === "deleting"}
+                          rows={8}
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleResetActiveNote}
+                            disabled={!activeNoteDirty || activeNoteStatus === "updating" || activeNoteStatus === "deleting"}
+                          >リセット</Button>
+                          <Button
+                            size="sm"
+                            onClick={() => { void handleUpdateActiveNote(); }}
+                            disabled={!activeNoteDirty || activeNoteStatus === "updating" || activeNoteStatus === "deleting"}
+                          >
+                            {activeNoteStatus === "updating" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}保存
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">メモを選択するか、下で新しいメモを追加してください。</p>
+                    )}
+                    <div className="space-y-2 border-t pt-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor={newNoteFieldId} className="text-sm font-medium">新規メモ</Label>
+                        <span className="text-xs text-muted-foreground">{creatingInProgress ? "作成中…" : ""}</span>
+                      </div>
+                      <Textarea
+                        id={newNoteFieldId}
+                        value={newNoteDraft}
+                        onChange={(e) => setNewNoteDraft(e.target.value)}
+                        placeholder="新しいメモの内容を入力…"
+                        rows={4}
+                        disabled={creatingInProgress}
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setNewNoteDraft("")}
+                          disabled={!newNoteDraft || creatingInProgress}
+                        >クリア</Button>
+                        <Button
+                          size="sm"
+                          onClick={() => { void handleCreateNote(); }}
+                          disabled={creatingInProgress || !newNoteDraft.trim()}
+                        >
+                          {creatingInProgress ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}追加
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor={noteFieldId} className="text-sm font-medium">
-                  メモ
-                </Label>
-                <Textarea
-                  id={noteFieldId}
-                  value={noteDraft}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setNoteDraft(next);
-                    if (noteSaving !== "saving") setNoteSaving("idle");
-                    const baseline = selectedKind === "card" && selectedId ? (notesByCard[selectedId]?.text ?? "") : "";
-                    setNoteDirty(next !== baseline);
-                  }}
-                  placeholder="このカードについて覚えておきたいこと…"
-                  className="min-h-[120px]"
-                />
-              </div>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>状態: {noteStatusLabel}</span>
-                <span>{noteUpdatedAtLabel ? `更新日時: ${noteUpdatedAtLabel}` : "更新日時: -"}</span>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    const baseline = selectedKind === "card" && selectedId ? (notesByCard[selectedId]?.text ?? "") : "";
-                    setNoteDraft(baseline);
-                    setNoteDirty(false);
-                    setNoteSaving("idle");
-                  }}
-                  disabled={!noteDirty || noteSaving === "saving"}
-                >
-                  リセット
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => { void handleNoteSave(); }}
-                  disabled={!noteDirty || noteSaving === "saving"}
-                >
-                  {noteSaving === "saving" ? "保存中…" : "保存"}
-                </Button>
-              </div>
+              <AlertDialog open={noteToDelete !== null} onOpenChange={(open) => { if (!open) setNoteToDelete(null); }}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>メモを削除しますか？</AlertDialogTitle>
+                    <AlertDialogDescription>削除すると元に戻せません。</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => {
+                        if (noteToDelete) {
+                          void handleDeleteNote(noteToDelete);
+                        }
+                        setNoteToDelete(null);
+                      }}
+                      disabled={noteToDelete ? (noteStatuses[noteToDelete.id] === "deleting") : false}
+                    >削除する</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </AccordionContent>
           </AccordionItem>
         </Accordion>

@@ -32,7 +32,15 @@ vi.mock("@/server-actions/progress", () => ({
     lastRating: rating,
   })),
   toggleFlagAction: vi.fn(async (_cardId: UUID) => true),
-  saveNoteAction: vi.fn(async (_cardId: UUID, _text: string) => {}),
+  createNoteAction: vi.fn(async (_cardId: UUID, _text: string) => ({
+    noteId: "NOTE_NEW" as UUID,
+    createdAt: "2025-09-25T00:00:00.000Z",
+    updatedAt: "2025-09-25T00:00:00.000Z",
+  })),
+  updateNoteAction: vi.fn(async (_noteId: UUID, _patch: { text: string }) => ({
+    updatedAt: "2025-09-25T00:00:01.000Z",
+  })),
+  deleteNoteAction: vi.fn(async (_noteId: UUID) => {}),
 }));
 
 vi.mock("@/server-actions/ai", () => ({
@@ -88,8 +96,8 @@ describe("client-api writes (delegation)", () => {
     expect(vi.mocked(cards.reorderCardsAction)).toHaveBeenCalledWith("LESSON1", ["C1", "C2"]);
   });
 
-  it("progress: saveProgress/rateSrs/toggleFlag/saveNote delegates and returns", async () => {
-    const { saveProgress, rateSrs, toggleFlag, saveNote } = await import("@/lib/client-api");
+  it("progress: saveProgress/rateSrs/toggleFlag notes CRUD delegates and returns", async () => {
+    const { saveProgress, rateSrs, toggleFlag, createNote, updateNote, deleteNote } = await import("@/lib/client-api");
     const progress = await import("@/server-actions/progress");
     await saveProgress({ cardId: "CARD1" as UUID, completed: true } as Progress);
     expect(vi.mocked(progress.saveProgressAction)).toHaveBeenCalledWith({ cardId: "CARD1", completed: true });
@@ -99,8 +107,14 @@ describe("client-api writes (delegation)", () => {
     const flagged = await toggleFlag("CARD1" as UUID);
     expect(vi.mocked(progress.toggleFlagAction)).toHaveBeenCalledWith("CARD1");
     expect(flagged).toBe(true);
-    await saveNote("CARD1" as UUID, "memo");
-    expect(vi.mocked(progress.saveNoteAction)).toHaveBeenCalledWith("CARD1", "memo");
+    const created = await createNote("CARD1" as UUID, "memo");
+    expect(vi.mocked(progress.createNoteAction)).toHaveBeenCalledWith("CARD1", "memo");
+    expect(created).toMatchObject({ noteId: "NOTE_NEW" });
+    const updated = await updateNote("NOTE_NEW" as UUID, { text: "updated" });
+    expect(vi.mocked(progress.updateNoteAction)).toHaveBeenCalledWith("NOTE_NEW", { text: "updated" });
+    expect(updated).toMatchObject({ updatedAt: "2025-09-25T00:00:01.000Z" });
+    await deleteNote("NOTE_NEW" as UUID);
+    expect(vi.mocked(progress.deleteNoteAction)).toHaveBeenCalledWith("NOTE_NEW");
   });
 
   it("ai: saveDraft/commit* delegates and passes through results", async () => {

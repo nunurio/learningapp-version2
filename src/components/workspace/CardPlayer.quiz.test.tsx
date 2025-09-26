@@ -12,8 +12,9 @@ vi.mock("@/lib/client-api", () => {
     snapshot: vi.fn(),
     listFlaggedByCourse: vi.fn(async () => []),
     toggleFlag: vi.fn(async () => false),
-    saveNote: vi.fn(async () => {}),
-    getNote: vi.fn(async () => ""),
+    listNotes: vi.fn(async () => []),
+    createNote: vi.fn(async () => ({ noteId: "note-new", createdAt: nowISO, updatedAt: nowISO })),
+    updateNote: vi.fn(async () => ({ updatedAt: nowISO })),
     saveProgress: vi.fn(async () => {}),
   };
 });

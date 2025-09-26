@@ -69,6 +69,34 @@ test("学習カルーセル: 作成→学習→ナビ/採点/理解度", async (
   await sliderThumbText.press("ArrowRight");
   await expect(page.getByText("理解度: 3/5")).toBeVisible();
 
+  // ノート: 複数メモの作成・更新・削除
+  const noteTrigger = page
+    .getByRole("group")
+    .filter({ hasText: /本文A/ })
+    .getByRole("button", { name: "ノート" });
+  await expect(noteTrigger).toBeVisible({ timeout: 20_000 });
+  await noteTrigger.click();
+  const noteDialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "ノート" }) });
+  await expect(noteDialog).toBeVisible();
+  const noteNewSection = noteDialog.getByTestId("note-dialog-new");
+  await noteNewSection.getByPlaceholder("新しいメモを入力…").fill("Note A");
+  await noteNewSection.getByRole("button", { name: "追加" }).click();
+  const noteList = noteDialog.getByTestId("note-dialog-list");
+  await expect(noteList.getByText("Note A")).toBeVisible();
+  const noteEditorTextarea = noteDialog.locator('textarea[placeholder="メモ…"]').first();
+  await noteEditorTextarea.fill("Note A updated");
+  await noteDialog.getByRole("button", { name: "保存" }).click();
+  await expect(noteList.getByText("Note A updated")).toBeVisible();
+  await noteNewSection.getByPlaceholder("新しいメモを入力…").fill("Note B");
+  await noteNewSection.getByRole("button", { name: "追加" }).click();
+  const noteBItem = noteList.locator('[data-testid^="note-dialog-item-"]').filter({ hasText: "Note B" });
+  await expect(noteBItem).toBeVisible();
+  await noteBItem.getByRole("button", { name: "削除" }).click();
+  await page.getByRole("button", { name: "削除する" }).click();
+  await expect(noteList.locator('text=Note B')).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(noteDialog).toBeHidden();
+
   // Quizへ移動（インデックスに合わせて必要回数だけ次へ）
   for (let i = 1; i <= quizIndex; i++) {
     await next.click();
@@ -111,6 +139,31 @@ test("学習カルーセル: 作成→学習→ナビ/採点/理解度", async (
   await page.getByRole("button", { name: "ワークスペースに戻る" }).click();
   await page.waitForURL(/\/courses\/[0-9a-f-]{36}\/workspace(\?cardId=.*)?$/);
   await expect(page.getByRole("heading", { level: 1, name: "学習ワークスペース" })).toBeVisible();
+
+  // インスペクタでメモが共有されていることを確認し、再度CRUDを行う
+  const textCardTreeItem = page.getByRole("treeitem", { name: /テキスト/ }).first();
+  await textCardTreeItem.click();
+  await expect(page.getByTestId("note-list-card").getByText("Note A updated")).toBeVisible({ timeout: 20_000 });
+  const inspectorNoteTextarea = page.getByLabel("選択中のメモ");
+  await expect(inspectorNoteTextarea).toBeVisible({ timeout: 20_000 });
+  await expect(inspectorNoteTextarea).toHaveValue("Note A updated");
+  await inspectorNoteTextarea.fill("Inspector note");
+  await page.getByTestId("note-editor-card").getByRole("button", { name: "保存" }).click();
+  await expect(page.getByTestId("note-list-card").getByText("Inspector note")).toBeVisible();
+  await page.getByLabel("新規メモ").fill("Second inspector note");
+  await page.getByTestId("note-editor-card").getByRole("button", { name: "追加" }).click();
+  const inspectorNewItem = page.locator('[data-testid^="note-item-"]').filter({ hasText: "Second inspector note" });
+  await expect(inspectorNewItem).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('[data-testid^="note-item-temp"]').filter({ hasText: "Second inspector note" })).toHaveCount(0, { timeout: 20_000 });
+  const stableInspectorNewItem = page.locator('[data-testid^="note-item-"]').filter({ hasText: "Second inspector note" }).first();
+  const inspectorMenuButton = stableInspectorNewItem.getByRole("button", { name: "メモメニュー" });
+  await inspectorMenuButton.focus();
+  await inspectorMenuButton.press("Enter");
+  const deleteMenuItem = page.getByRole("menuitem", { name: "削除" }).first();
+  await expect(deleteMenuItem).toBeVisible({ timeout: 20_000 });
+  await deleteMenuItem.click();
+  await page.getByRole("button", { name: "削除する" }).click();
+  await expect(page.getByTestId("note-list-card").locator('text=Second inspector note')).toHaveCount(0);
 });
 
 // 矢印キーでのカルーセル移動（最小カバレッジ）

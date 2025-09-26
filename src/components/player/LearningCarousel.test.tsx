@@ -13,6 +13,10 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/client-api", () => ({
   snapshot: vi.fn(),
   saveProgress: vi.fn(async () => {}),
+  listNotes: vi.fn(async () => []),
+  createNote: vi.fn(async () => ({ noteId: "note-mock", createdAt: new Date(2024, 0, 1).toISOString(), updatedAt: new Date(2024, 0, 1).toISOString() })),
+  updateNote: vi.fn(async () => ({ updatedAt: new Date(2024, 0, 2).toISOString() })),
+  deleteNote: vi.fn(async () => {}),
 }));
 
 import { LearningCarousel } from "./LearningCarousel";
@@ -32,6 +36,10 @@ beforeEach(() => {
   push.mockClear();
   vi.mocked(clientApi.snapshot).mockReset();
   vi.mocked(clientApi.saveProgress).mockClear();
+  vi.mocked(clientApi.listNotes).mockReset();
+  vi.mocked(clientApi.createNote).mockClear();
+  vi.mocked(clientApi.updateNote).mockClear();
+  vi.mocked(clientApi.deleteNote).mockClear();
 });
 
 describe("LearningCarousel", () => {
@@ -78,6 +86,58 @@ describe("LearningCarousel", () => {
     // 戻るボタンで router.push に cardId を含めたURL
     await userEvent.click(screen.getByRole("button", { name: "ワークスペースに戻る" }));
     expect(push).toHaveBeenCalledWith(`/courses/${baseCourse.id}/workspace?cardId=card-t1`);
+  });
+
+  it("ノートダイアログでメモを一覧・更新・追加できる", async () => {
+    const lesson = { id: "l-note" as UUID, courseId: baseCourse.id, title: "Lesson", orderIndex: 1, createdAt: makeIso(1) };
+    const cardId = "card-note" as UUID;
+    const createdAt = makeIso(2);
+    vi.mocked(clientApi.snapshot).mockResolvedValue({
+      courses: [baseCourse],
+      lessons: [lesson],
+      cards: [
+        { id: cardId, lessonId: lesson.id, cardType: "text", title: "T", content: { body: "memo" }, orderIndex: 1, createdAt: makeIso(2) },
+      ],
+      progress: [],
+      flags: [],
+      notes: [
+        { id: "note-1", cardId, text: "既存メモ", createdAt, updatedAt: createdAt },
+      ],
+    });
+    vi.mocked(clientApi.listNotes).mockResolvedValue([
+      { id: "note-1", cardId, text: "既存メモ", createdAt, updatedAt: createdAt },
+    ]);
+    vi.mocked(clientApi.updateNote).mockResolvedValue({ updatedAt: makeIso(3) });
+    vi.mocked(clientApi.createNote).mockResolvedValue({ noteId: "note-2", createdAt: makeIso(4), updatedAt: makeIso(4) });
+
+    render(<LearningCarousel courseId={baseCourse.id} />);
+
+    expect(await screen.findByText("1 / 1")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "ノート" }));
+
+    await waitFor(() => {
+      expect(clientApi.listNotes).toHaveBeenCalledWith(cardId);
+    });
+
+    const textarea = await screen.findByDisplayValue("既存メモ");
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, "更新後メモ");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(clientApi.updateNote).toHaveBeenCalledWith("note-1", { text: "更新後メモ" });
+
+    const newNoteBox = screen.getByPlaceholderText("新しいメモを入力…");
+    await userEvent.type(newNoteBox, "新規メモ");
+    await userEvent.click(screen.getByRole("button", { name: "追加" }));
+    await waitFor(() => {
+      expect(clientApi.createNote).toHaveBeenCalledWith(cardId, "新規メモ");
+    });
+
+    const newNoteTextarea = await screen.findByDisplayValue("新規メモ");
+    await waitFor(() => {
+      expect(document.activeElement).toBe(newNoteTextarea);
+    });
+    expect(newNoteBox).toHaveValue("");
   });
 
   it("quizカード: 採点で結果表示→理解度スライダー表示→コミット", async () => {
