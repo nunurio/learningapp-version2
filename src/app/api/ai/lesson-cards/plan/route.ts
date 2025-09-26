@@ -16,9 +16,10 @@ export async function POST(req: Request) {
     lessonTitle: z.string().min(1),
     desiredCount: z.number().int().optional(),
     courseId: z.string().optional(),
+    desiredCardType: z.enum(["text", "quiz", "fill-blank"]).optional(),
   });
   const input = await parseJsonWithQuery(req, RequestSchema, { lessonTitle: "レッスン" });
-  const { lessonTitle, desiredCount, courseId } = input;
+  const { lessonTitle, desiredCount, courseId, desiredCardType } = input;
 
   const updates: AiUpdate[] = [];
   const start = Date.now();
@@ -42,8 +43,8 @@ export async function POST(req: Request) {
 
     const useMock = shouldUseMockAI();
     const plan = useMock
-      ? createLessonCardsPlanMock({ lessonTitle, desiredCount, course: planContext.course, lessons: planContext.lessons, index: planContext.index })
-      : (initAgents(), await runCardsPlanner({ lessonTitle, desiredCount, context: { course: planContext.course ?? { title: lessonTitle }, lessons: planContext.lessons, index: planContext.index } }));
+      ? createLessonCardsPlanMock({ lessonTitle, desiredCount, desiredCardType, course: planContext.course, lessons: planContext.lessons, index: planContext.index })
+      : (initAgents(), await runCardsPlanner({ lessonTitle, desiredCount, desiredCardType, context: { course: planContext.course ?? { title: lessonTitle }, lessons: planContext.lessons, index: planContext.index } }));
     updates.push({ ts: Date.now(), text: "planReady" });
     return NextResponse.json({ plan, updates }, { headers: { "Cache-Control": "no-store" } });
   } catch (e: unknown) {

@@ -87,13 +87,13 @@ create table if not exists public.flags (
   primary key (user_id, card_id)
 );
 
--- User notes per card
 create table if not exists public.notes (
+  id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   card_id uuid not null references public.cards (id) on delete cascade,
   text text not null default '',
-  updated_at timestamptz not null default now(),
-  primary key (user_id, card_id)
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 -- AI drafts/previews (Outline / Lesson-Cards)

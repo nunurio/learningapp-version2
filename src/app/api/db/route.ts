@@ -5,7 +5,7 @@ import * as Q from "@/lib/db/queries";
 import { createCourseAction, deleteCourseAction, updateCourseAction } from "@/server-actions/courses";
 import { addLessonAction, deleteLessonAction, reorderLessonsAction } from "@/server-actions/lessons";
 import { addCardAction, deleteCardAction, deleteCardsAction, reorderCardsAction, updateCardAction } from "@/server-actions/cards";
-import { saveProgressAction, rateSrsAction, toggleFlagAction, saveNoteAction } from "@/server-actions/progress";
+import { saveProgressAction, rateSrsAction, toggleFlagAction, createNoteAction, updateNoteAction, deleteNoteAction } from "@/server-actions/progress";
 import { saveDraftAction, commitCoursePlanAction, commitCoursePlanPartialAction, commitLessonCardsAction, commitLessonCardsPartialAction } from "@/server-actions/ai";
 
 export async function POST(req: Request) {
@@ -56,10 +56,10 @@ export async function POST(req: Request) {
         const ids = await Q.listFlaggedByCourse(courseId);
         return NextResponse.json(ids);
       }
-      case "getNote": {
+      case "listNotes": {
         const { cardId } = z.object({ cardId: z.string().uuid() }).parse(p);
-        const text = await Q.getNote(cardId);
-        return NextResponse.json(text ?? null);
+        const notes = await Q.listNotes(cardId);
+        return NextResponse.json(notes);
       }
       // ----- Writes (Server Actions under the hood) -----
       case "createCourse": {
@@ -148,9 +148,19 @@ export async function POST(req: Request) {
         const on = await toggleFlagAction(cardId);
         return NextResponse.json({ on });
       }
-      case "saveNote": {
-        const { cardId, text } = z.object({ cardId: z.string().uuid(), text: z.string() }).parse(p);
-        await saveNoteAction(cardId, text);
+      case "createNote": {
+        const { cardId, text } = z.object({ cardId: z.string().uuid(), text: z.string().min(1) }).parse(p);
+        const result = await createNoteAction(cardId, text);
+        return NextResponse.json(result);
+      }
+      case "updateNote": {
+        const { noteId, text } = z.object({ noteId: z.string().uuid(), text: z.string().min(1) }).parse(p);
+        const result = await updateNoteAction(noteId, { text });
+        return NextResponse.json(result);
+      }
+      case "deleteNote": {
+        const { noteId } = z.object({ noteId: z.string().uuid() }).parse(p);
+        await deleteNoteAction(noteId);
         return NextResponse.json({ ok: true });
       }
       case "saveDraft": {

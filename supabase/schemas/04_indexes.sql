@@ -23,6 +23,7 @@ create index if not exists idx_srs_user_due on public.srs (user_id, due);
 -- Flags/Notes
 create index if not exists idx_flags_card on public.flags (card_id);
 create index if not exists idx_notes_card on public.notes (card_id);
+create index if not exists idx_notes_user_card_created_at on public.notes (user_id, card_id, created_at desc);
 
 -- AI drafts (latest by kind)
 create index if not exists idx_ai_drafts_user_kind_created on public.ai_drafts (user_id, kind, created_at desc);

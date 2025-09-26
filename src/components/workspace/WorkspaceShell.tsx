@@ -33,6 +33,16 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
   const router = useRouter();
   useHydrateDraftsOnce();
   const workspace = useWorkspace();
+  React.useEffect(() => {
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, []);
   const [selId, setSelId] = React.useState<string | undefined>(undefined);
   const [selKind, setSelKind] = React.useState<"lesson" | "card" | undefined>(undefined);
   const [openNav, setOpenNav] = React.useState(false);
@@ -190,18 +200,19 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
   }, [courseId, selId, selKind, lessonScopeId]);
 
   return (
-    <div className="min-h-screen">
+    <div className="flex h-[100svh] min-h-0 flex-col overflow-hidden">
       <Header />
-      <main className="h-[calc(100vh-56px)]">
-        <div className="hidden md:block h-full">
-            <ResizablePanelGroup
+      <main className="flex flex-1 min-h-0 flex-col overflow-hidden">
+        <div className="hidden min-h-0 flex-1 md:flex">
+          <ResizablePanelGroup
             direction="horizontal"
             autoSaveId={cookieKey ?? `workspace:${courseId}`}
+            className="flex-1"
           >
             <ResizablePanel
               defaultSize={defaultLayout?.[0] ?? 24}
               minSize={16}
-              className="relative after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gradient-to-b after:from-transparent after:via-[hsl(var(--border-default)_/_0.5)] after:to-transparent"
+              className="relative min-h-0 overflow-hidden after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gradient-to-b after:from-transparent after:via-[hsl(var(--border-default)_/_0.5)] after:to-transparent"
               onPointerDownCapture={() => workspaceStore.setActivePane("nav")}
             >
               <NavTree
@@ -214,7 +225,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
             <ResizablePanel
               defaultSize={defaultLayout?.[1] ?? 48}
               minSize={40}
-              className=""
+              className="flex min-w-0 flex-col overflow-hidden"
               onPointerDownCapture={() => workspaceStore.setActivePane("center")}
             >
               <CenterPanel
@@ -231,7 +242,7 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
             <ResizablePanel
               defaultSize={defaultLayout?.[2] ?? 28}
               minSize={18}
-              className="relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-px before:bg-gradient-to-b before:from-transparent before:via-[hsl(var(--border-default)_/_0.5)] before:to-transparent"
+              className="relative min-h-0 overflow-hidden before:absolute before:left-0 before:top-0 before:bottom-0 before:w-px before:bg-gradient-to-b before:from-transparent before:via-[hsl(var(--border-default)_/_0.5)] before:to-transparent"
               onPointerDownCapture={() => workspaceStore.setActivePane("inspector")}
             >
               <Inspector courseId={courseId} selectedId={selId} selectedKind={selKind} />
@@ -239,20 +250,20 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
           </ResizablePanelGroup>
         </div>
 
-        <div className="md:hidden h-full">
-          <div className="px-3 py-2 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-[hsl(var(--border-default)_/_0.6)] after:to-transparent flex items-center justify-between">
+        <div className="flex flex-1 min-h-0 flex-col md:hidden">
+          <div className="relative flex shrink-0 items-center justify-between px-3 py-2 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-[hsl(var(--border-default)_/_0.6)] after:to-transparent">
             <div className="font-medium">学習ワークスペース</div>
             <div className="flex items-center gap-2">
               <Sheet open={openNav} onOpenChange={setOpenNav}>
                 <SheetTrigger asChild>
                   <Button aria-label="メニュー" size="sm">メニュー</Button>
                 </SheetTrigger>
-                <SheetContent side="left" aria-label="ナビ">
+                <SheetContent side="left" aria-label="ナビ" className="flex flex-col">
                   <SheetHeader>
                     <div className="font-medium">コース構造</div>
                     <Button onClick={() => setOpenNav(false)} size="sm" variant="outline">閉じる</Button>
                   </SheetHeader>
-                  <div className="h-[calc(100vh-120px)] overflow-auto">
+                  <div className="flex-1 overflow-auto">
                     <NavTree
                       courseId={courseId}
                       selectedId={selId}
@@ -277,19 +288,19 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
                 <SheetTrigger asChild>
                   <Button aria-label="編集" size="sm">編集</Button>
                 </SheetTrigger>
-                <SheetContent side="right" aria-label="編集">
+                <SheetContent side="right" aria-label="編集" className="flex flex-col">
                   <SheetHeader>
                     <div className="font-medium">インスペクタ</div>
                     <Button onClick={() => setOpenInspector(false)} size="sm" variant="outline">閉じる</Button>
                   </SheetHeader>
-                  <div className="h-[calc(100vh-120px)] overflow-auto">
+                  <div className="flex-1 overflow-auto">
                     <Inspector courseId={courseId} selectedId={selId} selectedKind={selKind} />
                   </div>
                 </SheetContent>
               </Sheet>
             </div>
           </div>
-          <div className="h-[calc(100vh-98px)] overflow-auto p-3">
+          <div className="flex-1 min-h-0 overflow-auto p-3">
             {!selId ? (
               <p className="text-sm text-gray-700">メニューからカードを選択してください。</p>
             ) : (
@@ -334,8 +345,8 @@ export function WorkspaceShell({ courseId, defaultLayout, cookieKey, initialCard
 
 function CenterPanel({ courseId, selId, selKind, lessonScopeId, learnHref, onNavigate, onGuardedNavigate }: { courseId: UUID; selId?: string; selKind?: "lesson"|"card"; lessonScopeId?: UUID; learnHref: string; onNavigate: (id: UUID) => void; onGuardedNavigate: (href: string) => boolean }) {
   return (
-    <div className="h-full p-4 overflow-auto">
-      <div className="flex items-center justify-between mb-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-3">
         <h1 className="text-lg font-semibold">学習ワークスペース</h1>
         <div>
           {/* 学習モードへ遷移（選択中のカードがあればそのカードから開始） */}
@@ -353,11 +364,19 @@ function CenterPanel({ courseId, selId, selKind, lessonScopeId, learnHref, onNav
           </Button>
         </div>
       </div>
-      {!selId ? (
-        <p className="text-sm text-gray-700">左のナビからカードを選択すると、ここで学習できます。</p>
-      ) : (
-        <CardPlayer courseId={courseId} selectedId={selId} selectedKind={selKind} lessonScopeId={lessonScopeId} onNavigate={onNavigate} />
-      )}
+      <div className="flex-1 min-h-0 overflow-auto px-4 pb-4">
+        {!selId ? (
+          <p className="text-sm text-gray-700">左のナビからカードを選択すると、ここで学習できます。</p>
+        ) : (
+          <CardPlayer
+            courseId={courseId}
+            selectedId={selId}
+            selectedKind={selKind}
+            lessonScopeId={lessonScopeId}
+            onNavigate={onNavigate}
+          />
+        )}
+      </div>
     </div>
   );
 }

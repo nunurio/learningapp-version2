@@ -71,7 +71,22 @@ describe("lib/db/queries", () => {
         { user_id: "u", card_id: "k1", flagged_at: "2024-01-06" },
       ],
       notes: [
-        { user_id: "u", card_id: "k1", text: "memo", updated_at: "2024-01-07" },
+        {
+          id: "note-1",
+          user_id: "u",
+          card_id: "k1",
+          text: "memo",
+          created_at: "2024-01-06",
+          updated_at: "2024-01-07",
+        },
+        {
+          id: "note-2",
+          user_id: "u",
+          card_id: "k1",
+          text: "memo-2",
+          created_at: "2024-01-08",
+          updated_at: "2024-01-09",
+        },
       ],
     } as Record<string, unknown[]>;
 
@@ -85,14 +100,15 @@ describe("lib/db/queries", () => {
     expect(data.cards[0]).toMatchObject({ id: "k1", lessonId: "l1", cardType: "text" });
     expect(data.progress[0]).toMatchObject({ cardId: "k1", completed: true });
     expect(data.flags[0]).toMatchObject({ cardId: "k1" });
-    expect(data.notes[0]).toMatchObject({ cardId: "k1", text: "memo" });
+    expect(data.notes[0]).toMatchObject({ id: "note-1", cardId: "k1", text: "memo" });
+    expect(data.notes[1]).toMatchObject({ id: "note-2", createdAt: "2024-01-08" });
   });
 
-  it("getNote: cardId に一致しない場合は undefined", async () => {
+  it("listNotes: cardId に一致しない場合は空配列", async () => {
     const supa = createSupabaseMock({ notes: [] });
     vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => supa }));
-    const { getNote } = await import("@/lib/db/queries");
-    const text = await getNote("dead-beef");
-    expect(text).toBeUndefined();
+    const { listNotes } = await import("@/lib/db/queries");
+    const notes = await listNotes("dead-beef");
+    expect(notes).toEqual([]);
   });
 });

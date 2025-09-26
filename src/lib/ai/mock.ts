@@ -38,6 +38,7 @@ export function createLessonCardsMock(input: {
   desiredCount?: number;
   desiredCardType?: CardType;
   userBrief?: string;
+  course?: { title: string; description?: string | null; category?: string | null; level?: string | null };
 }): LessonCards {
   const dc = typeof input.desiredCount === "number" ? input.desiredCount : 6;
   const count = Math.max(1, Math.min(dc, 20));
@@ -83,6 +84,7 @@ export function createLessonCardsMock(input: {
 export function createLessonCardsPlanMock(input: {
   lessonTitle: string;
   desiredCount?: number;
+  desiredCardType?: CardType;
   course?: { title: string; description?: string | null; category?: string | null; level?: string | null };
   lessons?: { title: string }[];
   index?: number;
@@ -94,7 +96,11 @@ export function createLessonCardsPlanMock(input: {
   const target = typeof dc === "number" ? dc : base + bias;
   const count = Math.max(3, Math.min(target, 20));
   const seq = Array.from({ length: count }).map((_, i) => i);
-  const types: CardType[] = seq.map((i) => (i % 3 === 0 ? "text" : i % 3 === 1 ? "quiz" : "fill-blank"));
+  const chosenType = input.desiredCardType;
+  const types: CardType[] = seq.map((i) => {
+    if (chosenType) return chosenType;
+    return i % 3 === 0 ? "text" : i % 3 === 1 ? "quiz" : "fill-blank";
+  });
   const cards = seq.map((i) => ({
     type: types[i],
     brief: `${input.lessonTitle} の要点 ${i + 1} を扱う` + (types[i] === "quiz" ? "（概念理解を確認）" : types[i] === "fill-blank" ? "（重要語を穴埋め）" : ""),

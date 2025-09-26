@@ -340,7 +340,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
   };
 
   return (
-    <aside className="h-full flex flex-col">
+    <aside className="flex h-full min-h-0 flex-col">
       <div className="p-2 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-[hsl(var(--border-default)_/_0.5)] after:to-transparent grid grid-cols-1 gap-2">
         <div>
           <label className="sr-only" htmlFor="tree-search">検索</label>
@@ -368,7 +368,7 @@ export function NavTree({ courseId, selectedId, onSelect }: Props) {
         ref={containerRef}
         role="tree"
         aria-label="コース構造"
-        className="flex-1 overflow-auto py-2"
+        className="flex-1 min-h-0 overflow-auto py-2"
         onKeyDown={onKeyDown}
         onFocus={onTreeFocus}
         tabIndex={0}

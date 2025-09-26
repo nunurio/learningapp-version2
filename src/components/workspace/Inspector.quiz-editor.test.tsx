@@ -1,8 +1,9 @@
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Inspector } from "@/components/workspace/Inspector";
+import * as clientApi from "@/lib/client-api";
 import type { SaveCardDraftInput } from "@/lib/data";
 
 const hoisted = vi.hoisted(() => {
@@ -63,6 +64,9 @@ vi.mock("@/lib/client-api", () => ({
   reorderCards: vi.fn(),
   commitLessonCards: vi.fn(),
   commitLessonCardsPartial: vi.fn(),
+  createNote: vi.fn(async () => ({ noteId: "note-new", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })),
+  updateNote: vi.fn(async () => ({ updatedAt: new Date().toISOString() })),
+  deleteNote: vi.fn(async () => {}),
 }));
 
 vi.mock("@/lib/state/workspace-store", () => ({
@@ -91,6 +95,9 @@ describe("Inspector quiz editor", () => {
     workspaceStoreMock.setDraft.mockClear();
     workspaceStoreMock.clearDraft.mockClear();
     workspaceStoreMock.bumpVersion.mockClear();
+    vi.mocked(clientApi.createNote).mockClear();
+    vi.mocked(clientApi.updateNote).mockClear();
+    vi.mocked(clientApi.deleteNote).mockClear();
   });
 
   it("adds and removes options with dedicated controls", async () => {
@@ -145,6 +152,46 @@ describe("Inspector quiz editor", () => {
         expect(draft.optionExplanations).toEqual(["", "Expl3"]);
         expect(draft.answerIndex).toBe(1);
       }
+    });
+  });
+
+  it("manages multiple notes within the inspector", async () => {
+    const user = userEvent.setup();
+    const noteTimestamp = new Date().toISOString();
+    snapshotMock.mockResolvedValueOnce({
+      ...baseSnapshot,
+      notes: [
+        { id: "note-1", cardId: "cardQ", text: "既存メモ", createdAt: noteTimestamp, updatedAt: noteTimestamp },
+      ],
+    });
+
+    render(<Inspector courseId={"course1"} selectedId={"cardQ"} selectedKind="card" />);
+
+    const existingTextarea = await screen.findByLabelText("選択中のメモ");
+    const noteEditor = screen.getByTestId("note-editor-card");
+    expect(existingTextarea).toHaveValue("既存メモ");
+
+    await user.clear(existingTextarea);
+    await user.type(existingTextarea, "更新後のメモ");
+    await user.click(within(noteEditor).getByRole("button", { name: "保存" }));
+    await waitFor(() => {
+      expect(clientApi.updateNote).toHaveBeenCalledWith("note-1", { text: "更新後のメモ" });
+    });
+
+    const newNoteTextarea = screen.getByLabelText("新規メモ");
+    await user.type(newNoteTextarea, "新しいメモ");
+    await user.click(within(noteEditor).getByRole("button", { name: "追加" }));
+    await waitFor(() => {
+      expect(clientApi.createNote).toHaveBeenCalledWith("cardQ", "新しいメモ");
+    });
+    expect(newNoteTextarea).toHaveValue("");
+
+    const existingNoteItem = screen.getByTestId("note-item-note-1");
+    await user.click(within(existingNoteItem).getByRole("button", { name: "メモメニュー" }));
+    await user.click(await screen.findByRole("menuitem", { name: "削除" }));
+    await user.click(await screen.findByRole("button", { name: "削除する" }));
+    await waitFor(() => {
+      expect(clientApi.deleteNote).toHaveBeenCalledWith("note-1");
     });
   });
 });

@@ -61,6 +61,14 @@ export type Progress = {
   answer?: unknown;
 };
 
+export type Note = {
+  id: UUID;
+  cardId: UUID;
+  text: string;
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+};
+
 // Simple local SRS (Spaced Repetition) model
 export type SrsRating = Enums<"srs_rating">;
 export type SrsEntry = {

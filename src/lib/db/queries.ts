@@ -1,5 +1,5 @@
 import { createClient, getCurrentUserId } from "@/lib/supabase/server";
-import type { Course, Lesson, Card, Progress, UUID, SrsEntry } from "@/lib/types";
+import type { Course, Lesson, Card, Progress, UUID, SrsEntry, Note } from "@/lib/types";
 import type { Tables } from "@/lib/database.types";
 import { mapCourse, mapLesson, mapCard } from "@/lib/db/mappers";
 
@@ -81,15 +81,21 @@ export async function getProgress(cardId: UUID): Promise<Progress | undefined> {
     : undefined;
 }
 
-export async function getNote(cardId: UUID): Promise<string | undefined> {
+export async function listNotes(cardId: UUID): Promise<Note[]> {
   const supa = await createClient();
   const { data, error } = await supa
     .from("notes")
-    .select("text")
+    .select("id, card_id, text, created_at, updated_at")
     .eq("card_id", cardId)
-    .maybeSingle();
+    .order("created_at", { ascending: false });
   if (error) throw error;
-  return data?.text ?? undefined;
+  return (data ?? []).map((row) => ({
+    id: row.id as UUID,
+    cardId: row.card_id as UUID,
+    text: row.text,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
 }
 
 export async function snapshot() {
@@ -132,7 +138,13 @@ export async function snapshot() {
     answer: p.answer ?? undefined,
   }));
   const flags = dataOrThrow<FlagRow>(flagsRes).map((f) => ({ cardId: f.card_id, flaggedAt: f.flagged_at }));
-  const notes = dataOrThrow<NoteRow>(notesRes).map((n) => ({ cardId: n.card_id, text: n.text, updatedAt: n.updated_at }));
+  const notes = dataOrThrow<NoteRow>(notesRes).map((n) => ({
+    id: n.id as UUID,
+    cardId: n.card_id,
+    text: n.text,
+    createdAt: n.created_at,
+    updatedAt: n.updated_at,
+  } satisfies Note));
 
   return { courses, lessons, cards, progress, flags, notes };
 }

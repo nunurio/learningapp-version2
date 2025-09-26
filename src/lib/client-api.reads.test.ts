@@ -49,14 +49,26 @@ describe("client-api reads", () => {
     expect(p).toBeUndefined();
   });
 
-  it("listFlaggedByCourse/getNote: 値を返す/undefined 正規化", async () => {
+  it("listFlaggedByCourse/listNotes: 値を返す/空配列を許容", async () => {
     mockFetchOnce(["c1", "c2"]);
-    const { listFlaggedByCourse, getNote } = await import("@/lib/client-api");
+    const { listFlaggedByCourse, listNotes } = await import("@/lib/client-api");
     const ids = await listFlaggedByCourse("00000000-0000-0000-0000-000000000001" as UUID);
     expect(ids.length).toBe(2);
-    mockFetchOnce(null);
-    const note = await getNote("00000000-0000-0000-0000-000000000001" as UUID);
-    expect(note).toBeUndefined();
+    mockFetchOnce([
+      {
+        id: "note-1",
+        cardId: "00000000-0000-0000-0000-000000000001",
+        text: "memo",
+        createdAt: "2024-01-01",
+        updatedAt: "2024-01-02",
+      },
+    ]);
+    const notes = await listNotes("00000000-0000-0000-0000-000000000001" as UUID);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatchObject({ id: "note-1", text: "memo" });
+    mockFetchOnce([]);
+    const notesEmpty = await listNotes("00000000-0000-0000-0000-000000000001" as UUID);
+    expect(notesEmpty).toEqual([]);
   });
 
   it("/api/db が 500 を返すと本文を含むエラーを throw", async () => {

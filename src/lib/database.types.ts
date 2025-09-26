@@ -989,18 +989,24 @@ export type Database = {
       notes: {
         Row: {
           card_id: string
+          created_at: string
+          id: string
           text: string
           updated_at: string
           user_id: string
         }
         Insert: {
           card_id: string
+          created_at?: string
+          id?: string
           text?: string
           updated_at?: string
           user_id: string
         }
         Update: {
           card_id?: string
+          created_at?: string
+          id?: string
           text?: string
           updated_at?: string
           user_id?: string
@@ -1489,6 +1495,10 @@ export type Database = {
         Args: { bucketid: string; metadata: Json; name: string; owner: string }
         Returns: undefined
       }
+      delete_leaf_prefixes: {
+        Args: { bucket_ids: string[]; names: string[] }
+        Returns: undefined
+      }
       delete_prefix: {
         Args: { _bucket_id: string; _name: string }
         Returns: boolean
@@ -1554,6 +1564,10 @@ export type Database = {
           name: string
           updated_at: string
         }[]
+      }
+      lock_top_prefixes: {
+        Args: { bucket_ids: string[]; names: string[] }
+        Returns: undefined
       }
       operation: {
         Args: Record<PropertyKey, never>
@@ -1625,12 +1639,16 @@ export type Database = {
           levels?: number
           limits?: number
           prefix: string
+          sort_column?: string
+          sort_column_after?: string
+          sort_order?: string
           start_after?: string
         }
         Returns: {
           created_at: string
           id: string
           key: string
+          last_accessed_at: string
           metadata: Json
           name: string
           updated_at: string

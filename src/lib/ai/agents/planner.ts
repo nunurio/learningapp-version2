@@ -4,19 +4,22 @@ import { runner } from "@/lib/ai/agents/index";
 import { LessonCardsPlanSchema, type LessonCardsPlan } from "@/lib/ai/schema";
 import { parseWithSchema, fallbackFromHistory } from "@/lib/ai/executor";
 import { z } from "zod";
-import { CARDS_PLANNER_INSTRUCTIONS } from "@/lib/ai/prompts";
+import { buildCardsPlannerInstructions, type CardKind } from "@/lib/ai/prompts";
+import type { CardType } from "@/lib/types";
 
-// レッスン一式のカード計画（順番・タイプ・ブリーフ）を作るエージェント
-export const CardsPlannerAgent = new Agent<UnknownContext, typeof LessonCardsPlanSchema>({
-  name: "Lesson Cards Planner",
-  instructions: CARDS_PLANNER_INSTRUCTIONS,
-  outputType: LessonCardsPlanSchema,
-  // モデルは runner 側の既定を使用
-});
+function createCardsPlannerAgent(kind?: CardKind) {
+  return new Agent<UnknownContext, typeof LessonCardsPlanSchema>({
+    name: "Lesson Cards Planner",
+    instructions: buildCardsPlannerInstructions(kind),
+    outputType: LessonCardsPlanSchema,
+    // モデルは runner 側の既定を使用
+  });
+}
 
 export async function runCardsPlanner(input: {
   lessonTitle: string;
   desiredCount?: number; // ユーザーが目安を指定した場合
+  desiredCardType?: CardType;
   context: {
     course: { title: string; description?: string | null; category?: string | null; level?: string | null };
     lessons: { title: string }[]; // 同一コースのレッスン一覧（順番）
@@ -31,6 +34,10 @@ export async function runCardsPlanner(input: {
         "レッスン用のカード計画を作成してください。",
         `レッスン: ${input.lessonTitle}`,
         `カード目安数: ${typeof input.desiredCount === "number" ? input.desiredCount : "(未指定)"}`,
+        `カードタイプ制約: ${input.desiredCardType ?? "(指定なし)"}`,
+        input.desiredCardType
+          ? `出力する cards[*].type はすべて ${input.desiredCardType} に揃えてください。`
+          : "出力する cards[*].type は text | quiz | fill-blank をバランス良く混ぜてください。",
         "コース文脈:",
         `  タイトル: ${ctx.course.title}`,
         `  説明: ${ctx.course.description ?? "(なし)"}`,
@@ -41,7 +48,8 @@ export async function runCardsPlanner(input: {
       ].join("\n")
     ),
   ];
-  const res = await runner.run(CardsPlannerAgent, items, { maxTurns: 1 });
+  const plannerAgent = createCardsPlannerAgent(input.desiredCardType as CardKind | undefined);
+  const res = await runner.run(plannerAgent, items, { maxTurns: 1 });
   // まず finalOutput を信頼（Zod 検証済み）
   const result = res.finalOutput as unknown;
   if (!result) {

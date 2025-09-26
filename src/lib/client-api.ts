@@ -10,14 +10,15 @@ import type {
   SrsRating,
   CoursePlan,
   LessonCards,
+  CardType,
+  Note,
 } from "@/lib/types";
 import { createCourseAction, updateCourseAction, deleteCourseAction } from "@/server-actions/courses";
 import { addLessonAction, deleteLessonAction, reorderLessonsAction } from "@/server-actions/lessons";
 import { addCardAction, updateCardAction, deleteCardAction, deleteCardsAction, reorderCardsAction } from "@/server-actions/cards";
-import { saveProgressAction, rateSrsAction, toggleFlagAction, saveNoteAction } from "@/server-actions/progress";
+import { saveProgressAction, rateSrsAction, toggleFlagAction, createNoteAction, updateNoteAction, deleteNoteAction } from "@/server-actions/progress";
 import { saveDraftAction, commitCoursePlanAction, commitCoursePlanPartialAction, commitLessonCardsAction, commitLessonCardsPartialAction, generateLessonCardsParallelAction, generateSingleCardAction } from "@/server-actions/ai";
 import type { AiUpdate } from "@/lib/ai/log";
-import type { CardType } from "@/lib/types";
 
 export type Snapshot = {
   courses: Course[];
@@ -25,7 +26,7 @@ export type Snapshot = {
   cards: Card[];
   progress: Progress[];
   flags: { cardId: UUID; flaggedAt: string }[];
-  notes: { cardId: UUID; text: string; updatedAt: string }[];
+  notes: Note[];
 };
 
 async function api<T = unknown>(op: string, params?: unknown): Promise<T> {
@@ -73,8 +74,8 @@ export async function listFlaggedByCourse(courseId: UUID): Promise<UUID[]> {
   return await api<UUID[]>("listFlaggedByCourse", { courseId });
 }
 
-export async function getNote(cardId: UUID): Promise<string | undefined> {
-  return (await api<string | null>("getNote", { cardId })) ?? undefined;
+export async function listNotes(cardId: UUID): Promise<Note[]> {
+  return await api<Note[]>("listNotes", { cardId });
 }
 
 // Writes (mutations) via Server Actions
@@ -137,8 +138,16 @@ export async function toggleFlag(cardId: UUID): Promise<boolean> {
   return await toggleFlagAction(cardId);
 }
 
-export async function saveNote(cardId: UUID, text: string): Promise<void> {
-  await saveNoteAction(cardId, text);
+export async function createNote(cardId: UUID, text: string): Promise<{ noteId: UUID; createdAt: string; updatedAt: string }> {
+  return await createNoteAction(cardId, text);
+}
+
+export async function updateNote(noteId: UUID, patch: { text: string }): Promise<{ updatedAt: string }> {
+  return await updateNoteAction(noteId, patch);
+}
+
+export async function deleteNote(noteId: UUID): Promise<void> {
+  await deleteNoteAction(noteId);
 }
 
 // AI drafts
@@ -163,7 +172,13 @@ export async function commitLessonCardsPartial(opts: { draftId: string; lessonId
 }
 
 // AI generation (server-side parallel)
-export async function generateLessonCardsParallel(opts: { courseId: UUID; lessonId: UUID; lessonTitle: string; desiredCount?: number }): Promise<{ count: number; cardIds: UUID[]; updates: AiUpdate[] }> {
+export async function generateLessonCardsParallel(opts: {
+  courseId: UUID;
+  lessonId: UUID;
+  lessonTitle: string;
+  desiredCount?: number;
+  desiredCardType: CardType;
+}): Promise<{ count: number; cardIds: UUID[]; updates: AiUpdate[] }> {
   const res = await generateLessonCardsParallelAction(opts);
   return { count: res.committed?.count ?? 0, cardIds: res.committed?.cardIds ?? [], updates: res.updates };
 }
@@ -171,4 +186,3 @@ export async function generateLessonCardsParallel(opts: { courseId: UUID; lesson
 export async function generateSingleCard(opts: { courseId?: UUID; lessonId: UUID; lessonTitle: string; desiredCardType?: CardType; userBrief?: string }): Promise<{ draftId: string; payload: LessonCards; committed?: { count: number; cardIds: UUID[] }; updates: AiUpdate[] }> {
   return await generateSingleCardAction(opts);
 }
-

@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       );
     }
     const payload = useMock
-      ? createLessonCardsMock({ lessonTitle, desiredCount: 1, desiredCardType, userBrief })
+      ? createLessonCardsMock({ lessonTitle, desiredCount: 1, desiredCardType, userBrief, course })
       : (initAgents(), await (await import("@/lib/ai/agents/lesson-cards")).runSingleCardAgent({ lessonTitle, course, desiredCardType, userBrief, ...(sharedPrefix ? { sharedPrefix } : {}) }));
     updates.push({ ts: Date.now(), text: useMock ? "mock" : "runAgent" }, { ts: Date.now(), text: "persistPreview" });
     return NextResponse.json(
