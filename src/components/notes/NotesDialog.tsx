@@ -2,7 +2,7 @@
 import * as React from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,8 +22,6 @@ import * as clientApi from "@/lib/client-api";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils/cn";
 import { Badge } from "@/components/ui/badge";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { Separator } from "@/components/ui/separator";
 
 export type NotesDialogProps = {
   cardId: UUID;
@@ -259,7 +257,7 @@ export function NotesDialog({
   }, [handleCreate, handleSave]);
 
   const content = (
-    <DialogContent className="sm:max-w-5xl" onOpenAutoFocus={(e) => e.preventDefault()}>
+    <DialogContent className="sm:max-w-4xl" onOpenAutoFocus={(event) => event.preventDefault()}>
       <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>
@@ -270,26 +268,19 @@ export function NotesDialog({
         </div>
       ) : (
         <div className="space-y-4" data-testid="notes-dialog-content">
-          <ResizablePanelGroup
-            direction="horizontal"
-            className="flex min-h-[380px] gap-4 rounded-3xl border border-border/50 bg-[hsl(var(--popover))]/70 p-3 shadow-[0_20px_45px_-20px_hsl(var(--background)_/_0.65)] backdrop-blur-xl"
-          >
-            <ResizablePanel
-              defaultSize={30}
-              minSize={20}
-              className="overflow-hidden rounded-2xl border border-border/40 bg-gradient-to-b from-[hsl(var(--background))] via-[hsl(var(--muted))]/30 to-[hsl(var(--background))] shadow-inner"
-            >
-              <div className="flex h-full flex-col">
-                <div className="flex items-center justify-between px-4 pt-4">
-                  <span className="text-sm font-semibold text-muted-foreground">メモ一覧</span>
-                  <Badge variant="secondary" className="bg-white/60 text-xs font-medium text-muted-foreground">
-                    {notes.length} 件
-                  </Badge>
-                </div>
-                <ScrollArea className="mt-3 flex-1 pr-2" data-testid="notes-dialog-list">
-                  <div className="space-y-2 pb-6">
+          <div className="grid gap-6 md:grid-cols-[minmax(220px,260px)_1fr]">
+            <Card className="md:h-full">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                <CardTitle className="text-base font-semibold">メモ一覧</CardTitle>
+                <Badge variant="secondary" className="text-xs font-normal text-muted-foreground/80">
+                  {notes.length} 件
+                </Badge>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ScrollArea className="max-h-[55vh] md:max-h-[60vh]" data-testid="notes-dialog-list">
+                  <div className="grid gap-2 p-4">
                     {notes.length === 0 ? (
-                      <div className="mx-3 rounded-xl border border-dashed border-muted-foreground/30 bg-white/40 p-6 text-center text-sm text-muted-foreground">
+                      <div className="rounded-md border border-dashed border-muted/60 px-4 py-10 text-center text-sm text-muted-foreground">
                         まだメモはありません。
                         <p className="mt-1 text-xs text-muted-foreground/80">右側の「新しいメモ」から追加できます。</p>
                       </div>
@@ -307,25 +298,23 @@ export function NotesDialog({
                               setPendingFocus(note.id);
                             }}
                             className={cn(
-                              "group relative w-full overflow-hidden rounded-xl border px-4 py-3 text-left text-sm transition-all",
-                              "bg-white/70 shadow-[0_8px_30px_-18px_rgba(15,23,42,0.45)] backdrop-blur",
+                              "w-full rounded-lg border bg-card p-3 text-left text-sm transition",
                               isActive
-                                ? "border-primary/60 ring-2 ring-primary/20"
-                                : "border-transparent hover:border-primary/30 hover:bg-white"
+                                ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                                : "border-border hover:border-primary/40 hover:bg-muted"
                             )}
                           >
                             <div className="flex items-center justify-between text-xs text-muted-foreground">
-                              <span className="font-medium text-foreground/80">{formatTimestamp(note.createdAt)}</span>
+                              <span>{formatTimestamp(note.createdAt)}</span>
                               {isDirty ? (
                                 <Badge variant="secondary" className="bg-amber-100 text-amber-700">
                                   未保存
                                 </Badge>
                               ) : (
-                                <span className="text-xs text-muted-foreground/70">更新: {formatTimestamp(note.updatedAt)}</span>
+                                <span className="text-[11px] text-muted-foreground">更新: {formatTimestamp(note.updatedAt)}</span>
                               )}
                             </div>
-                            <Separator className="my-3 bg-muted-foreground/10" />
-                            <p className="line-clamp-3 text-sm text-foreground/90">
+                            <p className="mt-2 line-clamp-3 text-sm text-foreground">
                               {note.text.trim() ? note.text : "（空のメモ）"}
                             </p>
                           </button>
@@ -334,32 +323,24 @@ export function NotesDialog({
                     )}
                   </div>
                 </ScrollArea>
-              </div>
-            </ResizablePanel>
-            <ResizableHandle withHandle className="hidden md:flex" />
-            <ResizablePanel defaultSize={70} minSize={45} className="flex flex-col gap-4">
-              <Card
-                data-testid="notes-dialog-detail"
-                className="flex-1 overflow-hidden border border-border/40 bg-gradient-to-br from-white via-[hsl(var(--accent))]/10 to-white shadow-[0_25px_50px_-25px_rgba(59,130,246,0.35)]"
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-3">
-                  <CardTitle className="text-base">メモ詳細</CardTitle>
-                  {activeNote ? (
-                    <Badge variant="secondary" className="bg-white/80 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      {formatTimestamp(activeNote.updatedAt)} 更新
-                    </Badge>
-                  ) : null}
+              </CardContent>
+            </Card>
+            <div className="flex flex-col gap-4">
+              <Card data-testid="notes-dialog-detail" className="flex flex-1 flex-col">
+                <CardHeader className="space-y-1 pb-3">
+                  <CardTitle className="text-base font-semibold">メモ詳細</CardTitle>
+                  <CardDescription>
+                    {activeNote
+                      ? `最終更新: ${formatTimestamp(activeNote.updatedAt)}`
+                      : "編集するメモを左の一覧から選択してください。"}
+                  </CardDescription>
                 </CardHeader>
-                <CardContent className="flex flex-1 flex-col space-y-4">
+                <CardContent className="flex-1">
                   {activeNote ? (
-                    <>
-                      <div className="flex gap-2 text-xs text-muted-foreground">
-                        <Badge variant="secondary" className="bg-muted text-muted-foreground">
-                          作成: {formatTimestamp(activeNote.createdAt)}
-                        </Badge>
-                        <Badge variant="secondary" className="bg-muted text-muted-foreground">
-                          カードID: {activeNote.cardId}
-                        </Badge>
+                    <div className="flex h-full flex-col gap-3">
+                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        <span>作成: {formatTimestamp(activeNote.createdAt)}</span>
+                        <span>カードID: {activeNote.cardId}</span>
                       </div>
                       <Textarea
                         ref={activeTextareaRef}
@@ -369,18 +350,18 @@ export function NotesDialog({
                           setNoteDrafts((state) => ({ ...state, [activeNote.id]: value }));
                         }}
                         placeholder="メモ…"
-                        rows={7}
-                        className="min-h-[200px] resize-none rounded-xl border border-muted-foreground/20 bg-white/80 shadow-inner focus-visible:border-primary/50"
+                        rows={8}
+                        className="min-h-[200px] flex-1 resize-none"
                         onKeyDown={(event) => handleTextareaKey(event, activeNote.id)}
                       />
-                    </>
+                    </div>
                   ) : (
-                    <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-muted-foreground/30 bg-white/60 p-10 text-sm text-muted-foreground">
+                    <div className="flex h-48 items-center justify-center rounded-md border border-dashed border-muted-foreground/60 text-sm text-muted-foreground">
                       編集するメモを左の一覧から選択してください。
                     </div>
                   )}
                 </CardContent>
-                <CardFooter className="flex flex-wrap justify-end gap-2 pt-0">
+                <CardFooter className="flex flex-wrap justify-end gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -389,7 +370,9 @@ export function NotesDialog({
                       setNoteDrafts((state) => ({ ...state, [activeNote.id]: activeNote.text }));
                     }}
                     disabled={!activeNote || !isActiveDirty || isActiveSaving || isActiveDeleting}
-                  >リセット</Button>
+                  >
+                    リセット
+                  </Button>
                   <Button
                     size="sm"
                     onClick={() => {
@@ -427,34 +410,31 @@ export function NotesDialog({
                   </AlertDialog>
                 </CardFooter>
               </Card>
-              <Card
-                data-testid="notes-dialog-new"
-                className="border border-dashed border-primary/40 bg-gradient-to-r from-primary/10 via-white to-primary/5 shadow-[0_18px_30px_-18px_rgba(59,130,246,0.45)]"
-              >
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Badge variant="secondary" className="bg-primary/15 text-primary">新規</Badge>
-                    新しいメモ
-                  </CardTitle>
+              <Card data-testid="notes-dialog-new">
+                <CardHeader className="space-y-1 pb-3">
+                  <CardTitle className="text-base font-semibold">新しいメモ</CardTitle>
+                  <CardDescription>書き終えたら「追加」で一覧に保存します。</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-2">
+                <CardContent className="space-y-3">
                   <Textarea
                     ref={newNoteRef}
                     value={newDraft}
                     onChange={(event) => setNewDraft(event.target.value)}
                     placeholder="新しいメモを入力…"
                     rows={4}
-                    className="resize-none rounded-xl border border-primary/30 bg-white/80 shadow-inner focus-visible:border-primary"
+                    className="min-h-[120px] resize-none"
                     onKeyDown={(event) => handleTextareaKey(event)}
                   />
                 </CardContent>
-                <CardFooter className="flex justify-end gap-2 pt-0">
+                <CardFooter className="flex justify-end gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setNewDraft("")}
                     disabled={!newDraft}
-                  >クリア</Button>
+                  >
+                    クリア
+                  </Button>
                   <Button
                     size="sm"
                     onClick={() => {
@@ -466,8 +446,8 @@ export function NotesDialog({
                   </Button>
                 </CardFooter>
               </Card>
-            </ResizablePanel>
-          </ResizablePanelGroup>
+            </div>
+          </div>
         </div>
       )}
     </DialogContent>
