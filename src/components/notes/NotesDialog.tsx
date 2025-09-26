@@ -21,6 +21,9 @@ import type { Note, UUID } from "@/lib/types";
 import * as clientApi from "@/lib/client-api";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils/cn";
+import { Badge } from "@/components/ui/badge";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { Separator } from "@/components/ui/separator";
 
 export type NotesDialogProps = {
   cardId: UUID;
@@ -86,7 +89,7 @@ export function NotesDialog({
         return acc;
       }, {}));
       setTimeout(() => {
-        setPendingFocus(sorted[0]?.id ?? "new");
+        setPendingFocus("new");
       }, 0);
     } catch (error) {
       console.error("Failed to load notes", error);
@@ -256,7 +259,7 @@ export function NotesDialog({
   }, [handleCreate, handleSave]);
 
   const content = (
-    <DialogContent className="sm:max-w-4xl" onOpenAutoFocus={(e) => e.preventDefault()}>
+    <DialogContent className="sm:max-w-5xl" onOpenAutoFocus={(e) => e.preventDefault()}>
       <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>
@@ -267,59 +270,96 @@ export function NotesDialog({
         </div>
       ) : (
         <div className="space-y-4" data-testid="notes-dialog-content">
-          <div className="grid gap-4 md:grid-cols-[260px_1fr]">
-            <div className="space-y-3" data-testid="notes-dialog-list">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-muted-foreground">メモ一覧</span>
-                <span className="text-xs text-muted-foreground">{notes.length} 件</span>
-              </div>
-              <ScrollArea className="h-[360px] pr-3">
-                <div className="space-y-2 py-1">
-                  {notes.length === 0 ? (
-                    <p className="px-1 text-sm text-muted-foreground">まだメモはありません。</p>
-                  ) : (
-                    notes.map((note) => {
-                      const isDirty = dirty[note.id];
-                      const isActive = activeNoteId === note.id;
-                      return (
-                        <button
-                          key={note.id}
-                          type="button"
-                          data-testid="notes-dialog-item"
-                          onClick={() => {
-                            setActiveNoteId(note.id);
-                            setPendingFocus(note.id);
-                          }}
-                          className={cn(
-                            "w-full rounded-md border px-3 py-2 text-left text-sm transition",
-                            isActive ? "border-primary bg-primary/5" : "border-muted bg-background hover:bg-muted"
-                          )}
-                        >
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{formatTimestamp(note.createdAt)}</span>
-                            {isDirty ? <span className="text-amber-600">未保存</span> : <span>{formatTimestamp(note.updatedAt)}</span>}
-                          </div>
-                          <p className="mt-2 line-clamp-2 text-foreground">
-                            {note.text.trim() ? note.text : "（空のメモ）"}
-                          </p>
-                        </button>
-                      );
-                    })
-                  )}
+          <ResizablePanelGroup
+            direction="horizontal"
+            className="flex min-h-[380px] gap-4 rounded-3xl border border-border/50 bg-[hsl(var(--popover))]/70 p-3 shadow-[0_20px_45px_-20px_hsl(var(--background)_/_0.65)] backdrop-blur-xl"
+          >
+            <ResizablePanel
+              defaultSize={30}
+              minSize={20}
+              className="overflow-hidden rounded-2xl border border-border/40 bg-gradient-to-b from-[hsl(var(--background))] via-[hsl(var(--muted))]/30 to-[hsl(var(--background))] shadow-inner"
+            >
+              <div className="flex h-full flex-col">
+                <div className="flex items-center justify-between px-4 pt-4">
+                  <span className="text-sm font-semibold text-muted-foreground">メモ一覧</span>
+                  <Badge variant="secondary" className="bg-white/60 text-xs font-medium text-muted-foreground">
+                    {notes.length} 件
+                  </Badge>
                 </div>
-              </ScrollArea>
-            </div>
-            <div className="space-y-4">
-              <Card data-testid="notes-dialog-detail">
-                <CardHeader className="pb-2">
+                <ScrollArea className="mt-3 flex-1 pr-2" data-testid="notes-dialog-list">
+                  <div className="space-y-2 pb-6">
+                    {notes.length === 0 ? (
+                      <div className="mx-3 rounded-xl border border-dashed border-muted-foreground/30 bg-white/40 p-6 text-center text-sm text-muted-foreground">
+                        まだメモはありません。
+                        <p className="mt-1 text-xs text-muted-foreground/80">右側の「新しいメモ」から追加できます。</p>
+                      </div>
+                    ) : (
+                      notes.map((note) => {
+                        const isDirty = dirty[note.id];
+                        const isActive = activeNoteId === note.id;
+                        return (
+                          <button
+                            key={note.id}
+                            type="button"
+                            data-testid="notes-dialog-item"
+                            onClick={() => {
+                              setActiveNoteId(note.id);
+                              setPendingFocus(note.id);
+                            }}
+                            className={cn(
+                              "group relative w-full overflow-hidden rounded-xl border px-4 py-3 text-left text-sm transition-all",
+                              "bg-white/70 shadow-[0_8px_30px_-18px_rgba(15,23,42,0.45)] backdrop-blur",
+                              isActive
+                                ? "border-primary/60 ring-2 ring-primary/20"
+                                : "border-transparent hover:border-primary/30 hover:bg-white"
+                            )}
+                          >
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span className="font-medium text-foreground/80">{formatTimestamp(note.createdAt)}</span>
+                              {isDirty ? (
+                                <Badge variant="secondary" className="bg-amber-100 text-amber-700">
+                                  未保存
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground/70">更新: {formatTimestamp(note.updatedAt)}</span>
+                              )}
+                            </div>
+                            <Separator className="my-3 bg-muted-foreground/10" />
+                            <p className="line-clamp-3 text-sm text-foreground/90">
+                              {note.text.trim() ? note.text : "（空のメモ）"}
+                            </p>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle className="hidden md:flex" />
+            <ResizablePanel defaultSize={70} minSize={45} className="flex flex-col gap-4">
+              <Card
+                data-testid="notes-dialog-detail"
+                className="flex-1 overflow-hidden border border-border/40 bg-gradient-to-br from-white via-[hsl(var(--accent))]/10 to-white shadow-[0_25px_50px_-25px_rgba(59,130,246,0.35)]"
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-3">
                   <CardTitle className="text-base">メモ詳細</CardTitle>
+                  {activeNote ? (
+                    <Badge variant="secondary" className="bg-white/80 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {formatTimestamp(activeNote.updatedAt)} 更新
+                    </Badge>
+                  ) : null}
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="flex flex-1 flex-col space-y-4">
                   {activeNote ? (
                     <>
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                        <span>作成: {formatTimestamp(activeNote.createdAt)}</span>
-                        <span>更新: {formatTimestamp(activeNote.updatedAt)}</span>
+                      <div className="flex gap-2 text-xs text-muted-foreground">
+                        <Badge variant="secondary" className="bg-muted text-muted-foreground">
+                          作成: {formatTimestamp(activeNote.createdAt)}
+                        </Badge>
+                        <Badge variant="secondary" className="bg-muted text-muted-foreground">
+                          カードID: {activeNote.cardId}
+                        </Badge>
                       </div>
                       <Textarea
                         ref={activeTextareaRef}
@@ -329,15 +369,18 @@ export function NotesDialog({
                           setNoteDrafts((state) => ({ ...state, [activeNote.id]: value }));
                         }}
                         placeholder="メモ…"
-                        rows={6}
+                        rows={7}
+                        className="min-h-[200px] resize-none rounded-xl border border-muted-foreground/20 bg-white/80 shadow-inner focus-visible:border-primary/50"
                         onKeyDown={(event) => handleTextareaKey(event, activeNote.id)}
                       />
                     </>
                   ) : (
-                    <p className="text-sm text-muted-foreground">編集するメモを左の一覧から選択してください。</p>
+                    <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-muted-foreground/30 bg-white/60 p-10 text-sm text-muted-foreground">
+                      編集するメモを左の一覧から選択してください。
+                    </div>
                   )}
                 </CardContent>
-                <CardFooter className="flex justify-end gap-2 pt-0">
+                <CardFooter className="flex flex-wrap justify-end gap-2 pt-0">
                   <Button
                     variant="outline"
                     size="sm"
@@ -384,9 +427,15 @@ export function NotesDialog({
                   </AlertDialog>
                 </CardFooter>
               </Card>
-              <Card data-testid="notes-dialog-new">
+              <Card
+                data-testid="notes-dialog-new"
+                className="border border-dashed border-primary/40 bg-gradient-to-r from-primary/10 via-white to-primary/5 shadow-[0_18px_30px_-18px_rgba(59,130,246,0.45)]"
+              >
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">新しいメモ</CardTitle>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Badge variant="secondary" className="bg-primary/15 text-primary">新規</Badge>
+                    新しいメモ
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <Textarea
@@ -394,7 +443,8 @@ export function NotesDialog({
                     value={newDraft}
                     onChange={(event) => setNewDraft(event.target.value)}
                     placeholder="新しいメモを入力…"
-                    rows={3}
+                    rows={4}
+                    className="resize-none rounded-xl border border-primary/30 bg-white/80 shadow-inner focus-visible:border-primary"
                     onKeyDown={(event) => handleTextareaKey(event)}
                   />
                 </CardContent>
@@ -407,15 +457,17 @@ export function NotesDialog({
                   >クリア</Button>
                   <Button
                     size="sm"
-                    onClick={() => { void handleCreate(); }}
+                    onClick={() => {
+                      void handleCreate();
+                    }}
                     disabled={creating || !newDraft.trim()}
                   >
                     {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : <Plus className="mr-2 h-4 w-4" aria-hidden />}追加
                   </Button>
                 </CardFooter>
               </Card>
-            </div>
-          </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </div>
       )}
     </DialogContent>
