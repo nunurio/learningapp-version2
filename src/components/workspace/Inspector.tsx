@@ -663,12 +663,12 @@ export function Inspector({ courseId, selectedId, selectedKind }: Props) {
             <AccordionContent className="px-3">
               <div className="text-xs text-gray-500 mb-3">カードごとの気付きや補足を複数保存できます。</div>
               <div className="grid gap-4 md:grid-cols-[minmax(220px,260px),1fr]">
-                <Card className="border-muted" data-testid="note-list-card">
+                <Card className="flex h-full flex-col border-muted" data-testid="note-list-card">
                   <div className="flex items-center justify-between border-b px-4 py-3">
                     <span className="text-sm font-medium">メモ一覧</span>
                     <Badge variant="secondary">{noteCount}件</Badge>
                   </div>
-                  <ScrollArea className="max-h-72">
+                  <ScrollArea className="h-[38vh] min-h-[220px] md:h-[55vh]" data-testid="note-list-scroll">
                     <div className="space-y-2 p-3">
                       {noteCount === 0 ? (
                         <p className="text-sm text-muted-foreground">まだメモはありません。右側で新しいメモを追加できます。</p>

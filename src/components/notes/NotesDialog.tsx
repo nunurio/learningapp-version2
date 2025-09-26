@@ -257,7 +257,10 @@ export function NotesDialog({
   }, [handleCreate, handleSave]);
 
   const content = (
-    <DialogContent className="sm:max-w-4xl" onOpenAutoFocus={(event) => event.preventDefault()}>
+    <DialogContent
+      className="flex max-h-[85vh] flex-col sm:max-w-4xl"
+      onOpenAutoFocus={(event) => event.preventDefault()}
+    >
       <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>
@@ -267,17 +270,17 @@ export function NotesDialog({
           <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> 読み込み中…
         </div>
       ) : (
-        <div className="space-y-4" data-testid="notes-dialog-content">
-          <div className="grid gap-6 md:grid-cols-[minmax(220px,260px)_1fr]">
-            <Card className="md:h-full">
+        <div className="flex flex-1 flex-col gap-4 overflow-hidden" data-testid="notes-dialog-content">
+          <div className="grid flex-1 gap-6 overflow-hidden md:grid-cols-[minmax(220px,280px)_1fr]">
+            <Card className="flex min-h-0 flex-col overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
                 <CardTitle className="text-base font-semibold">メモ一覧</CardTitle>
                 <Badge variant="secondary" className="text-xs font-normal text-muted-foreground/80">
                   {notes.length} 件
                 </Badge>
               </CardHeader>
-              <CardContent className="p-0">
-                <ScrollArea className="max-h-[55vh] md:max-h-[60vh]" data-testid="notes-dialog-list">
+              <CardContent className="min-h-0 flex-1 overflow-hidden p-0">
+                <ScrollArea className="h-[45vh] min-h-[240px] md:h-[60vh]" data-testid="notes-dialog-list">
                   <div className="grid gap-2 p-4">
                     {notes.length === 0 ? (
                       <div className="rounded-md border border-dashed border-muted/60 px-4 py-10 text-center text-sm text-muted-foreground">
@@ -325,8 +328,8 @@ export function NotesDialog({
                 </ScrollArea>
               </CardContent>
             </Card>
-            <div className="flex flex-col gap-4">
-              <Card data-testid="notes-dialog-detail" className="flex flex-1 flex-col">
+            <div className="flex min-h-0 flex-col gap-4 overflow-hidden">
+              <Card data-testid="notes-dialog-detail" className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <CardHeader className="space-y-1 pb-3">
                   <CardTitle className="text-base font-semibold">メモ詳細</CardTitle>
                   <CardDescription>
@@ -335,9 +338,9 @@ export function NotesDialog({
                       : "編集するメモを左の一覧から選択してください。"}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="flex-1">
+                <CardContent className="min-h-0 flex-1 overflow-auto">
                   {activeNote ? (
-                    <div className="flex h-full flex-col gap-3">
+                    <div className="flex h-full min-h-0 flex-col gap-3">
                       <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                         <span>作成: {formatTimestamp(activeNote.createdAt)}</span>
                         <span>カードID: {activeNote.cardId}</span>
@@ -351,7 +354,7 @@ export function NotesDialog({
                         }}
                         placeholder="メモ…"
                         rows={8}
-                        className="min-h-[200px] flex-1 resize-none"
+                        className="min-h-[200px] flex-1 resize-y"
                         onKeyDown={(event) => handleTextareaKey(event, activeNote.id)}
                       />
                     </div>
@@ -410,7 +413,7 @@ export function NotesDialog({
                   </AlertDialog>
                 </CardFooter>
               </Card>
-              <Card data-testid="notes-dialog-new">
+              <Card data-testid="notes-dialog-new" className="shrink-0">
                 <CardHeader className="space-y-1 pb-3">
                   <CardTitle className="text-base font-semibold">新しいメモ</CardTitle>
                   <CardDescription>書き終えたら「追加」で一覧に保存します。</CardDescription>
@@ -422,7 +425,7 @@ export function NotesDialog({
                     onChange={(event) => setNewDraft(event.target.value)}
                     placeholder="新しいメモを入力…"
                     rows={4}
-                    className="min-h-[120px] resize-none"
+                    className="min-h-[120px] resize-y"
                     onKeyDown={(event) => handleTextareaKey(event)}
                   />
                 </CardContent>
